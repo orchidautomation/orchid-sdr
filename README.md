@@ -80,6 +80,94 @@ npm run discovery:tick
 npm run sandbox:probe
 ```
 
+## Changing the model
+
+The current default model is `moonshotai/kimi-k2.6`.
+
+There are two places to change it:
+
+- sandbox turns: update `CLAUDE_GATEWAY_MODEL` in [src/orchestration/sandbox-broker.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/src/orchestration/sandbox-broker.ts:19)
+- structured classification / qualification / policy calls: update the model slug in [src/services/ai-service.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/src/services/ai-service.ts:59)
+
+When swapping models:
+
+- keep the sandbox and structured paths aligned unless you intentionally want different models for different jobs
+- keep using `AI_GATEWAY_API_KEY` or `VERCEL_AI_GATEWAY_KEY` so routing still goes through Vercel AI Gateway
+- rerun `npm run sandbox:probe`, `npm run typecheck`, and `npm test`
+
+## Adding new skills
+
+Tracked AISDR skills live in `skills/`.
+
+Current tracked skills:
+
+- `skills/icp-qualification`
+- `skills/research-brief`
+- `skills/research-checks`
+- `skills/sdr-copy`
+- `skills/reply-policy`
+- `skills/handoff-policy`
+
+How skills are loaded:
+
+- repo skills from `skills/` are copied into each sandbox session in [src/orchestration/sandbox-broker.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/src/orchestration/sandbox-broker.ts:130)
+- local-only skills from `.claude/skills/` are also mounted if they exist, but they are not part of the OSS repo
+
+Recommended pattern:
+
+- put AISDR-specific, reusable behavior in tracked `skills/`
+- put personal or vendor/dev-only helper skills in local `.claude/skills/` or ignored folders like `.agents/`
+
+To add a new tracked skill:
+
+1. create `skills/<skill-name>/SKILL.md`
+2. keep it focused on one repeatable behavior
+3. explicitly reference it in the relevant sandbox prompt in [src/orchestration/prospect-workflow.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/src/orchestration/prospect-workflow.ts:308) or another turn-producing flow
+4. redeploy so new sandbox sessions pick it up
+
+## Adding new MCP servers
+
+There are two MCP layers in this repo:
+
+1. sandbox-mounted MCP servers
+   these are tools the sandboxed agent can call directly
+
+2. the first-party `orchid-sdr` MCP server
+   this is the typed control-plane surface backed by your own adapters and database
+
+### Add a sandbox-mounted MCP
+
+Sandbox MCP servers are written into `.mcp.json` during sandbox setup in [src/orchestration/sandbox-broker.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/src/orchestration/sandbox-broker.ts:101).
+
+That is where the Firecrawl MCP is currently mounted.
+
+To add another one:
+
+1. update the `mcpServers` object written in `prepareSandboxWorkspace(...)`
+2. pass any needed secrets into the sandbox env in `createVercelSandboxProvider(...)`
+3. mention the tool in the relevant prompt or skill so the agent knows when to use it
+
+### Add a first-party `orchid-sdr` tool
+
+If you want the agent to call a tool through your own backend instead of talking to a vendor MCP directly:
+
+1. add the behavior in [src/services/mcp-tools.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/src/services/mcp-tools.ts:1)
+2. expose it in [src/mcp/server-factory.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/src/mcp/server-factory.ts:1)
+3. back it with an adapter, repository method, or service as needed
+
+Use the first-party MCP for:
+
+- CRM mutations
+- stateful internal tools
+- provider abstraction
+- anything you want to keep behind your own typed boundary
+
+Use direct vendor MCPs for:
+
+- sandbox-native research tools
+- tools that benefit from direct agent interaction
+- fast experiments where you do not need a control-plane wrapper yet
+
 Dashboard notes:
 
 - `GET /` redirects to `/dashboard`
@@ -113,6 +201,7 @@ Generic signal webhook example:
 - The sandbox lane is intentionally turn-scoped. Durable memory lives in Postgres, Rivet actor state, and actor-local SQLite, not in a warm sandbox.
 - The agent only sees first-party MCP tools. Vendor APIs stay behind adapters in the control plane.
 - The repo-managed `knowledge/` and `skills/` directories are copied into each sandbox session before prompting.
+- Only AISDR-specific skills should live in the tracked `skills/` directory. Local dev/vendor helper skills should live under ignored folders like `.agents/` so they are not shipped as part of OSS.
 - If `.claude/skills/` exists locally, those skill bundles are also copied into each sandbox session and exposed alongside the repo `skills/` directory.
 - If `FIRECRAWL_API_KEY` is set, the sandbox also gets the official hosted Firecrawl MCP wired in at `https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp` with no local `npx` install required.
 - `discoveryCoordinator` is keyed by `[campaignId, source]` and keeps per-source term frontier, run history, and yield memory in Rivet SQLite. Postgres remains the shared CRM/system-of-record.

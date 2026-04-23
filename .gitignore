@@ -6,6 +6,8 @@ dist
 .rivet
 coverage
 *.log
+.agents/
+skills-lock.json
 .claude/
 .codebuddy/
 .commandcode/

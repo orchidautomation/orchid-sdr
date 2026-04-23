@@ -189,302 +189,342 @@ export function renderDashboardPage() {
     <title>Orchid SDR Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
     <style>
       :root {
         color-scheme: dark;
-        --bg: #07090d;
-        --bg-alt: #0d1117;
-        --surface: rgba(16, 21, 29, 0.94);
-        --surface-strong: rgba(20, 26, 35, 0.98);
-        --surface-soft: rgba(255, 255, 255, 0.025);
-        --surface-hover: rgba(122, 184, 255, 0.06);
+        --bg: #050608;
+        --surface: #090b0f;
+        --surface-2: #0d1015;
+        --surface-3: #131720;
+        --line: #191d25;
+        --line-soft: #141821;
+        --line-strong: #262c37;
         --ink: #f5f7fa;
-        --ink-soft: #d6dde6;
-        --muted: #9aa6b2;
-        --line: rgba(255, 255, 255, 0.08);
-        --line-strong: rgba(255, 255, 255, 0.14);
-        --accent: #7ab8ff;
-        --accent-strong: #4f8df2;
-        --success: #63d297;
-        --warning: #f2be5c;
-        --danger: #f28c79;
-        --shadow: 0 24px 64px rgba(0, 0, 0, 0.38);
-        --shadow-soft: 0 16px 36px rgba(0, 0, 0, 0.24);
+        --ink-soft: #d4d8de;
+        --muted: #8b93a1;
+        --accent: #7c9cff;
+        --accent-strong: #6387ff;
+        --success: #69d48e;
+        --warning: #f0c164;
+        --danger: #ef8978;
       }
       * { box-sizing: border-box; }
       html, body { margin: 0; }
       body {
         min-height: 100vh;
+        background: var(--bg);
         color: var(--ink);
-        font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif;
-        background:
-          radial-gradient(circle at top, rgba(122,184,255,0.16), transparent 32%),
-          radial-gradient(circle at 85% 10%, rgba(99,210,151,0.08), transparent 24%),
-          linear-gradient(180deg, var(--bg) 0%, var(--bg-alt) 100%);
-      }
-      body::before {
-        content: "";
-        position: fixed;
-        inset: 0;
-        pointer-events: none;
-        background:
-          linear-gradient(180deg, rgba(255,255,255,0.04), transparent 14%),
-          radial-gradient(circle at 50% -20%, rgba(255,255,255,0.08), transparent 48%);
-        opacity: 0.4;
+        font-family: "Geist", "Segoe UI", sans-serif;
       }
       a { color: inherit; }
+      form { margin: 0; }
       button, input { font: inherit; }
       code {
-        padding: 0.18rem 0.42rem;
-        border-radius: 8px;
-        border: 1px solid var(--line);
-        background: rgba(255,255,255,0.04);
         font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 0.74rem;
+        color: var(--ink-soft);
       }
       .inline-link {
         color: var(--accent);
         text-decoration: none;
-        font-weight: 600;
       }
       .inline-link:hover {
         text-decoration: underline;
       }
-      .shell {
-        max-width: 1600px;
-        margin: 0 auto;
-        padding: 28px 24px 56px;
-      }
-      .masthead {
+      .app {
         display: grid;
-        grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
-        gap: 24px;
-        padding: 30px;
-        margin-bottom: 18px;
-        border: 1px solid var(--line);
-        border-radius: 30px;
-        background:
-          linear-gradient(180deg, rgba(20, 26, 35, 0.96), rgba(13, 17, 23, 0.96)),
-          linear-gradient(135deg, rgba(122,184,255,0.08), rgba(99,210,151,0.04));
-        box-shadow: var(--shadow);
+        grid-template-columns: 248px minmax(0, 1fr);
+        min-height: 100vh;
       }
-      .masthead-copy {
+      .sidebar {
+        padding: 20px 16px 18px;
+        border-right: 1px solid var(--line);
+        background: linear-gradient(180deg, #050608 0%, #06080c 100%);
+      }
+      .sidebar-inner {
+        position: sticky;
+        top: 0;
         display: grid;
-        gap: 24px;
-        align-content: start;
+        gap: 18px;
+        min-height: calc(100vh - 38px);
       }
-      .eyebrow {
-        display: inline-flex;
-        align-items: center;
+      .sidebar-section {
+        padding: 0 4px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+      .sidebar-section:last-child {
+        margin-top: auto;
+        padding-bottom: 0;
+        border-bottom: 0;
+      }
+      .brand {
+        display: grid;
         gap: 10px;
-        margin: 0;
-        color: var(--ink-soft);
-        font: 600 0.73rem/1 "IBM Plex Mono", ui-monospace, monospace;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
       }
-      .eyebrow::before {
-        content: "";
-        width: 8px;
-        height: 8px;
+      .brand-mark {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .brand-dot {
+        width: 10px;
+        height: 10px;
         border-radius: 999px;
         background: var(--accent);
-        box-shadow: 0 0 0 6px rgba(122,184,255,0.14);
+        box-shadow: 0 0 0 4px rgba(124, 156, 255, 0.12);
       }
-      .title-lockup {
-        display: grid;
-        gap: 12px;
-        max-width: 64ch;
-      }
-      h1 {
-        margin: 0;
-        max-width: 12ch;
-        font-family: "Space Grotesk", "Plus Jakarta Sans", sans-serif;
-        font-size: clamp(2.6rem, 5vw, 4.6rem);
-        line-height: 0.94;
-        letter-spacing: -0.05em;
-      }
-      .lede {
-        margin: 0;
-        max-width: 58ch;
-        color: var(--muted);
-        font-size: 1rem;
-        line-height: 1.72;
-      }
-      .hero-facts {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 12px;
-      }
-      .hero-fact {
-        padding: 16px 18px;
-        border-radius: 18px;
-        border: 1px solid var(--line);
-        background: rgba(255,255,255,0.03);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
-      }
-      .hero-fact .label {
-        display: block;
-        margin-bottom: 10px;
-        color: var(--muted);
-        font: 600 0.7rem/1 "IBM Plex Mono", ui-monospace, monospace;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
-      .hero-fact strong {
-        display: block;
-        margin-bottom: 6px;
-        font-size: 1rem;
-        line-height: 1.3;
-        letter-spacing: -0.02em;
-      }
-      .hero-fact span {
-        color: var(--muted);
-        font-size: 0.92rem;
-        line-height: 1.5;
-      }
-      .masthead-side {
-        display: grid;
-        gap: 14px;
-        align-content: start;
-      }
-      .side-card {
-        padding: 18px;
-        border-radius: 22px;
-        border: 1px solid var(--line);
-        background: var(--surface-soft);
-      }
-      .side-card h2 {
-        margin: 0 0 6px;
-        font-family: "Space Grotesk", "Plus Jakarta Sans", sans-serif;
-        font-size: 1rem;
-        letter-spacing: -0.03em;
-      }
-      .side-card p {
-        margin: 0;
-        color: var(--muted);
-        font-size: 0.92rem;
-        line-height: 1.65;
-      }
-      .status-stack {
-        display: grid;
-        gap: 10px;
-      }
-      .status-pill {
-        display: flex;
-        gap: 12px;
-        align-items: flex-start;
-        padding: 14px 15px;
-        border-radius: 18px;
-        border: 1px solid var(--line);
-        background: rgba(255,255,255,0.025);
-      }
-      .status-copy {
+      .brand-copy {
         display: grid;
         gap: 4px;
       }
-      .status-copy strong {
-        font-size: 0.95rem;
-        letter-spacing: -0.02em;
-      }
-      .status-copy span {
-        font: 600 0.68rem/1 "IBM Plex Mono", ui-monospace, monospace;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
+      .brand-kicker {
+        margin: 0;
         color: var(--muted);
+        font: 600 0.67rem/1 "IBM Plex Mono", ui-monospace, monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+      }
+      .brand h1 {
+        margin: 0;
+        font-size: 1.05rem;
+        line-height: 1.1;
+        letter-spacing: -0.03em;
+      }
+      .brand-note {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.84rem;
+        line-height: 1.55;
+      }
+      .section-label {
+        margin: 0 0 10px;
+        color: var(--muted);
+        font: 600 0.64rem/1 "IBM Plex Mono", ui-monospace, monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+      }
+      .status-list {
+        display: grid;
+        gap: 8px;
+      }
+      .status-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface-2);
       }
       .status-dot {
-        flex: 0 0 auto;
-        width: 10px;
-        height: 10px;
-        margin-top: 4px;
+        width: 8px;
+        height: 8px;
+        margin-top: 5px;
         border-radius: 999px;
-        background: rgba(154,166,178,0.7);
-        box-shadow: 0 0 0 6px rgba(154,166,178,0.12);
+        background: var(--muted);
       }
-      .status-dot.success {
-        background: var(--success);
-        box-shadow: 0 0 0 6px rgba(99,210,151,0.16);
+      .status-dot.success { background: var(--success); }
+      .status-dot.warn { background: var(--warning); }
+      .status-dot.danger { background: var(--danger); }
+      .status-copy {
+        display: grid;
+        gap: 3px;
+        min-width: 0;
       }
-      .status-dot.warn {
-        background: var(--warning);
-        box-shadow: 0 0 0 6px rgba(242,190,92,0.14);
+      .status-meta {
+        color: var(--muted);
+        font: 600 0.61rem/1 "IBM Plex Mono", ui-monospace, monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
       }
-      .status-dot.danger {
-        background: var(--danger);
-        box-shadow: 0 0 0 6px rgba(242,140,121,0.14);
+      .status-value {
+        font-size: 0.88rem;
+        line-height: 1.3;
+        letter-spacing: -0.02em;
+      }
+      .tab-list {
+        display: grid;
+        gap: 4px;
+      }
+      .tab-button {
+        appearance: none;
+        display: flex;
+        width: 100%;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 12px;
+        border: 1px solid transparent;
+        border-radius: 12px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        text-align: left;
+        transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+      }
+      .tab-button:hover {
+        background: var(--surface-2);
+      }
+      .tab-button.active {
+        border-color: var(--line-strong);
+        background: var(--surface-2);
+        color: var(--ink);
+      }
+      .tab-copy {
+        display: grid;
+        gap: 3px;
+      }
+      .tab-label {
+        font-size: 0.88rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      .tab-hint {
+        color: var(--muted);
+        font: 500 0.69rem/1.4 "IBM Plex Mono", ui-monospace, monospace;
+      }
+      .sidebar-actions {
+        display: grid;
+        gap: 8px;
+      }
+      .btn {
+        appearance: none;
+        width: 100%;
+        height: 38px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface-2);
+        color: var(--ink);
+        cursor: pointer;
+        font: 600 0.71rem/1 "IBM Plex Mono", ui-monospace, monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        transition: border-color 140ms ease, background 140ms ease;
+      }
+      .btn:hover {
+        border-color: var(--line-strong);
+        background: var(--surface-3);
+      }
+      .btn-primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #0a0d12;
+      }
+      .btn-primary:hover {
+        background: var(--accent-strong);
+        border-color: var(--accent-strong);
+      }
+      .btn-ghost {
+        color: var(--muted);
+      }
+      .btn:focus-visible,
+      .tab-button:focus-visible,
+      .inline-link:focus-visible {
+        outline: none;
+        border-color: var(--accent);
+      }
+      .main {
+        min-width: 0;
+        padding: 20px 22px 28px;
       }
       .toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 16px;
+        margin-bottom: 14px;
+      }
+      .toolbar-copy {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
+        gap: 8px;
       }
-      .toolbar button,
-      .toolbar form button {
-        width: 100%;
-      }
-      .toolbar form {
+      .toolbar-kicker {
         margin: 0;
-        grid-column: span 2;
-      }
-      button, .ghost-link {
-        appearance: none;
-        min-height: 48px;
-        padding: 0 18px;
-        border-radius: 16px;
-        border: 1px solid transparent;
-        cursor: pointer;
-        font: 600 0.86rem/1 "IBM Plex Mono", ui-monospace, monospace;
-        letter-spacing: 0.01em;
-        transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
-      }
-      button:hover, .ghost-link:hover {
-        transform: translateY(-1px);
-      }
-      button:focus-visible, .ghost-link:focus-visible, .inline-link:focus-visible {
-        outline: none;
-        box-shadow: 0 0 0 3px rgba(122,184,255,0.18);
-      }
-      button.primary {
-        background: linear-gradient(180deg, var(--accent), var(--accent-strong));
-        color: #08111d;
-        box-shadow: 0 16px 32px rgba(79,141,242,0.22);
-      }
-      button.secondary {
-        background: rgba(255,255,255,0.06);
-        border-color: var(--line);
-        color: var(--ink);
-      }
-      button.ghost, .ghost-link {
-        background: transparent;
-        border-color: var(--line);
         color: var(--muted);
-        text-decoration: none;
-      }
-      button.ghost:hover, .ghost-link:hover, button.secondary:hover {
-        background: rgba(255,255,255,0.04);
-        border-color: var(--line-strong);
-        color: var(--ink);
-      }
-      .control-note {
-        display: grid;
-        gap: 10px;
-      }
-      .control-note strong {
-        font: 600 0.7rem/1 "IBM Plex Mono", ui-monospace, monospace;
-        letter-spacing: 0.08em;
+        font: 600 0.66rem/1 "IBM Plex Mono", ui-monospace, monospace;
         text-transform: uppercase;
-        color: var(--ink-soft);
+        letter-spacing: 0.12em;
       }
-      .control-note p {
+      .toolbar-line {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 10px 14px;
+      }
+      .toolbar h2 {
+        margin: 0;
+        font-size: 1.15rem;
+        line-height: 1.1;
+        letter-spacing: -0.03em;
+      }
+      .toolbar-subtle {
         margin: 0;
         color: var(--muted);
-        font-size: 0.93rem;
-        line-height: 1.65;
+        font-size: 0.88rem;
+        line-height: 1.5;
       }
-      .grid {
+      .toolbar-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px 12px;
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+      .meta-pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--surface-2);
+        color: var(--muted);
+        font: 600 0.64rem/1 "IBM Plex Mono", ui-monospace, monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .metric-strip {
+        margin-bottom: 14px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--surface);
+        overflow: hidden;
+      }
+      .summary-grid {
         display: grid;
-        gap: 18px;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      }
+      .stat {
+        display: grid;
+        gap: 12px;
+        min-height: 76px;
+        padding: 14px 16px;
+        box-shadow: inset -1px 0 0 var(--line), inset 0 -1px 0 var(--line);
+      }
+      .stat .label {
+        color: var(--muted);
+        font: 600 0.61rem/1 "IBM Plex Mono", ui-monospace, monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+      .stat .value {
+        font-size: 1.82rem;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.05em;
+      }
+      .panel {
+        display: none;
+      }
+      .panel.active {
+        display: block;
+      }
+      .panel-grid {
+        display: grid;
+        gap: 12px;
         grid-template-columns: repeat(12, minmax(0, 1fr));
         align-items: start;
       }
@@ -492,110 +532,191 @@ export function renderDashboardPage() {
         grid-column: span 12;
         min-width: 0;
         border: 1px solid var(--line);
-        border-radius: 24px;
-        background: linear-gradient(180deg, rgba(18,23,31,0.96), rgba(12,16,22,0.96));
-        box-shadow: var(--shadow-soft);
+        border-radius: 14px;
+        background: var(--surface-2);
         overflow: hidden;
       }
       .card-head {
         display: flex;
         justify-content: space-between;
-        align-items: flex-start;
-        gap: 16px;
-        padding: 20px 22px 16px;
+        align-items: flex-end;
+        gap: 12px;
+        padding: 12px 14px;
         border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.01);
       }
       .card-head h2 {
         margin: 0;
-        font-family: "Space Grotesk", "Plus Jakarta Sans", sans-serif;
-        font-size: 1.08rem;
-        line-height: 1.15;
-        letter-spacing: -0.03em;
+        font-size: 0.98rem;
+        line-height: 1.1;
+        letter-spacing: -0.02em;
       }
       .card-head p {
         margin: 0;
         color: var(--muted);
-        font-size: 0.9rem;
-        line-height: 1.55;
+        font-size: 0.84rem;
+        line-height: 1.45;
       }
       .card-body {
-        padding: 18px 22px 22px;
+        padding: 14px;
       }
-      .subsection-head {
+      .card-body.tight {
+        padding: 0;
+      }
+      .table-shell {
+        overflow: auto;
+      }
+      table {
+        width: 100%;
+        min-width: 640px;
+        border-collapse: collapse;
+      }
+      th, td {
+        text-align: left;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line-soft);
+        vertical-align: top;
+        word-break: break-word;
+      }
+      th {
+        color: var(--muted);
+        background: var(--surface-2);
+        font: 600 0.61rem/1 "IBM Plex Mono", ui-monospace, monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+      tbody tr:hover td {
+        background: rgba(255, 255, 255, 0.02);
+      }
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+      td strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 0.96rem;
+        line-height: 1.3;
+        letter-spacing: -0.02em;
+      }
+      .feed {
+        display: grid;
+        gap: 0;
+      }
+      .feed-item {
+        padding: 12px 0;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .feed-item:first-child {
+        padding-top: 0;
+      }
+      .feed-item:last-child {
+        padding-bottom: 0;
+        border-bottom: 0;
+      }
+      .feed-top {
         display: flex;
         justify-content: space-between;
-        align-items: flex-end;
-        gap: 14px;
-        margin-top: 20px;
-        margin-bottom: 12px;
+        gap: 12px;
+        margin-bottom: 8px;
       }
-      .subsection-head h3 {
-        margin: 6px 0 0;
-        font-family: "Space Grotesk", "Plus Jakarta Sans", sans-serif;
-        font-size: 0.98rem;
-        letter-spacing: -0.03em;
-      }
-      .subsection-head p {
-        margin: 0;
-        color: var(--muted);
-        font-size: 0.88rem;
-      }
-      .stats {
-        display: grid;
-        gap: 14px;
-        grid-template-columns: repeat(6, minmax(0, 1fr));
-      }
-      .stat {
-        min-height: 136px;
-        padding: 18px;
-        border-radius: 20px;
-        border: 1px solid var(--line);
-        background: rgba(255,255,255,0.025);
-      }
-      .stat .label {
-        display: block;
-        margin-bottom: 24px;
-        color: var(--muted);
-        font: 600 0.7rem/1 "IBM Plex Mono", ui-monospace, monospace;
+      .feed-event {
+        color: var(--ink-soft);
+        font: 600 0.68rem/1 "IBM Plex Mono", ui-monospace, monospace;
         text-transform: uppercase;
         letter-spacing: 0.08em;
       }
-      .stat .value {
-        display: block;
-        font-family: "Space Grotesk", "Plus Jakarta Sans", sans-serif;
-        font-size: clamp(2rem, 3vw, 3rem);
-        line-height: 1;
-        letter-spacing: -0.06em;
+      .feed-subtle {
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.55;
+      }
+      .cell-stack {
+        display: grid;
+        gap: 4px;
+      }
+      .compact-stack {
+        display: grid;
+        gap: 2px;
+      }
+      .badge,
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        padding: 0 8px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--surface);
+        font: 600 0.62rem/1 "IBM Plex Mono", ui-monospace, monospace;
+        white-space: nowrap;
+      }
+      .badge { color: var(--ink-soft); }
+      .badge.success,
+      .chip.success { color: var(--success); }
+      .badge.warn,
+      .chip.warn { color: var(--warning); }
+      .badge.danger,
+      .chip.danger { color: var(--danger); }
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .reasoning-list {
+        display: grid;
+        gap: 0;
+      }
+      .reasoning-item {
+        padding: 14px 0;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .reasoning-item:first-child {
+        padding-top: 0;
+      }
+      .reasoning-item:last-child {
+        padding-bottom: 0;
+        border-bottom: 0;
+      }
+      .reasoning-item h3 {
+        margin: 0 0 8px;
+        font-size: 0.96rem;
+        letter-spacing: -0.02em;
+      }
+      .reasoning-item p {
+        margin: 0 0 10px;
+        color: var(--muted);
+        font-size: 0.86rem;
+        line-height: 1.55;
       }
       .actor-grid {
         display: grid;
-        gap: 12px;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
       }
       .actor {
-        padding: 16px;
-        border-radius: 18px;
-        background: rgba(255,255,255,0.025);
+        padding: 12px;
         border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
       }
       .actor h3 {
-        margin: 0 0 12px;
-        font: 600 0.84rem/1.2 "IBM Plex Mono", ui-monospace, monospace;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
+        margin: 0 0 10px;
         color: var(--ink-soft);
+        font: 600 0.67rem/1 "IBM Plex Mono", ui-monospace, monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
       }
       .meta {
         display: grid;
-        gap: 8px;
+        gap: 7px;
         margin: 0;
       }
       .meta div {
         display: flex;
         justify-content: space-between;
         align-items: baseline;
-        gap: 14px;
-        font-size: 0.92rem;
+        gap: 10px;
+        font-size: 0.84rem;
       }
       .meta dt {
         color: var(--muted);
@@ -603,105 +724,11 @@ export function renderDashboardPage() {
       .meta dd {
         margin: 0;
         text-align: right;
+        color: var(--ink-soft);
         font-family: "IBM Plex Mono", ui-monospace, monospace;
-        font-size: 0.8rem;
-        color: var(--ink-soft);
-      }
-      .table-shell {
-        overflow: auto;
-        border: 1px solid var(--line);
-        border-radius: 18px;
-        background: rgba(255,255,255,0.02);
-      }
-      .table-shell.tall {
-        max-height: 560px;
-      }
-      .table-shell.medium {
-        max-height: 420px;
-      }
-      .table-shell.compact {
-        max-height: 280px;
-      }
-      table {
-        width: 100%;
-        min-width: 720px;
-        border-collapse: collapse;
-        font-size: 0.93rem;
-      }
-      th, td {
-        text-align: left;
-        padding: 14px 16px;
-        border-bottom: 1px solid var(--line);
-        vertical-align: top;
-        word-break: break-word;
-      }
-      th {
-        position: sticky;
-        top: 0;
-        z-index: 1;
-        background: rgba(17,22,29,0.96);
-        backdrop-filter: blur(14px);
-        color: var(--muted);
-        font: 600 0.68rem/1.1 "IBM Plex Mono", ui-monospace, monospace;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-      }
-      tbody tr:hover td {
-        background: var(--surface-hover);
-      }
-      tbody tr:last-child td { border-bottom: 0; }
-      td strong {
-        display: block;
-        margin-bottom: 4px;
-        font-weight: 700;
-      }
-      .badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 10px;
-        border-radius: 999px;
-        border: 1px solid var(--line);
-        background: rgba(255,255,255,0.04);
-        font: 600 0.7rem/1 "IBM Plex Mono", ui-monospace, monospace;
-        color: var(--ink-soft);
-        white-space: nowrap;
-      }
-      .badge.success { color: var(--success); }
-      .badge.warn { color: var(--warning); }
-      .badge.danger { color: var(--danger); }
-      .feed {
-        display: grid;
-        gap: 12px;
-        max-height: 560px;
-        overflow: auto;
-        padding-right: 4px;
-      }
-      .feed-item {
-        padding: 16px;
-        border-radius: 18px;
-        background: rgba(255,255,255,0.025);
-        border: 1px solid var(--line);
-      }
-      .feed-top {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 10px;
-      }
-      .feed-event {
-        font: 600 0.82rem/1.2 "IBM Plex Mono", ui-monospace, monospace;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: var(--ink-soft);
-      }
-      .feed-subtle {
-        color: var(--muted);
-        font-size: 0.86rem;
-        line-height: 1.6;
+        font-size: 0.72rem;
       }
       .empty {
-        padding: 22px 16px !important;
         color: var(--muted);
         font-style: italic;
       }
@@ -709,13 +736,13 @@ export function renderDashboardPage() {
         position: fixed;
         right: 18px;
         bottom: 18px;
-        max-width: 360px;
-        padding: 13px 14px;
-        border-radius: 16px;
-        border: 1px solid var(--line);
-        background: rgba(14, 18, 24, 0.98);
-        box-shadow: var(--shadow-soft);
-        font: 600 0.8rem/1.5 "IBM Plex Mono", ui-monospace, monospace;
+        max-width: 320px;
+        padding: 11px 13px;
+        border: 1px solid var(--line-strong);
+        border-radius: 10px;
+        background: #0e1117;
+        color: var(--ink);
+        font: 600 0.72rem/1.5 "IBM Plex Mono", ui-monospace, monospace;
         opacity: 0;
         transform: translateY(10px);
         transition: opacity 180ms ease, transform 180ms ease;
@@ -725,83 +752,63 @@ export function renderDashboardPage() {
         opacity: 1;
         transform: translateY(0);
       }
-      .cell-stack {
-        display: grid;
-        gap: 6px;
+      ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
       }
-      .chip-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-      }
-      .chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 5px 8px;
+      ::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.12);
         border-radius: 999px;
-        border: 1px solid var(--line);
-        background: rgba(255,255,255,0.03);
-        color: var(--muted);
-        font: 600 0.66rem/1 "IBM Plex Mono", ui-monospace, monospace;
       }
-      .chip.success {
-        color: var(--success);
+      ::-webkit-scrollbar-track {
+        background: transparent;
       }
-      .chip.warn {
-        color: var(--warning);
-      }
-      .chip.danger {
-        color: var(--danger);
-      }
-      .reasoning-list {
-        display: grid;
-        gap: 12px;
-      }
-      .reasoning-item {
-        padding: 16px;
-        border-radius: 18px;
-        background: rgba(255,255,255,0.025);
-        border: 1px solid var(--line);
-      }
-      .reasoning-item h3 {
-        margin: 0 0 10px;
-        font-family: "Space Grotesk", "Plus Jakarta Sans", sans-serif;
-        font-size: 1rem;
-        letter-spacing: -0.03em;
-      }
-      .reasoning-item p {
-        margin: 0 0 12px;
-        color: var(--muted);
-        font-size: 0.92rem;
-        line-height: 1.6;
-      }
-      ::-webkit-scrollbar { width: 10px; height: 10px; }
-      ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 999px; }
-      ::-webkit-scrollbar-track { background: transparent; }
       @media (max-width: 1180px) {
-        .masthead { grid-template-columns: 1fr; }
-        .hero-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-        .actor-grid { grid-template-columns: 1fr; }
+        .app {
+          grid-template-columns: 1fr;
+        }
+        .sidebar {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+        .sidebar-inner {
+          position: static;
+          min-height: 0;
+        }
+        .tab-list {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .actor-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
       }
       @media (max-width: 780px) {
-        .shell { padding: 16px 14px 40px; }
-        .masthead { padding: 20px; border-radius: 24px; }
-        h1 { max-width: none; font-size: clamp(2.2rem, 12vw, 3.2rem); }
-        .hero-facts,
+        .sidebar,
+        .main {
+          padding: 14px;
+        }
         .toolbar,
-        .stats { grid-template-columns: 1fr; }
         .card-head,
-        .subsection-head,
-        .feed-top { flex-direction: column; align-items: flex-start; }
-        .card, .table-shell, .actor, .stat, .feed-item, .reasoning-item, .side-card { border-radius: 18px; }
-        table { min-width: 640px; }
+        .feed-top {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+        .summary-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .tab-list {
+          grid-template-columns: 1fr;
+        }
+        .actor-grid {
+          grid-template-columns: 1fr;
+        }
+        table {
+          min-width: 560px;
+        }
       }
       @media (min-width: 1101px) {
         .span-4 { grid-column: span 4; }
         .span-5 { grid-column: span 5; }
-        .span-6 { grid-column: span 6; }
         .span-7 { grid-column: span 7; }
         .span-8 { grid-column: span 8; }
         .span-12 { grid-column: span 12; }
@@ -809,215 +816,258 @@ export function renderDashboardPage() {
     </style>
   </head>
   <body>
-    <main class="shell">
-      <section class="masthead">
-        <div class="masthead-copy">
-          <div class="title-lockup">
-            <p class="eyebrow">Orchid SDR / Operator Console</p>
-            <h1>Clean visibility into discovery, qualification, and handoff.</h1>
-            <p class="lede">Track actors, queued work, ICP decisions, and thread movement without digging through logs or raw tables. The goal is simple: make the operational state obvious at a glance.</p>
-          </div>
-          <div class="hero-facts">
-            <article class="hero-fact">
-              <span class="label">Cadence</span>
-              <strong>10 second refresh</strong>
-              <span>Live state stays current while actor work continues in the background.</span>
-            </article>
-            <article class="hero-fact">
-              <span class="label">Coverage</span>
-              <strong>Discovery to handoff</strong>
-              <span>Signals, qualification, research, threads, and provider runs in one surface.</span>
-            </article>
-            <article class="hero-fact">
-              <span class="label">Evidence</span>
-              <strong>Stored ICP checks</strong>
-              <span>Qualification decisions stay inspectable instead of disappearing into logs.</span>
-            </article>
-          </div>
-        </div>
-        <div class="masthead-side">
-          <div class="side-card">
-            <h2>System Status</h2>
-            <div class="status-stack">
-              <div class="status-pill">
+    <main class="app">
+      <aside class="sidebar">
+        <div class="sidebar-inner">
+          <section class="sidebar-section">
+            <div class="brand">
+              <div class="brand-mark">
+                <span class="brand-dot"></span>
+                <div class="brand-copy">
+                  <p class="brand-kicker">Orchid SDR</p>
+                  <h1>Operator Console</h1>
+                </div>
+              </div>
+              <p class="brand-note">Minimal visibility into discovery, qualification, and handoff state.</p>
+            </div>
+          </section>
+
+          <section class="sidebar-section">
+            <p class="section-label">System</p>
+            <div class="status-list">
+              <div class="status-row">
                 <span id="service-dot" class="status-dot"></span>
                 <div class="status-copy">
-                  <span>Service</span>
-                  <strong id="service-status">Loading…</strong>
+                  <span class="status-meta">Service</span>
+                  <strong id="service-status" class="status-value">Loading...</strong>
                 </div>
               </div>
-              <div class="status-pill">
+              <div class="status-row">
                 <span id="sends-dot" class="status-dot warn"></span>
                 <div class="status-copy">
-                  <span>Send Mode</span>
-                  <strong id="sends-status">Checking send mode…</strong>
+                  <span class="status-meta">Send Mode</span>
+                  <strong id="sends-status" class="status-value">Checking...</strong>
                 </div>
               </div>
-              <div class="status-pill">
+              <div class="status-row">
                 <span id="kill-dot" class="status-dot"></span>
                 <div class="status-copy">
-                  <span>Kill Switch</span>
-                  <strong id="kill-status">Checking kill switch…</strong>
+                  <span class="status-meta">Kill Switch</span>
+                  <strong id="kill-status" class="status-value">Checking...</strong>
                 </div>
               </div>
             </div>
-          </div>
-          <div class="side-card">
-            <h2>Actions</h2>
-            <div class="toolbar">
-              <button id="trigger-discovery" class="primary" type="button">Run Discovery</button>
-              <button id="run-probe" class="secondary" type="button">Run Probe</button>
+          </section>
+
+          <section class="sidebar-section">
+            <p class="section-label">Views</p>
+            <nav class="tab-list" role="tablist" aria-label="Dashboard sections">
+              <button class="tab-button active" type="button" data-tab="overview">
+                <span class="tab-copy">
+                  <span class="tab-label">Overview</span>
+                  <span class="tab-hint">threads and activity</span>
+                </span>
+              </button>
+              <button class="tab-button" type="button" data-tab="pipeline">
+                <span class="tab-copy">
+                  <span class="tab-label">Pipeline</span>
+                  <span class="tab-hint">qualified leads and ICP</span>
+                </span>
+              </button>
+              <button class="tab-button" type="button" data-tab="signals">
+                <span class="tab-copy">
+                  <span class="tab-label">Signals</span>
+                  <span class="tab-hint">provider runs and sources</span>
+                </span>
+              </button>
+              <button class="tab-button" type="button" data-tab="runtime">
+                <span class="tab-copy">
+                  <span class="tab-label">Runtime</span>
+                  <span class="tab-hint">actors and async jobs</span>
+                </span>
+              </button>
+            </nav>
+          </section>
+
+          <section class="sidebar-section">
+            <p class="section-label">Actions</p>
+            <div class="sidebar-actions">
+              <button id="trigger-discovery" class="btn btn-primary" type="button">Run Discovery</button>
+              <button id="run-probe" class="btn" type="button">Run Probe</button>
               <form method="post" action="/dashboard/logout">
-                <button class="ghost" type="submit">Log Out</button>
+                <button class="btn btn-ghost" type="submit">Log Out</button>
               </form>
             </div>
-          </div>
-          <div class="side-card control-note">
-            <strong>Runtime</strong>
-            <p>The dashboard refreshes every 10 seconds. Discovery ticks and sandbox turns run as queued actor work, and qualification now stores explicit ICP-fit checks so you can see why a lead passed or failed.</p>
-          </div>
+          </section>
         </div>
-      </section>
+      </aside>
 
-      <section class="grid">
-        <article class="card span-8">
-          <div class="card-head">
-            <h2>System Summary</h2>
-            <p id="generated-at">Waiting for first refresh…</p>
+      <section class="main">
+        <header class="toolbar">
+          <div class="toolbar-copy">
+            <p class="toolbar-kicker">Operator Surface</p>
+            <div class="toolbar-line">
+              <h2 id="panel-title">Overview</h2>
+              <p id="panel-description" class="toolbar-subtle">Live threads, feed, and current throughput.</p>
+            </div>
           </div>
-          <div class="card-body">
-            <div id="stats" class="stats"></div>
+          <div class="toolbar-meta">
+            <span class="meta-pill">Auto Refresh 10s</span>
+            <span id="generated-at">Waiting for first refresh...</span>
           </div>
-        </article>
+        </header>
 
-        <article class="card span-4">
-          <div class="card-head">
-            <h2>Runtime</h2>
-            <p>Actor state and queued sandbox work</p>
-          </div>
-          <div class="card-body">
-            <div id="actors" class="actor-grid"></div>
-            <div class="subsection-head">
-              <div>
-                <h3>Sandbox Jobs</h3>
+        <section class="metric-strip">
+          <div id="stats" class="summary-grid"></div>
+        </section>
+
+        <section class="panel active" data-panel="overview">
+          <div class="panel-grid">
+            <article class="card span-8">
+              <div class="card-head">
+                <h2>Pipeline</h2>
+                <p>Prospects currently moving through the workflow</p>
               </div>
-              <p>Recent async turns</p>
-            </div>
-            <div class="table-shell compact">
-              <table>
-                <thead>
-                  <tr><th>Job</th><th>Stage</th><th>Status</th><th>Duration</th><th>Result</th></tr>
-                </thead>
-                <tbody id="sandbox-jobs"></tbody>
-              </table>
-            </div>
-          </div>
-        </article>
+              <div class="card-body tight">
+                <div class="table-shell">
+                  <table>
+                    <thead>
+                      <tr><th>Prospect</th><th>Qualification</th><th>Stage</th><th>LinkedIn</th><th>Updated</th></tr>
+                    </thead>
+                    <tbody id="active-threads"></tbody>
+                  </table>
+                </div>
+              </div>
+            </article>
 
-        <article class="card span-12">
-          <div class="card-head">
-            <h2>Active Threads</h2>
-            <p>Workflow threads still in flight, with LinkedIn context</p>
+            <article class="card span-4">
+              <div class="card-head">
+                <h2>Activity</h2>
+                <p>Recent workflow events</p>
+              </div>
+              <div class="card-body">
+                <div id="audit-feed" class="feed"></div>
+              </div>
+            </article>
           </div>
-          <div class="card-body">
-            <div class="table-shell medium">
-              <table>
-                <thead>
-                  <tr><th>Prospect</th><th>Qualification</th><th>Stage</th><th>LinkedIn</th><th>Updated</th></tr>
-                </thead>
-                <tbody id="active-threads"></tbody>
-              </table>
-            </div>
-          </div>
-        </article>
+        </section>
 
-        <article class="card span-8">
-          <div class="card-head">
-            <h2>Qualified Leads</h2>
-            <p>Best current prospects with ICP reasoning, research, and thread state</p>
-          </div>
-          <div class="card-body">
-            <div class="table-shell tall">
-              <table>
-                <thead>
-                  <tr><th>Prospect</th><th>Email</th><th>Qualification</th><th>Research</th><th>Thread</th><th>Updated</th></tr>
-                </thead>
-                <tbody id="qualified-leads"></tbody>
-              </table>
-            </div>
-          </div>
-        </article>
+        <section class="panel" data-panel="pipeline">
+          <div class="panel-grid">
+            <article class="card span-8">
+              <div class="card-head">
+                <h2>Qualified Leads</h2>
+                <p>Current leads with stored assessment context</p>
+              </div>
+              <div class="card-body tight">
+                <div class="table-shell">
+                  <table>
+                    <thead>
+                      <tr><th>Prospect</th><th>Email</th><th>Qualification</th><th>Research</th><th>Thread</th><th>Updated</th></tr>
+                    </thead>
+                    <tbody id="qualified-leads"></tbody>
+                  </table>
+                </div>
+              </div>
+            </article>
 
-        <article class="card span-4">
-          <div class="card-head">
-            <h2>Qualification Logic</h2>
-            <p>ICP-backed checks and recent decisions</p>
-          </div>
-          <div class="card-body">
-            <div id="qualification-overview" class="reasoning-list"></div>
-          </div>
-        </article>
+            <article class="card span-4">
+              <div class="card-head">
+                <h2>Qualification Notes</h2>
+                <p>Recent ICP decisions</p>
+              </div>
+              <div class="card-body">
+                <div id="qualification-overview" class="reasoning-list"></div>
+              </div>
+            </article>
 
-        <article class="card span-5">
-          <div class="card-head">
-            <h2>Workflow Feed</h2>
-            <p>What the system just did and why</p>
+            <article class="card span-12">
+              <div class="card-head">
+                <h2>Recent Records</h2>
+                <p>Newest qualification entries</p>
+              </div>
+              <div class="card-body tight">
+                <div class="table-shell">
+                  <table>
+                    <thead>
+                      <tr><th>Name</th><th>Qualification</th><th>Status</th><th>Updated</th></tr>
+                    </thead>
+                    <tbody id="recent-prospects"></tbody>
+                  </table>
+                </div>
+              </div>
+            </article>
           </div>
-          <div class="card-body">
-            <div id="audit-feed" class="feed"></div>
-          </div>
-        </article>
+        </section>
 
-        <article class="card span-7">
-          <div class="card-head">
-            <h2>Provider Calls</h2>
-            <p>Discovery runs, terms, durations, and failures</p>
-          </div>
-          <div class="card-body">
-            <div class="table-shell tall">
-              <table>
-                <thead>
-                  <tr><th>Provider</th><th>Run</th><th>Status</th><th>Duration</th><th>Result</th></tr>
-                </thead>
-                <tbody id="provider-runs"></tbody>
-              </table>
-            </div>
-          </div>
-        </article>
+        <section class="panel" data-panel="signals">
+          <div class="panel-grid">
+            <article class="card span-7">
+              <div class="card-head">
+                <h2>Provider Runs</h2>
+                <p>Discovery runs, durations, and failures</p>
+              </div>
+              <div class="card-body tight">
+                <div class="table-shell">
+                  <table>
+                    <thead>
+                      <tr><th>Provider</th><th>Run</th><th>Status</th><th>Duration</th><th>Result</th></tr>
+                    </thead>
+                    <tbody id="provider-runs"></tbody>
+                  </table>
+                </div>
+              </div>
+            </article>
 
-        <article class="card span-5">
-          <div class="card-head">
-            <h2>Recent Prospects</h2>
-            <p>Newest records with their stored qualification reasoning</p>
+            <article class="card span-5">
+              <div class="card-head">
+                <h2>Recent Signals</h2>
+                <p>New source captures entering the pipeline</p>
+              </div>
+              <div class="card-body tight">
+                <div class="table-shell">
+                  <table>
+                    <thead>
+                      <tr><th>Source</th><th>Author</th><th>Topic</th><th>Captured</th></tr>
+                    </thead>
+                    <tbody id="recent-signals"></tbody>
+                  </table>
+                </div>
+              </div>
+            </article>
           </div>
-          <div class="card-body">
-            <div class="table-shell tall">
-              <table>
-                <thead>
-                  <tr><th>Name</th><th>Qualification</th><th>Status</th><th>Updated</th></tr>
-                </thead>
-                <tbody id="recent-prospects"></tbody>
-              </table>
-            </div>
-          </div>
-        </article>
+        </section>
 
-        <article class="card span-12">
-          <div class="card-head">
-            <h2>Recent Signals</h2>
-            <p>New source captures entering the pipeline</p>
+        <section class="panel" data-panel="runtime">
+          <div class="panel-grid">
+            <article class="card span-12">
+              <div class="card-head">
+                <h2>Actor State</h2>
+                <p>Flags, runtime health, and discovery coordinators</p>
+              </div>
+              <div class="card-body">
+                <div id="actors" class="actor-grid"></div>
+              </div>
+            </article>
+
+            <article class="card span-12">
+              <div class="card-head">
+                <h2>Sandbox Jobs</h2>
+                <p>Recent async turns</p>
+              </div>
+              <div class="card-body tight">
+                <div class="table-shell">
+                  <table>
+                    <thead>
+                      <tr><th>Job</th><th>Stage</th><th>Status</th><th>Duration</th><th>Result</th></tr>
+                    </thead>
+                    <tbody id="sandbox-jobs"></tbody>
+                  </table>
+                </div>
+              </div>
+            </article>
           </div>
-          <div class="card-body">
-            <div class="table-shell medium">
-              <table>
-                <thead>
-                  <tr><th>Source</th><th>Author</th><th>Topic</th><th>Captured</th></tr>
-                </thead>
-                <tbody id="recent-signals"></tbody>
-              </table>
-            </div>
-          </div>
-        </article>
+        </section>
       </section>
     </main>
 
@@ -1041,16 +1091,58 @@ export function renderDashboardPage() {
       });
 
       const byId = (id) => document.getElementById(id);
+      const tabs = Array.from(document.querySelectorAll("[data-tab]"));
+      const panels = Array.from(document.querySelectorAll("[data-panel]"));
+
+      function readStoredTab() {
+        try {
+          return localStorage.getItem("orchid-dashboard-tab");
+        } catch {
+          return null;
+        }
+      }
+
+      function writeStoredTab(value) {
+        try {
+          localStorage.setItem("orchid-dashboard-tab", value);
+        } catch {}
+      }
+
+      function setActiveTab(value) {
+        const next = tabs.some((button) => button.dataset.tab === value) ? value : "overview";
+        writeStoredTab(next);
+        tabs.forEach((button) => {
+          button.classList.toggle("active", button.dataset.tab === next);
+        });
+        panels.forEach((panel) => {
+          const isActive = panel.dataset.panel === next;
+          panel.classList.toggle("active", isActive);
+          panel.hidden = !isActive;
+        });
+      }
+
+      setActiveTab(readStoredTab() || "overview");
+      tabs.forEach((button) => button.addEventListener("click", () => setActiveTab(button.dataset.tab)));
 
       function timeLabel(value) {
         if (!value) return "—";
         try { return formatter.format(new Date(value)); } catch { return String(value); }
       }
 
+      function truncateText(value, limit = 180) {
+        const text = String(value ?? "");
+        if (text.length <= limit) return text;
+        return text.slice(0, Math.max(0, limit - 3)).trimEnd() + "...";
+      }
+
       function badge(status) {
         const value = String(status || "unknown");
-        const kind = /failed|error|paused|kill/i.test(value) ? "danger" : /queued|running|active|warning/i.test(value) ? "warn" : "success";
-        return \`<span class="badge \${kind}">\${value}</span>\`;
+        const kind = /failed|error|paused|kill/i.test(value)
+          ? "danger"
+          : /queued|running|active|warning/i.test(value)
+            ? "warn"
+            : "success";
+        return \`<span class="badge \${kind}">\${escapeHtml(value)}</span>\`;
       }
 
       function escapeHtml(value) {
@@ -1081,7 +1173,7 @@ export function renderDashboardPage() {
         ];
         byId("stats").innerHTML = cards.map(([label, value]) => \`
           <article class="stat">
-            <span class="label">\${label}</span>
+            <span class="label">\${escapeHtml(label)}</span>
             <span class="value">\${escapeHtml(value)}</span>
           </article>
         \`).join("");
@@ -1153,6 +1245,7 @@ export function renderDashboardPage() {
             </article>
           \`);
         }
+
         byId("actors").innerHTML = actorCards.join("") || '<p class="empty">No actor snapshots available.</p>';
       }
 
@@ -1162,6 +1255,7 @@ export function renderDashboardPage() {
           target.innerHTML = '<p class="empty">No workflow events yet.</p>';
           return;
         }
+
         target.innerHTML = events.map((event) => \`
           <article class="feed-item">
             <div class="feed-top">
@@ -1169,7 +1263,7 @@ export function renderDashboardPage() {
               <span class="feed-subtle">\${escapeHtml(timeLabel(event.createdAt))}</span>
             </div>
             <div class="feed-subtle">\${escapeHtml(event.entityType)} / <code>\${escapeHtml(event.entityId)}</code></div>
-            <div class="feed-subtle">\${escapeHtml(JSON.stringify(event.payload || {}))}</div>
+            <div class="feed-subtle">\${escapeHtml(truncateText(JSON.stringify(event.payload || {}), 220))}</div>
           </article>
         \`).join("");
       }
@@ -1276,6 +1370,7 @@ export function renderDashboardPage() {
           window.location.href = "/dashboard";
           return;
         }
+
         const state = await response.json();
         renderStats(state.summary);
         renderActors(state.actors, state.discovery);
@@ -1290,7 +1385,7 @@ export function renderDashboardPage() {
             <td>\${escapeHtml(job.stage)}</td>
             <td>\${badge(job.status)}</td>
             <td>\${escapeHtml(currencyDuration(job.durationMs))}</td>
-            <td>\${escapeHtml(job.error || job.outputText || "—").slice(0, 160)}</td>
+            <td>\${escapeHtml(truncateText(job.error || job.outputText || "—", 160))}</td>
           </tr>
         \`, 5);
 
@@ -1334,7 +1429,7 @@ export function renderDashboardPage() {
             <td>\${escapeHtml(currencyDuration(run.durationMs))}</td>
             <td>
               <div class="cell-stack">
-                <span>\${escapeHtml(run.error || run.externalId || "—")}</span>
+                <span>\${escapeHtml(truncateText(run.error || run.externalId || "—", 120))}</span>
                 \${run.externalId ? \`<span class="feed-subtle"><code>\${escapeHtml(run.externalId)}</code></span>\` : ""}
               </div>
             </td>
@@ -1344,13 +1439,17 @@ export function renderDashboardPage() {
         renderRows("qualified-leads", state.qualifiedLeads, (lead) => \`
           <tr>
             <td>
-              <strong>\${escapeHtml(lead.fullName)}</strong><br />
-              <span class="feed-subtle">\${escapeHtml(lead.company || "Unknown company")}</span><br />
-              <span class="feed-subtle">\${escapeHtml(lead.qualificationReason || "No qualification note")}</span>
+              <div class="cell-stack">
+                <strong>\${escapeHtml(lead.fullName)}</strong>
+                <span class="feed-subtle">\${escapeHtml(lead.company || "Unknown company")}</span>
+                <span class="feed-subtle">\${escapeHtml(lead.qualificationReason || "No qualification note")}</span>
+              </div>
             </td>
             <td>
-              \${escapeHtml(lead.email || "—")}<br />
-              <span class="feed-subtle">\${escapeHtml(lead.emailConfidence ?? "—")}</span>
+              <div class="cell-stack">
+                <span>\${escapeHtml(lead.email || "—")}</span>
+                <span class="feed-subtle">\${escapeHtml(lead.emailConfidence ?? "—")}</span>
+              </div>
             </td>
             <td>
               <div class="cell-stack">
@@ -1368,8 +1467,10 @@ export function renderDashboardPage() {
         renderRows("recent-prospects", state.recentProspects, (prospect) => \`
           <tr>
             <td>
-              <strong>\${escapeHtml(prospect.fullName)}</strong><br />
-              <span class="feed-subtle">\${escapeHtml(prospect.company || "Unknown company")}</span>
+              <div class="cell-stack">
+                <strong>\${escapeHtml(prospect.fullName)}</strong>
+                <span class="feed-subtle">\${escapeHtml(prospect.company || "Unknown company")}</span>
+              </div>
             </td>
             <td>
               <div class="cell-stack">
@@ -1382,8 +1483,10 @@ export function renderDashboardPage() {
               </div>
             </td>
             <td>
-              \${badge(prospect.status)}
-              <div class="feed-subtle">\${escapeHtml(prospect.pausedReason || "—")}</div>
+              <div class="cell-stack">
+                <span>\${badge(prospect.status)}</span>
+                <span class="feed-subtle">\${escapeHtml(prospect.pausedReason || "—")}</span>
+              </div>
             </td>
             <td>\${escapeHtml(timeLabel(prospect.updatedAt))}</td>
           </tr>
@@ -1393,8 +1496,10 @@ export function renderDashboardPage() {
           <tr>
             <td>\${escapeHtml(signal.source)}</td>
             <td>
-              <strong>\${escapeHtml(signal.authorName)}</strong><br />
-              <span class="feed-subtle">\${escapeHtml(signal.authorCompany || "—")}</span>
+              <div class="cell-stack">
+                <strong>\${escapeHtml(signal.authorName)}</strong>
+                <span class="feed-subtle">\${escapeHtml(signal.authorCompany || "—")}</span>
+              </div>
             </td>
             <td>\${escapeHtml(signal.topic)}</td>
             <td>\${escapeHtml(timeLabel(signal.capturedAt))}</td>
