@@ -1093,6 +1093,24 @@ export function renderDashboardPage() {
       const byId = (id) => document.getElementById(id);
       const tabs = Array.from(document.querySelectorAll("[data-tab]"));
       const panels = Array.from(document.querySelectorAll("[data-panel]"));
+      const tabMeta = {
+        overview: {
+          title: "Overview",
+          description: "Live threads, feed, and current throughput.",
+        },
+        pipeline: {
+          title: "Pipeline",
+          description: "Qualified leads, stored ICP reasoning, and recent decisions.",
+        },
+        signals: {
+          title: "Signals",
+          description: "Provider activity and the latest source captures.",
+        },
+        runtime: {
+          title: "Runtime",
+          description: "Actor state, flags, and recent async execution.",
+        },
+      };
 
       function readStoredTab() {
         try {
@@ -1119,6 +1137,9 @@ export function renderDashboardPage() {
           panel.classList.toggle("active", isActive);
           panel.hidden = !isActive;
         });
+        const meta = tabMeta[next] || tabMeta.overview;
+        byId("panel-title").textContent = meta.title;
+        byId("panel-description").textContent = meta.description;
       }
 
       setActiveTab(readStoredTab() || "overview");
@@ -1394,8 +1415,7 @@ export function renderDashboardPage() {
             <td>
               <div class="cell-stack">
                 <strong>\${escapeHtml(thread.fullName)}</strong>
-                <span class="feed-subtle">\${escapeHtml(thread.company || "Unknown company")}</span>
-                <span class="feed-subtle">\${escapeHtml(thread.title || "No title captured")}</span>
+                <span class="feed-subtle">\${escapeHtml([thread.company || "Unknown company", thread.title].filter(Boolean).join(" · "))}</span>
               </div>
             </td>
             <td>
@@ -1405,9 +1425,9 @@ export function renderDashboardPage() {
               </div>
             </td>
             <td>
-              <div class="cell-stack">
+              <div class="compact-stack">
                 <span>\${badge(thread.stage)}</span>
-                <span class="feed-subtle">next follow-up: \${escapeHtml(timeLabel(thread.nextFollowUpAt))}</span>
+                <span class="feed-subtle">next: \${escapeHtml(timeLabel(thread.nextFollowUpAt))}</span>
               </div>
             </td>
             <td>\${renderLinkedinCell(thread.linkedinUrl)}</td>
@@ -1442,7 +1462,6 @@ export function renderDashboardPage() {
               <div class="cell-stack">
                 <strong>\${escapeHtml(lead.fullName)}</strong>
                 <span class="feed-subtle">\${escapeHtml(lead.company || "Unknown company")}</span>
-                <span class="feed-subtle">\${escapeHtml(lead.qualificationReason || "No qualification note")}</span>
               </div>
             </td>
             <td>
@@ -1483,7 +1502,7 @@ export function renderDashboardPage() {
               </div>
             </td>
             <td>
-              <div class="cell-stack">
+              <div class="compact-stack">
                 <span>\${badge(prospect.status)}</span>
                 <span class="feed-subtle">\${escapeHtml(prospect.pausedReason || "—")}</span>
               </div>
