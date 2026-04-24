@@ -219,6 +219,8 @@ Auth model:
 - preferred token: `ORCHID_SDR_MCP_TOKEN`
 - fallback token: `ORCHID_SDR_SANDBOX_TOKEN`
 
+See also: `docs/email-providers.md` for the recommended email provider shape for Orchid SDR.
+
 ## Attio
 
 There are two clean ways to use Attio with this stack.
@@ -234,15 +236,25 @@ This repo exposes `crm.syncProspect` through the first-party MCP. When `ATTIO_AP
 - optionally assert the company into `ATTIO_DEFAULT_LIST_ID`
 - optionally set the Attio list status using `ATTIO_DEFAULT_LIST_STAGE`
 - optionally set the list entry `main_point_of_contact`
+- automatically run that sync after the first outbound using `ATTIO_AUTO_OUTBOUND_STAGE`
+- automatically promote the Attio stage after reply classification using `ATTIO_AUTO_POSITIVE_REPLY_STAGE` and `ATTIO_AUTO_NEGATIVE_REPLY_STAGE`
 
 Current Attio flow for a qualified prospect:
 
-1. upsert company
-2. upsert person linked to the company
-3. create a qualification note on the company
-4. add the company to the configured AISDR list
-5. set the list stage, such as `Qualification`
-6. set the list entry main point of contact to the synced person
+1. first outbound can auto-sync the prospect into Attio at `ATTIO_AUTO_OUTBOUND_STAGE`
+2. upsert company
+3. upsert person linked to the company
+4. create a qualification note on the company
+5. add the company to the configured AISDR list
+6. set the list stage, such as `Prospecting` or `Qualification`
+7. set the list entry main point of contact to the synced person
+8. later inbound replies can auto-promote the stage based on reply class
+
+Current reply-stage promotion defaults:
+
+- `positive`, `soft_interest`, `objection`, `referral`, `needs_human` -> `ATTIO_AUTO_POSITIVE_REPLY_STAGE`
+- `not_now`, `wrong_person`, `unsubscribe`, `bounce`, `spam_risk` -> `ATTIO_AUTO_NEGATIVE_REPLY_STAGE`
+- `ooo` -> no automatic stage change
 
 Current idempotency and dedupe order:
 
@@ -253,6 +265,8 @@ Current idempotency and dedupe order:
 5. exact name plus company as a weak fallback
 
 The first successful sync stores:
+
+Manual operator sync still exists through `crm.syncProspect`. The automatic behavior is just a deterministic wrapper around the same path.
 
 - `prospects.attio_company_record_id`
 - `prospects.attio_person_record_id`

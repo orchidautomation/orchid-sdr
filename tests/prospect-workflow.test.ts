@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { previewDraftForProspect } from "../src/orchestration/prospect-workflow.js";
+import { previewDraftForProspect, processInboundReply } from "../src/orchestration/prospect-workflow.js";
 
 function createSnapshot() {
   return {
@@ -189,6 +189,110 @@ describe("previewDraftForProspect", () => {
       bodyText: "Hi Ada,\n\nWorth a brief look?",
       generatedBy: "sandbox",
       fallbackReason: undefined,
+    });
+  });
+});
+
+
+describe("processInboundReply", () => {
+  it("auto-promotes the Attio stage after a positive reply and then pauses safely in no-sends mode", async () => {
+    const snapshot = createSnapshot();
+    const repository = {
+      getProspectIdByProviderThreadId: vi.fn(async () => ({
+        threadId: "thr_1",
+        prospectId: "pros_1",
+      })),
+      addMessage: vi.fn(async () => undefined),
+      updateThreadState: vi.fn(async () => undefined),
+      updateProspectState: vi.fn(async () => undefined),
+      appendAuditEvent: vi.fn(async () => undefined),
+      pauseThread: vi.fn(async () => undefined),
+      getProspectSnapshot: vi.fn(async () => ({
+        ...snapshot,
+        prospect: {
+          ...snapshot.prospect,
+          stage: "respond_or_handoff",
+          status: "active",
+          lastReplyClass: "positive",
+        },
+        thread: {
+          ...snapshot.thread,
+          stage: "respond_or_handoff",
+          status: "active",
+          lastReplyClass: "positive",
+          pausedReason: null,
+        },
+        email: {
+          address: "ada@analyticalengines.com",
+          confidence: 0.91,
+          source: "prospeo",
+        },
+      })),
+      getControlFlags: vi.fn(async () => ({
+        noSendsMode: true,
+        globalKillSwitch: false,
+      })),
+      getSignal: vi.fn(async () => null),
+    };
+    const mcpTools = {
+      handleTool: vi.fn(async (name: string) => {
+        if (name === "crm.syncProspect") {
+          return { ok: true };
+        }
+        throw new Error(`unexpected MCP tool ${name}`);
+      }),
+    };
+
+    const result = await processInboundReply(
+      {
+        context: {
+          repository,
+          ai: {
+            classifyReply: vi.fn(async () => ({
+              classification: "positive",
+              rationale: "prospect replied with interest",
+              shouldHandoff: false,
+            })),
+          },
+          attio: {
+            isConfigured: vi.fn(() => true),
+          },
+          config: {
+            ATTIO_AUTO_POSITIVE_REPLY_STAGE: "Qualification",
+            ATTIO_AUTO_NEGATIVE_REPLY_STAGE: "Paused",
+          },
+          mcpTools,
+        },
+        runSandboxTurn: vi.fn(),
+      } as any,
+      {
+        providerInboxId: "inbox_campaign_1",
+        providerThreadId: "am_thr_1",
+        providerMessageId: "am_msg_in_1",
+        subject: "Re: hello",
+        bodyText: "Yes, this is relevant.",
+        rawPayload: {
+          event_type: "message.received",
+        },
+      },
+    );
+
+    expect(mcpTools.handleTool).toHaveBeenCalledWith("crm.syncProspect", {
+      prospectId: "pros_1",
+      createNote: false,
+      addToList: true,
+      listStage: "Qualification",
+    });
+    expect(repository.pauseThread).toHaveBeenCalledWith("thr_1", "no sends mode");
+    expect(repository.appendAuditEvent).toHaveBeenCalledWith("thread", "thr_1", "ReplyClassified", {
+      classification: "positive",
+      rationale: "prospect replied with interest",
+    });
+    expect(result).toMatchObject({
+      action: "paused",
+      prospectId: "pros_1",
+      threadId: "thr_1",
+      reason: "no sends mode",
     });
   });
 });

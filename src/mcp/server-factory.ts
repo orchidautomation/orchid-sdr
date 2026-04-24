@@ -255,6 +255,20 @@ export function createOrchidMcpServer(context: AppContext) {
   );
 
   server.registerTool(
+    "thread.resume",
+    {
+      description: "Resume a paused thread and clear its paused reason so it can send or continue processing.",
+      inputSchema: {
+        threadId: z.string(),
+        stage: z.string().optional(),
+        reason: z.string().optional(),
+      },
+    },
+    async ({ threadId, stage, reason }) =>
+      toToolResult(await context.mcpTools.handleTool("thread.resume", { threadId, stage, reason })),
+  );
+
+  server.registerTool(
     "control.runDiscovery",
     {
       description: "Safely enqueue a discovery tick for one source.",
@@ -264,6 +278,17 @@ export function createOrchidMcpServer(context: AppContext) {
       },
     },
     async ({ source, reason }) => toToolResult(await context.mcpTools.handleTool("control.runDiscovery", { source, reason })),
+  );
+
+  server.registerTool(
+    "control.setNoSendsMode",
+    {
+      description: "Enable or disable no-sends mode through the campaignOps actor.",
+      inputSchema: {
+        enabled: z.boolean(),
+      },
+    },
+    async ({ enabled }) => toToolResult(await context.mcpTools.handleTool("control.setNoSendsMode", { enabled })),
   );
 
   server.registerTool(

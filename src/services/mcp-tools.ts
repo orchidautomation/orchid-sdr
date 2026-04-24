@@ -53,8 +53,12 @@ export class OrchidMcpToolService {
         return this.handleRuntimeFlags();
       case "thread.inspect":
         return this.handleThreadInspect(args);
+      case "thread.resume":
+        return this.handleThreadResume(args);
       case "control.runDiscovery":
         return this.handleRunDiscovery(args);
+      case "control.setNoSendsMode":
+        return this.handleSetNoSendsMode(args);
       case "mail.send":
         return this.handleMailSend(args);
       case "mail.preview":
@@ -477,6 +481,51 @@ export class OrchidMcpToolService {
     };
   }
 
+  private async handleThreadResume(args: Record<string, unknown>) {
+    const threadId = String(args.threadId ?? "");
+    if (!threadId) {
+      throw new Error("threadId is required");
+    }
+
+    const thread = await this.context.repository.getThread(threadId);
+    if (!thread) {
+      throw new Error(`thread ${threadId} not found`);
+    }
+
+    const snapshot = await this.context.repository.getProspectSnapshot(String(thread.prospect_id));
+    const stage = typeof args.stage === "string" && args.stage.trim().length > 0
+      ? args.stage.trim() as ProspectSnapshot["thread"]["stage"]
+      : snapshot.thread.stage;
+    const reason = typeof args.reason === "string" && args.reason.trim().length > 0
+      ? args.reason.trim()
+      : "manual resume";
+
+    await this.context.repository.updateThreadState({
+      threadId,
+      stage,
+      status: "active",
+      pausedReason: null,
+    });
+    await this.context.repository.updateProspectState({
+      prospectId: snapshot.prospect.prospectId,
+      stage,
+      status: "active",
+      pausedReason: null,
+    });
+    await this.context.repository.appendAuditEvent("thread", threadId, "ThreadResumed", {
+      reason,
+      stage,
+    });
+
+    return {
+      ok: true,
+      threadId,
+      prospectId: snapshot.prospect.prospectId,
+      stage,
+      reason,
+    };
+  }
+
   private async handleRunDiscovery(args: Record<string, unknown>) {
     const campaign = await this.context.repository.ensureDefaultCampaign();
     const client = getActorClient();
@@ -714,6 +763,33 @@ export class OrchidMcpToolService {
     }
   }
 
+  private async maybeAutoSyncProspectToCrm(input: {
+    prospectId: string;
+    listStage: string | null;
+    createNote: boolean;
+    addToList: boolean;
+    sourceEvent: string;
+  }) {
+    if (!this.context.attio.isConfigured()) {
+      return null;
+    }
+
+    try {
+      return await this.handleCrmSync({
+        prospectId: input.prospectId,
+        createNote: input.createNote,
+        addToList: input.addToList,
+        listStage: input.listStage,
+      });
+    } catch (error) {
+      console.error(
+        `[attio] automatic sync failed after ${input.sourceEvent} for prospect ${input.prospectId}`,
+        error,
+      );
+      return null;
+    }
+  }
+
   private buildCrmNote(
     snapshot: Awaited<ReturnType<AppContext["repository"]["getProspectSnapshot"]>>,
     signal: Awaited<ReturnType<AppContext["repository"]["getSignal"]>>,
@@ -788,6 +864,13 @@ export class OrchidMcpToolService {
       await this.context.repository.upsertContactEmail(prospectId, enriched);
     }
     return enriched;
+  }
+
+  private async handleSetNoSendsMode(args: Record<string, unknown>) {
+    const enabled = Boolean(args.enabled);
+    const client = getActorClient();
+    const actor = client.campaignOps.getOrCreate();
+    return actor.setNoSendsMode(enabled);
   }
 
   private async handleMailSend(args: Record<string, unknown>) {
@@ -981,6 +1064,16 @@ export class OrchidMcpToolService {
       providerMessageId: sendResponse.providerMessageId,
     });
 
+    if (!input.isReply && input.kind === "first_outbound") {
+      await this.maybeAutoSyncProspectToCrm({
+        prospectId: input.snapshot.prospect.prospectId,
+        createNote: true,
+        addToList: true,
+        listStage: this.context.config.ATTIO_AUTO_OUTBOUND_STAGE,
+        sourceEvent: "OutboundSent",
+      });
+    }
+
     return {
       ok: true,
       blocked: false,
@@ -1058,7 +1151,7 @@ export class OrchidMcpToolService {
         snapshot.campaign.senderDisplayName
         ?? this.context.config.AGENTMAIL_DEFAULT_SENDER_NAME
         ?? snapshot.campaign.name,
-      clientId: `campaign:${snapshot.campaign.id}`,
+      clientId: `campaign-${snapshot.campaign.id}`,
       domain: this.context.config.AGENTMAIL_DEFAULT_INBOX_DOMAIN ?? undefined,
     });
 

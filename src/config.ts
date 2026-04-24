@@ -91,6 +91,9 @@ const envSchema = z.object({
   ATTIO_BASE_URL: z.string().default("https://api.attio.com/v2"),
   ATTIO_DEFAULT_LIST_ID: z.string().optional(),
   ATTIO_DEFAULT_LIST_STAGE: z.string().optional(),
+  ATTIO_AUTO_OUTBOUND_STAGE: z.string().default("Prospecting"),
+  ATTIO_AUTO_POSITIVE_REPLY_STAGE: z.string().default("Qualification"),
+  ATTIO_AUTO_NEGATIVE_REPLY_STAGE: z.string().default("Paused"),
 
   ORCHID_SDR_MCP_TOKEN: z.string().optional(),
   ORCHID_SDR_SANDBOX_TOKEN: z.string().min(1),

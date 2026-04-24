@@ -12,7 +12,7 @@ It wakes up on a schedule, finds leads from public signals, researches the perso
 - qualifies leads against the repo knowledge pack
 - writes the full audit trail to Postgres
 - exposes the system through a dashboard and a remote MCP server
-- can optionally sync qualified leads into Attio
+- can auto-sync outbound accounts into Attio and promote CRM stages on replies
 - can optionally send and reply through AgentMail
 
 ## Data Flow
@@ -131,7 +131,7 @@ npm run dev
 http://localhost:3000/dashboard
 ```
 
-If you want the full runtime, add provider keys such as Apify, Firecrawl, Vercel AI Gateway, AgentMail, and Attio.
+If you want the full runtime, add provider keys such as Apify, Firecrawl, Vercel AI Gateway, AgentMail, and Attio. When Attio is configured, the first outbound can auto-create or update the company and contact, and classified replies can automatically promote the Attio stage.
 
 Parallel Search MCP is mounted into sandbox turns by default using the free `https://search.parallel.ai/mcp` endpoint. If you set `PARALLEL_API_KEY`, the sandbox uses the same MCP with a bearer token for higher rate limits.
 
@@ -160,6 +160,8 @@ Separate deploys are safer when the underlying product or knowledge pack is diff
   Sandbox skill instructions for qualification, research, copy, reply policy, and handoff policy.
 - `docs/reference.md`
   Full setup, env, MCP, skill, knowledge-pack, Attio, and webhook details.
+- `docs/email-providers.md`
+  Email provider guidance for agent-native outbound and why AgentMail is the default fit.
 - `blog/`
   Long-form posts on the architecture, product thesis, and category.
 - `docs/blog/`
@@ -168,6 +170,7 @@ Separate deploys are safer when the underlying product or knowledge pack is diff
 ## Read Next
 
 - [Reference](docs/reference.md)
+- [Email Providers](docs/email-providers.md)
 - [Blog Series](blog/README.md)
 - [The AI SDR Market Is Broken](docs/blog/the-ai-sdr-market-is-broken.md)
 - [LinkedIn Post Draft](docs/blog/linkedin-post-built-an-ai-sdr-in-eight-hours.md)

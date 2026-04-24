@@ -407,6 +407,7 @@ export async function processInboundReply(
     classification: classification.classification,
     rationale: classification.rationale,
   });
+  await maybePromoteAttioAfterReply(deps, threadRef.prospectId, classification.classification);
 
   if (classification.classification === "unsubscribe" || classification.classification === "bounce") {
     await deps.context.repository.pauseThread(threadRef.threadId, classification.classification);
@@ -1073,6 +1074,58 @@ async function qualifyProspect(
       companyUrl,
     }),
   });
+}
+
+async function maybePromoteAttioAfterReply(
+  deps: WorkflowDependencies,
+  prospectId: string,
+  replyClass: ReplyClass,
+) {
+  if (!deps.context.attio.isConfigured()) {
+    return;
+  }
+
+  const listStage = attioStageForReplyClass(deps, replyClass);
+  if (!listStage) {
+    return;
+  }
+
+  try {
+    await deps.context.mcpTools.handleTool("crm.syncProspect", {
+      prospectId,
+      createNote: false,
+      addToList: true,
+      listStage,
+    });
+  } catch (error) {
+    console.error(
+      `[attio] automatic reply-stage promotion failed for prospect ${prospectId} after ${replyClass}`,
+      error,
+    );
+  }
+}
+
+function attioStageForReplyClass(
+  deps: WorkflowDependencies,
+  replyClass: ReplyClass,
+) {
+  switch (replyClass) {
+    case "positive":
+    case "soft_interest":
+    case "objection":
+    case "referral":
+    case "needs_human":
+      return deps.context.config.ATTIO_AUTO_POSITIVE_REPLY_STAGE;
+    case "not_now":
+    case "wrong_person":
+    case "unsubscribe":
+    case "bounce":
+    case "spam_risk":
+      return deps.context.config.ATTIO_AUTO_NEGATIVE_REPLY_STAGE;
+    case "ooo":
+    default:
+      return null;
+  }
 }
 
 function needsQualification(snapshot: ProspectSnapshot) {

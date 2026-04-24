@@ -11,6 +11,7 @@ import {
 } from "./qualification-engine.js";
 
 const replyClassEnum = z.enum(replyClasses);
+const POLICY_CHECK_TIMEOUT_MS = 8_000;
 const qualificationSchema = z.object({
   decision: z.enum(["qualified", "rejected"]),
   reason: z.string(),
@@ -83,20 +84,23 @@ export class AiStructuredService {
     }
 
     try {
-      const result = await generateObject({
-        model: gateway("moonshotai/kimi-k2.6"),
-        schema: z.object({
-          allow: z.boolean(),
-          reasons: z.array(z.string()),
+      const result = await promiseWithTimeout(
+        generateObject({
+          model: gateway("moonshotai/kimi-k2.6"),
+          schema: z.object({
+            allow: z.boolean(),
+            reasons: z.array(z.string()),
+          }),
+          prompt: [
+            "Review the outbound sales email draft for policy risks.",
+            "Disallow deceptive claims, fabricated facts, harassment, or anything that ignores unsubscribes.",
+            "Be strict. Return structured output only.",
+            "",
+            body,
+          ].join("\n"),
         }),
-        prompt: [
-          "Review the outbound sales email draft for policy risks.",
-          "Disallow deceptive claims, fabricated facts, harassment, or anything that ignores unsubscribes.",
-          "Be strict. Return structured output only.",
-          "",
-          body,
-        ].join("\n"),
-      });
+        POLICY_CHECK_TIMEOUT_MS,
+      );
 
       return result.object;
     } catch {
@@ -243,4 +247,14 @@ function heuristicPolicyCheck(body: string) {
     allow: reasons.length === 0,
     reasons,
   };
+}
+
+
+function promiseWithTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`Timed out after ${timeoutMs}ms`)), timeoutMs);
+    }),
+  ]);
 }

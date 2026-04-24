@@ -70,6 +70,7 @@ describe("OrchidMcpToolService operator tools", () => {
               pausedCampaignIds: [],
             },
           })),
+          setNoSendsMode: vi.fn(async (enabled) => ({ ok: true, enabled })),
         })),
       },
     };
@@ -389,8 +390,18 @@ describe("OrchidMcpToolService operator tools", () => {
       ]),
       listStatuses: vi.fn(async () => [
         {
+          statusId: "status_prospecting",
+          title: "Prospecting",
+          isArchived: false,
+        },
+        {
           statusId: "status_qualification",
           title: "Qualification",
+          isArchived: false,
+        },
+        {
+          statusId: "status_paused",
+          title: "Paused",
           isArchived: false,
         },
       ]),
@@ -442,6 +453,9 @@ describe("OrchidMcpToolService operator tools", () => {
         DISCOVERY_X_ENABLED: false,
         ATTIO_DEFAULT_LIST_ID: "list_default",
         ATTIO_DEFAULT_LIST_STAGE: "Qualification",
+        ATTIO_AUTO_OUTBOUND_STAGE: "Prospecting",
+        ATTIO_AUTO_POSITIVE_REPLY_STAGE: "Qualification",
+        ATTIO_AUTO_NEGATIVE_REPLY_STAGE: "Paused",
         AGENTMAIL_AUTO_PROVISION_INBOX: true,
         AGENTMAIL_DEFAULT_SENDER_NAME: "Orchid SDR",
         AGENTMAIL_DEFAULT_INBOX_DOMAIN: undefined,
@@ -650,8 +664,53 @@ describe("OrchidMcpToolService operator tools", () => {
     });
   });
 
+  it("resumes a paused thread and prospect together", async () => {
+    const { service, repository } = createService();
+
+    const result = await service.handleTool("thread.resume", {
+      threadId: "thr_1",
+      stage: "first_outbound",
+      reason: "smoke test",
+    });
+
+    expect(repository.updateThreadState).toHaveBeenCalledWith({
+      threadId: "thr_1",
+      stage: "first_outbound",
+      status: "active",
+      pausedReason: null,
+    });
+    expect(repository.updateProspectState).toHaveBeenCalledWith({
+      prospectId: "pros_1",
+      stage: "first_outbound",
+      status: "active",
+      pausedReason: null,
+    });
+    expect(repository.appendAuditEvent).toHaveBeenCalledWith("thread", "thr_1", "ThreadResumed", {
+      reason: "smoke test",
+      stage: "first_outbound",
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      threadId: "thr_1",
+      prospectId: "pros_1",
+      stage: "first_outbound",
+      reason: "smoke test",
+    });
+  });
+
+  it("toggles no-sends mode through campaignOps", async () => {
+    const { service } = createService();
+
+    const result = await service.handleTool("control.setNoSendsMode", {
+      enabled: false,
+    });
+
+    expect(mockClient.campaignOps.getOrCreate).toHaveBeenCalled();
+    expect(result).toEqual({ ok: true, enabled: false });
+  });
+
   it("auto-provisions one campaign sender inbox before first outbound", async () => {
-    const { service, repository, context } = createService();
+    const { service, repository, context, attio } = createService();
     const baseSnapshot: any = await repository.getProspectSnapshot();
     repository.getProspectSnapshot.mockResolvedValueOnce({
       ...baseSnapshot,
@@ -689,7 +748,7 @@ describe("OrchidMcpToolService operator tools", () => {
 
     expect(context.agentMail.createInbox).toHaveBeenCalledWith({
       displayName: "Orchid SDR",
-      clientId: "campaign:cmp_default",
+      clientId: "campaign-cmp_default",
       domain: undefined,
     });
     expect(repository.updateCampaignSenderIdentity).toHaveBeenCalledWith({
@@ -704,6 +763,17 @@ describe("OrchidMcpToolService operator tools", () => {
       subject: "Hello Ada",
       bodyText: "Quick note",
       bodyHtml: null,
+    });
+    expect(attio.assertCompanyInList).toHaveBeenCalledWith({
+      listId: "list_default",
+      companyRecordId: "attio_company_1",
+      entryValues: {
+        main_point_of_contact: {
+          target_object: "people",
+          target_record_id: "attio_person_1",
+        },
+        stage: "Prospecting",
+      },
     });
     expect(repository.updateThreadState).toHaveBeenCalledWith(
       expect.objectContaining({

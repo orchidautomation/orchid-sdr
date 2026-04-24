@@ -7,22 +7,26 @@ It is the set of things that are still untested, partially tested, or still need
 
 ## P0: Must Validate Before Real Outbound
 
-- [ ] Run one real end-to-end AgentMail send/reply smoke test.
-  Success looks like:
-  - `NO_SENDS_MODE=false`
-  - send happens during an allowed quiet-hours window
-  - one campaign sender inbox is auto-provisioned or reused
-  - the outbound message is written to `messages`
-  - `provider_inbox_id`, `provider_thread_id`, and `provider_message_id` are stored
-  - replying to the email wakes `/webhooks/agentmail`
-  - the thread resumes, classifies the reply, and moves into the right next state
+- [x] Complete the real AgentMail send/reply smoke test.
+  Proven on Apr 24, 2026:
+  - `NO_SENDS_MODE=false` path works when intentionally enabled
+  - one campaign sender inbox was auto-provisioned and pinned
+  - the outbound message was written to `messages`
+  - `provider_inbox_id`, `provider_thread_id`, and `provider_message_id` were stored
+  - the happy-path `mail.send` call through the remote MCP surface completed successfully
+  - replying to the email woke `/webhooks/agentmail`
+  - the inbound message was stored
+  - the reply was classified as `positive`
+  - the thread moved into `respond_or_handoff`
+  - with `NO_SENDS_MODE=true` restored, the thread paused safely after the inbound path
 
-- [ ] Verify the happy-path `mail.send` call through the remote MCP surface.
-  Current state:
-  - blocked sends now short-circuit correctly
+- [x] Verify the happy-path `mail.send` call through the remote MCP surface.
+  Proven on Apr 24, 2026:
+  - blocked sends short-circuit correctly
   - the old "hang while blocked" bug was fixed
-  Still need:
-  - one clean allowed send through MCP with no 502 / timeout behavior
+  - the policy-check hang was fixed with timeout fallback
+  - the AgentMail sender provisioning bug was fixed (invalid `client_id` format)
+  - one clean allowed send through MCP completed and advanced the thread to `await_reply`
 
 - [ ] Fix or intentionally accept quiet-hours timezone behavior.
   Current state:
@@ -31,14 +35,11 @@ It is the set of things that are still untested, partially tested, or still need
   - keep UTC and document it
   - or move to campaign-local timezone and test it
 
-- [ ] Decide whether Attio sync should happen automatically after `OutboundSent`.
+- [x] Auto-sync Attio after `OutboundSent` and promote the card on classified replies.
   Current state:
-  - `crm.syncProspect` works
-  - Attio writes are deterministic and idempotent
-  - Attio sync is still a separate action, not an automatic post-send workflow step
-  Need decision:
-  - keep manual / explicit
-  - or trigger deterministic backend sync on `OutboundSent`
+  - first outbound can auto-run the deterministic `crm.syncProspect` path at `ATTIO_AUTO_OUTBOUND_STAGE`
+  - reply classification can auto-promote the same Attio card using the positive / negative reply stage envs
+  - manual `crm.syncProspect` still exists for operator control
 
 ## P1: Strong Confidence Tests
 
@@ -76,14 +77,15 @@ It is the set of things that are still untested, partially tested, or still need
   - one explicit re-qualification job or procedure
 
 - [ ] Test reply classification and handoff on real inbound examples.
-  Scenarios:
-  - positive
+  Proven on Apr 24, 2026:
+  - positive reply path works end to end with real AgentMail webhook payloads
+  Still need scenarios:
   - objection
   - referral
   - unsubscribe
   - wrong person
   Goal:
-  - verify pause / handoff / continue behavior with real provider payloads
+  - verify pause / handoff / continue behavior with real provider payloads across those classes
 
 ## P2: Operational Hardening
 
@@ -108,15 +110,22 @@ It is the set of things that are still untested, partially tested, or still need
   - future syncs are much better
   - historical duplicate people may still exist
 
+- [ ] Stabilize live `mail.preview` latency for on-demand sandbox drafts.
+  Current state:
+  - the draft path works conceptually and has produced good copy
+  - live preview calls can still hang long enough to feel broken in operator workflows
+  Need:
+  - timeout / queueing / better operator visibility so preview behaves predictably
+
 - [ ] Add a clearer sandbox / preview mode for send testing.
   Current state:
-  - `mail.preview` works well
+  - `mail.preview` exists, but the live operator experience is still not reliable enough
   Nice improvement:
   - a dedicated "generate but do not send and do not mutate state" test tool for operator workflows
 
 ## P3: Before Calling It Boring And Reliable
 
-- [ ] Add automated post-send CRM sync if that remains the chosen behavior.
+- [x] Add automated post-send CRM sync if that remains the chosen behavior.
 - [ ] Add first-class X discovery once the source adapter is ready.
 - [ ] Add per-campaign timezone support if outbound becomes customer-facing.
 - [ ] Add stronger throughput / cost / conversion scorecards.
@@ -154,4 +163,4 @@ If the question is:
 
 The answer is:
 
-Almost, but not until the AgentMail happy path, reply loop, and quiet-hours behavior are validated cleanly.
+Almost, but not until quiet-hours behavior is resolved and live `mail.preview` feels predictable.
