@@ -4,7 +4,7 @@ This repo implements a sandbox-driven AI SDR control plane on `RivetKit + Hono +
 
 Further reading:
 
-- [The AI SDR market is broken](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/docs/blog/the-ai-sdr-market-is-broken.md)
+- [The AI SDR market is broken](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/docs/blog/the-ai-sdr-market-is-broken.md)
 
 ## What is here
 
@@ -93,8 +93,8 @@ The current default model is `moonshotai/kimi-k2.6`.
 
 There are two places to change it:
 
-- sandbox turns: update `CLAUDE_GATEWAY_MODEL` in [src/orchestration/sandbox-broker.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/src/orchestration/sandbox-broker.ts:19)
-- structured classification / qualification / policy calls: update the model slug in [src/services/ai-service.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/src/services/ai-service.ts:59)
+- sandbox turns: update `CLAUDE_GATEWAY_MODEL` in [src/orchestration/sandbox-broker.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/src/orchestration/sandbox-broker.ts:19)
+- structured classification / qualification / policy calls: update the model slug in [src/services/ai-service.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/src/services/ai-service.ts:59)
 
 When swapping models:
 
@@ -117,7 +117,7 @@ Current tracked skills:
 
 How skills are loaded:
 
-- repo skills from `skills/` are copied into each sandbox session in [src/orchestration/sandbox-broker.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/src/orchestration/sandbox-broker.ts:130)
+- repo skills from `skills/` are copied into each sandbox session in [src/orchestration/sandbox-broker.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/src/orchestration/sandbox-broker.ts:130)
 - local-only skills from `.claude/skills/` are also mounted if they exist, but they are not part of the OSS repo
 
 Recommended pattern:
@@ -129,7 +129,7 @@ To add a new tracked skill:
 
 1. create `skills/<skill-name>/SKILL.md`
 2. keep it focused on one repeatable behavior
-3. explicitly reference it in the relevant sandbox prompt in [src/orchestration/prospect-workflow.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/src/orchestration/prospect-workflow.ts:308) or another turn-producing flow
+3. explicitly reference it in the relevant sandbox prompt in [src/orchestration/prospect-workflow.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/src/orchestration/prospect-workflow.ts:308) or another turn-producing flow
 4. redeploy so new sandbox sessions pick it up
 
 ## Knowledge pack
@@ -138,25 +138,25 @@ The markdown files in `knowledge/` are part of the live runtime, not just docs.
 
 They feed qualification, research, and drafting in the sandbox:
 
-- [knowledge/icp.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/knowledge/icp.md)
+- [knowledge/icp.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/knowledge/icp.md)
   - who should qualify
   - company and persona fit
   - pains, triggers, positive signals, negative signals
   - this is the main source of truth for ICP matching
-- [knowledge/product.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/knowledge/product.md)
+- [knowledge/product.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/knowledge/product.md)
   - what the product actually is
   - what it helps with
   - the operational framing the drafter should use
-- [knowledge/usp.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/knowledge/usp.md)
+- [knowledge/usp.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/knowledge/usp.md)
   - how the product should be positioned
   - what differentiators to emphasize
   - what angles should show up in copy and handoff context
-- [knowledge/compliance.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/knowledge/compliance.md)
+- [knowledge/compliance.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/knowledge/compliance.md)
   - hard safety and policy constraints for outreach
   - what the agent must not fabricate or imply
-- [knowledge/negative-signals.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/knowledge/negative-signals.md)
+- [knowledge/negative-signals.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/knowledge/negative-signals.md)
   - additional poor-fit cues and disqualifying patterns
-- [knowledge/handoff.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/knowledge/handoff.md)
+- [knowledge/handoff.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/knowledge/handoff.md)
   - when the agent should stop and escalate to a human
   - what context a human should receive at handoff time
 
@@ -180,7 +180,7 @@ There are two MCP layers in this repo:
 
 ### Add a sandbox-mounted MCP
 
-Sandbox MCP servers are written into `.mcp.json` during sandbox setup in [src/orchestration/sandbox-broker.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/src/orchestration/sandbox-broker.ts:101).
+Sandbox MCP servers are written into `.mcp.json` during sandbox setup in [src/orchestration/sandbox-broker.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/src/orchestration/sandbox-broker.ts:101).
 
 That is where the Firecrawl MCP is currently mounted.
 
@@ -194,8 +194,8 @@ To add another one:
 
 If you want the agent to call a tool through your own backend instead of talking to a vendor MCP directly:
 
-1. add the behavior in [src/services/mcp-tools.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/src/services/mcp-tools.ts:1)
-2. expose it in [src/mcp/server-factory.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/aisdk-rivet/src/mcp/server-factory.ts:1)
+1. add the behavior in [src/services/mcp-tools.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/src/services/mcp-tools.ts:1)
+2. expose it in [src/mcp/server-factory.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/src/mcp/server-factory.ts:1)
 3. back it with an adapter, repository method, or service as needed
 
 Use the first-party MCP for:

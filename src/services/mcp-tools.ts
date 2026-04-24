@@ -867,10 +867,29 @@ export class OrchidMcpToolService {
     bodyHtml: string | null;
     isReply: boolean;
   }) {
+    const controlFlags = await this.context.repository.getControlFlags();
+    const preflightAuthority = this.context.policy.evaluateSendAuthority({
+      snapshot: input.snapshot,
+      controlFlags,
+      kind: input.kind,
+      emailConfidence: input.snapshot.email?.confidence ?? 0,
+      researchConfidence: input.snapshot.researchBrief?.confidence ?? 0,
+      policyPass: true,
+    });
+
+    if (!preflightAuthority.allowed) {
+      await this.context.repository.pauseThread(input.snapshot.thread.id, preflightAuthority.reasons.join("; "));
+      return {
+        ok: false,
+        blocked: true,
+        reasons: preflightAuthority.reasons,
+      };
+    }
+
     const policy = await this.context.ai.policyCheck(input.bodyText);
     const authority = this.context.policy.evaluateSendAuthority({
       snapshot: input.snapshot,
-      controlFlags: await this.context.repository.getControlFlags(),
+      controlFlags,
       kind: input.kind,
       emailConfidence: input.snapshot.email?.confidence ?? 0,
       researchConfidence: input.snapshot.researchBrief?.confidence ?? 0,

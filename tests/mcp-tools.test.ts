@@ -331,6 +331,7 @@ describe("OrchidMcpToolService operator tools", () => {
         provider_thread_id: null,
         provider_inbox_id: null,
       })),
+      pauseThread: vi.fn(async () => undefined),
       updateThreadState: vi.fn(async () => undefined),
       updateProspectState: vi.fn(async () => undefined),
       addMessage: vi.fn(async () => "msg_1"),
@@ -715,6 +716,56 @@ describe("OrchidMcpToolService operator tools", () => {
       ok: true,
       senderEmail: "ai-sdr@agentmail.to",
       providerInboxId: "inbox_campaign_1",
+    });
+  });
+
+  it("short-circuits blocked sends before running model policy checks", async () => {
+    const { service, repository, context } = createService();
+    const baseSnapshot: any = await repository.getProspectSnapshot();
+    repository.getProspectSnapshot.mockResolvedValueOnce({
+      ...baseSnapshot,
+      prospect: {
+        ...baseSnapshot.prospect,
+        status: "active",
+        stage: "first_outbound",
+        pausedReason: null,
+      },
+      thread: {
+        ...baseSnapshot.thread,
+        status: "active",
+        stage: "first_outbound",
+        pausedReason: null,
+        providerInboxId: null,
+      },
+      email: {
+        address: "ada@analyticalengines.com",
+        confidence: 0.91,
+        source: "prospeo",
+      },
+    });
+    context.policy.evaluateSendAuthority
+      .mockReturnValueOnce({
+        allowed: false,
+        reasons: ["no sends mode enabled", "quiet hours active"],
+        policyPass: true,
+      });
+
+    const result = await service.handleTool("mail.send", {
+      threadId: "thr_1",
+      kind: "first_outbound",
+      subject: "Hello Ada",
+      bodyText: "Quick note",
+    });
+
+    expect(context.ai.policyCheck).not.toHaveBeenCalled();
+    expect(repository.pauseThread).toHaveBeenCalledWith(
+      "thr_1",
+      "no sends mode enabled; quiet hours active",
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      blocked: true,
+      reasons: ["no sends mode enabled", "quiet hours active"],
     });
   });
 });
