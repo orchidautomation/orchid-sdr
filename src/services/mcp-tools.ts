@@ -1124,12 +1124,59 @@ export class OrchidMcpToolService {
 
   private async ensureCampaignSenderIdentity(snapshot: ProspectSnapshot) {
     if (snapshot.campaign.senderProviderInboxId) {
-      return {
-        ok: true as const,
-        senderEmail: snapshot.campaign.senderEmail,
-        senderDisplayName: snapshot.campaign.senderDisplayName,
-        senderProviderInboxId: snapshot.campaign.senderProviderInboxId,
-      };
+      if (!this.context.agentMail.isConfigured()) {
+        return {
+          ok: true as const,
+          senderEmail: snapshot.campaign.senderEmail,
+          senderDisplayName: snapshot.campaign.senderDisplayName,
+          senderProviderInboxId: snapshot.campaign.senderProviderInboxId,
+        };
+      }
+
+      try {
+        const providerInbox = await this.context.agentMail.getInbox(snapshot.campaign.senderProviderInboxId);
+        const senderEmail = providerInbox.email ?? snapshot.campaign.senderEmail;
+        const senderDisplayName =
+          providerInbox.displayName ?? snapshot.campaign.senderDisplayName ?? snapshot.campaign.name;
+        const senderProviderInboxId = providerInbox.providerInboxId ?? snapshot.campaign.senderProviderInboxId;
+
+        if (
+          senderEmail !== snapshot.campaign.senderEmail
+          || senderDisplayName !== snapshot.campaign.senderDisplayName
+          || senderProviderInboxId !== snapshot.campaign.senderProviderInboxId
+        ) {
+          await this.context.repository.updateCampaignSenderIdentity({
+            campaignId: snapshot.campaign.id,
+            senderEmail,
+            senderDisplayName,
+            senderProviderInboxId,
+          });
+          await this.context.repository.appendAuditEvent("campaign", snapshot.campaign.id, "SenderIdentityRefreshed", {
+            senderEmail,
+            senderDisplayName,
+            senderProviderInboxId,
+            source: "agentmail",
+          });
+        }
+
+        return {
+          ok: true as const,
+          senderEmail,
+          senderDisplayName,
+          senderProviderInboxId,
+        };
+      } catch (error) {
+        console.warn(
+          "[agentmail] failed to refresh sender identity for campaign " + snapshot.campaign.id,
+          error,
+        );
+        return {
+          ok: true as const,
+          senderEmail: snapshot.campaign.senderEmail,
+          senderDisplayName: snapshot.campaign.senderDisplayName,
+          senderProviderInboxId: snapshot.campaign.senderProviderInboxId,
+        };
+      }
     }
 
     if (!this.context.agentMail.isConfigured()) {

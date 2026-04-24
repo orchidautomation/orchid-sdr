@@ -425,6 +425,12 @@ describe("OrchidMcpToolService operator tools", () => {
           displayName: "Default SDR Campaign",
           raw: {},
         })),
+        getInbox: vi.fn(async () => ({
+          providerInboxId: "inbox_campaign_1",
+          email: "ai-sdr@agentmail.to",
+          displayName: "Default SDR Campaign",
+          raw: {},
+        })),
         send: vi.fn(async () => ({
           providerMessageId: "am_msg_1",
           providerThreadId: "am_thr_1",
@@ -785,6 +791,72 @@ describe("OrchidMcpToolService operator tools", () => {
     expect(result).toMatchObject({
       ok: true,
       senderEmail: "ai-sdr@agentmail.to",
+      providerInboxId: "inbox_campaign_1",
+    });
+  });
+
+  it("refreshes existing AgentMail sender identity before sending", async () => {
+    const { service, repository, context } = createService();
+    const baseSnapshot: any = await repository.getProspectSnapshot();
+    repository.getProspectSnapshot.mockResolvedValueOnce({
+      ...baseSnapshot,
+      prospect: {
+        ...baseSnapshot.prospect,
+        status: "active",
+        stage: "first_outbound",
+        pausedReason: null,
+      },
+      campaign: {
+        ...baseSnapshot.campaign,
+        senderEmail: "old-name@agentmail.to",
+        senderDisplayName: "Old Sender Name",
+        senderProviderInboxId: "inbox_campaign_1",
+      },
+      thread: {
+        ...baseSnapshot.thread,
+        status: "active",
+        stage: "first_outbound",
+        pausedReason: null,
+        providerInboxId: null,
+      },
+      email: {
+        address: "ada@analyticalengines.com",
+        confidence: 0.91,
+        source: "prospeo",
+      },
+    });
+    context.agentMail.getInbox.mockResolvedValueOnce({
+      providerInboxId: "inbox_campaign_1",
+      email: "playkit@agentmail.to",
+      displayName: "PlayKit",
+      raw: {},
+    });
+
+    const result = await service.handleTool("mail.send", {
+      threadId: "thr_1",
+      kind: "first_outbound",
+      subject: "Hello Ada",
+      bodyText: "Quick note",
+    });
+
+    expect(context.agentMail.createInbox).not.toHaveBeenCalled();
+    expect(context.agentMail.getInbox).toHaveBeenCalledWith("inbox_campaign_1");
+    expect(repository.updateCampaignSenderIdentity).toHaveBeenCalledWith({
+      campaignId: "cmp_default",
+      senderEmail: "playkit@agentmail.to",
+      senderDisplayName: "PlayKit",
+      senderProviderInboxId: "inbox_campaign_1",
+    });
+    expect(context.agentMail.send).toHaveBeenCalledWith({
+      inboxId: "inbox_campaign_1",
+      to: "ada@analyticalengines.com",
+      subject: "Hello Ada",
+      bodyText: "Quick note",
+      bodyHtml: null,
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      senderEmail: "playkit@agentmail.to",
       providerInboxId: "inbox_campaign_1",
     });
   });

@@ -951,6 +951,20 @@ export class AgentMailAdapter {
     };
   }
 
+  async getInbox(inboxId: string) {
+    const json = await this.request(
+      "/v0/inboxes/" + encodeURIComponent(inboxId),
+      undefined,
+      "GET",
+    );
+    return {
+      providerInboxId: pickString(json, ["inbox_id", "inboxId", "id"]),
+      email: pickString(json, ["email"]),
+      displayName: pickString(json, ["display_name", "displayName"]),
+      raw: json,
+    };
+  }
+
   async send(input: {
     inboxId: string;
     to: string;
