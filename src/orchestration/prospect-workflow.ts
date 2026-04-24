@@ -512,8 +512,9 @@ async function buildResearchBrief(
   const turn = await deps.runSandboxTurn(
     buildTurnRequest(snapshot, "build_research_brief", [
       "Use the `research-brief` and `research-checks` skills.",
-      "Use the orchid-sdr MCP tools, Firecrawl MCP tools, and local knowledge files when useful.",
-      "If recent company context would help, use the Firecrawl MCP search tool `firecrawl_search` to look for company-related news.",
+      "Use the orchid-sdr MCP tools, Parallel Search MCP tools, Firecrawl MCP tools, and local knowledge files when useful.",
+      "Use the Parallel Search MCP for broad web search and current external context.",
+      "Use Firecrawl MCP tools for company-news search and page extraction when you need page-level detail.",
       "Research the prospect and return strict JSON only.",
       'Schema: {"summary":"string","confidence":0.0,"copyGuidance":{"primaryAngle":"string","bestOpeningHook":"string","whyNow":"string","avoidMentioning":["string"],"ctaSuggestion":"string"},"evidence":[{"title":"string","url":"string","note":"string"}]}',
       "The summary should cover: fit, signal, why now, outreach angle, and risks or unknowns.",
@@ -988,6 +989,7 @@ async function qualifyProspect(
       "Decide whether this prospect actually matches the current ICP in icp.md.",
       "Follow a generic ICP methodology: identity, source provenance, person fit, company fit, pain or trigger fit, and negative signals.",
       "Evaluate whether the person is qualified, whether the company is qualified, and whether the observed signal shows relevant pain, timing, or buying intent.",
+      "Use the Parallel Search MCP for broad current web context when you need it.",
       "If timing context is unclear, you may use the Firecrawl MCP search tool `firecrawl_search` for recent company news.",
       "Do not qualify someone on topical adjacency alone.",
       "Return strict JSON only.",

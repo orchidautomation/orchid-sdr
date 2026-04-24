@@ -14,6 +14,7 @@ const SANDBOX_HOME = "/home/vercel-sandbox";
 const SANDBOX_WORKSPACE = `${SANDBOX_HOME}/orchid-sdr`;
 const SKILL_PROFILE_NAME = "default";
 const MCP_NAME = "orchid-sdr";
+const PARALLEL_SEARCH_MCP_NAME = "parallel-search";
 const SANDBOX_AGENT_INSTALL_SCRIPT = "https://releases.rivet.dev/sandbox-agent/0.5.0-rc.2/install.sh";
 const DEFAULT_SANDBOX_AGENTS = ["claude", "codex"];
 const CLAUDE_GATEWAY_MODEL = "moonshotai/kimi-k2.6";
@@ -136,29 +137,7 @@ async function prepareSandboxWorkspace(sdk: SandboxAgent, context: AppContext) {
 
   await sdk.writeFsFile(
     { path: `${SANDBOX_WORKSPACE}/.mcp.json` },
-    JSON.stringify(
-      {
-        mcpServers: {
-          [MCP_NAME]: {
-            type: "http",
-            url: "${ORCHID_SDR_MCP_URL}",
-            headers: {
-              Authorization: "Bearer ${ORCHID_SDR_SANDBOX_TOKEN}",
-            },
-          },
-          ...(context.config.FIRECRAWL_API_KEY
-            ? {
-                firecrawl: {
-                  type: "http",
-                  url: "https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp",
-                },
-              }
-            : {}),
-        },
-      },
-      null,
-      2,
-    ),
+    JSON.stringify(buildSandboxMcpConfig(context), null, 2),
   );
 
   const hasClaudeSkills = await pathExists(claudeSkillsRoot);
@@ -209,6 +188,39 @@ async function prepareSandboxWorkspace(sdk: SandboxAgent, context: AppContext) {
     },
   );
 
+}
+
+export function buildSandboxMcpConfig(context: Pick<AppContext, "config">) {
+  return {
+    mcpServers: {
+      [MCP_NAME]: {
+        type: "http",
+        url: "${ORCHID_SDR_MCP_URL}",
+        headers: {
+          Authorization: "Bearer ${ORCHID_SDR_SANDBOX_TOKEN}",
+        },
+      },
+      [PARALLEL_SEARCH_MCP_NAME]: {
+        type: "http",
+        url: "https://search.parallel.ai/mcp",
+        ...(context.config.PARALLEL_API_KEY
+          ? {
+              headers: {
+                Authorization: "Bearer ${PARALLEL_API_KEY}",
+              },
+            }
+          : {}),
+      },
+      ...(context.config.FIRECRAWL_API_KEY
+        ? {
+            firecrawl: {
+              type: "http",
+              url: "https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp",
+            },
+          }
+        : {}),
+    },
+  };
 }
 
 async function ensureParentDir(sdk: SandboxAgent, filePath: string) {

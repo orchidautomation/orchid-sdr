@@ -135,6 +135,12 @@ There are two MCP layers:
 
 Sandbox MCP servers are written into `.mcp.json` during sandbox setup in `src/orchestration/sandbox-broker.ts`.
 
+Current defaults:
+
+- `orchid-sdr` first-party MCP
+- `parallel-search` via `https://search.parallel.ai/mcp`
+- `firecrawl` when `FIRECRAWL_API_KEY` is set
+
 To add another one:
 
 1. update the `mcpServers` object written in sandbox setup
@@ -303,6 +309,8 @@ The raw vendor object can still be preserved under `metadata.raw`.
 - the sandbox lane is turn-scoped; durable memory lives in Postgres, Rivet actor state, and actor-local SQLite
 - only AISDR-specific skills should live in tracked `skills/`
 - if `.claude/skills/` exists locally, those skill bundles are also mounted into the sandbox
+- the sandbox gets the free hosted Parallel Search MCP by default
+- if `PARALLEL_API_KEY` is set, the same Parallel MCP is mounted with bearer auth for higher limits
 - if `FIRECRAWL_API_KEY` is set, the sandbox gets the hosted Firecrawl MCP
 - `discoveryCoordinator` is keyed by `[campaignId, source]` and keeps term frontier and run memory in Rivet SQLite
 - Postgres remains the shared CRM and reporting layer

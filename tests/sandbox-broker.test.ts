@@ -1,0 +1,51 @@
+import { describe, expect, it } from "vitest";
+
+import { buildSandboxMcpConfig } from "../src/orchestration/sandbox-broker.js";
+
+describe("buildSandboxMcpConfig", () => {
+  it("includes the free Parallel Search MCP by default", () => {
+    const config = buildSandboxMcpConfig({
+      config: {
+        PARALLEL_API_KEY: undefined,
+        FIRECRAWL_API_KEY: undefined,
+      },
+    } as any);
+
+    expect(config).toEqual({
+      mcpServers: {
+        "orchid-sdr": {
+          type: "http",
+          url: "${ORCHID_SDR_MCP_URL}",
+          headers: {
+            Authorization: "Bearer ${ORCHID_SDR_SANDBOX_TOKEN}",
+          },
+        },
+        "parallel-search": {
+          type: "http",
+          url: "https://search.parallel.ai/mcp",
+        },
+      },
+    });
+  });
+
+  it("adds auth-backed Parallel Search and Firecrawl when keys are present", () => {
+    const config = buildSandboxMcpConfig({
+      config: {
+        PARALLEL_API_KEY: "parallel_test",
+        FIRECRAWL_API_KEY: "firecrawl_test",
+      },
+    } as any);
+
+    expect(config.mcpServers["parallel-search"]).toEqual({
+      type: "http",
+      url: "https://search.parallel.ai/mcp",
+      headers: {
+        Authorization: "Bearer ${PARALLEL_API_KEY}",
+      },
+    });
+    expect(config.mcpServers.firecrawl).toEqual({
+      type: "http",
+      url: "https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp",
+    });
+  });
+});

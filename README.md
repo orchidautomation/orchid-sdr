@@ -133,6 +133,23 @@ http://localhost:3000/dashboard
 
 If you want the full runtime, add provider keys such as Apify, Firecrawl, Vercel AI Gateway, AgentMail, and Attio.
 
+Parallel Search MCP is mounted into sandbox turns by default using the free `https://search.parallel.ai/mcp` endpoint. If you set `PARALLEL_API_KEY`, the sandbox uses the same MCP with a bearer token for higher rate limits.
+
+## Multiple Campaigns
+
+One deployment can run multiple campaigns.
+
+That is the right model when you want multiple outbound agents for the same product, for example:
+
+- different ICP slices
+- different discovery sources
+- different sender identities
+- different outreach strategies
+
+In that setup, keep one deployed control plane and create multiple campaigns inside it.
+
+Separate deploys are safer when the underlying product or knowledge pack is different, because the current `knowledge/` files and tracked `skills/` are still repo-global rather than campaign-scoped.
+
 ## Repo Layout
 
 - `src/`
