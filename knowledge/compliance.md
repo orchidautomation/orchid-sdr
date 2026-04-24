@@ -3,7 +3,7 @@
 ## Hard Rules
 
 - Use public-only acquisition boundaries.
-- Never fabricate facts about the prospect, their company, or Orchid.
+- Never fabricate facts about the prospect, their company, or the product being sold.
 - Respect unsubscribe, bounce, wrong-person, and spam-risk states immediately.
 - Do not make claims of certainty, guarantees, or invented ROI.
 - Keep send authority behind deterministic gates.

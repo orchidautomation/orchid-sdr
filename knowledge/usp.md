@@ -4,17 +4,17 @@
 
 The differentiator is not "AI sends email." The differentiator is operational quality.
 
-Orchid is strongest when framed as:
+PlayKit is strongest when framed as:
 
-- a composable system, not a monolith
-- a workflow control plane with durable state and clear decision points
-- an agent stack that can research, message, and escalate without losing context
-- an implementation that serious operators can inspect, extend, and trust
+- Clay expertise, not generic GTM advice
+- a composable MCP-native layer, not a closed monolith
+- a workflow design and audit engine serious operators can inspect, extend, and trust
+- a way to make junior operators or agents produce more senior-level work
 
 ## What To Emphasize
 
-- provider-swappable architecture
-- explicit policy and send gating
-- first-party tool surface instead of raw vendor sprawl
-- durable audit history across research, drafting, and handoff
-- human escalation built in, not bolted on
+- workflow correctness
+- confidence in provider and prompt choices
+- lower credit burn through better architecture
+- reusable, shareable work product
+- composability with Claude Code, Codex, Cursor, n8n, and MCP-native agents

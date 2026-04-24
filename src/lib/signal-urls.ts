@@ -77,7 +77,26 @@ export function extractLinkedinProfileUrl(
     ?? pickString(meta, ["authorLinkedinUrl", "authorUrl", "profileUrl"]);
 
   return normalizeAbsoluteUrl(profileUrl)
-    ?? normalizeAbsoluteUrl(fallbackUrl)
+    ?? normalizeLinkedinUrl(fallbackUrl)
+    ?? null;
+}
+
+export function extractTwitterProfileUrl(
+  metadata: Record<string, unknown> | null | undefined,
+  fallbackUrl?: string | null,
+) {
+  const meta = coerceRecord(metadata);
+  const author = coerceRecord(meta.author);
+  const username =
+    pickString(author, ["username", "screenName", "handle"])
+    ?? pickString(meta, ["authorUsername", "username", "screenName", "handle"]);
+  const profileUrl =
+    pickString(author, ["twitterUrl", "xUrl", "url"])
+    ?? pickString(meta, ["authorTwitterUrl", "authorXUrl", "authorUrl", "profileUrl"]);
+
+  return normalizeTwitterProfileUrl(profileUrl)
+    ?? (username ? `https://x.com/${username.replace(/^@/, "").trim()}` : null)
+    ?? normalizeTwitterProfileUrl(fallbackUrl)
     ?? null;
 }
 
@@ -93,4 +112,48 @@ export function extractCompanyResearchUrl(input: {
     ?? normalizeAbsoluteUrl(pickString(metadata, ["companyWebsite", "website", "domain"]))
     ?? collectContentAttributeCompanyUrl(metadata)
     ?? null;
+}
+
+function normalizeLinkedinUrl(value: string | null | undefined) {
+  const normalized = normalizeAbsoluteUrl(value);
+  if (!normalized) {
+    return null;
+  }
+
+  try {
+    const url = new URL(normalized);
+    const host = url.hostname.replace(/^www\./, "").toLowerCase();
+    if (host !== "linkedin.com") {
+      return null;
+    }
+
+    const pathname = url.pathname.replace(/\/+$/, "");
+    return `${url.protocol}//www.linkedin.com${pathname}`;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeTwitterProfileUrl(value: string | null | undefined) {
+  const normalized = normalizeAbsoluteUrl(value);
+  if (!normalized) {
+    return null;
+  }
+
+  try {
+    const url = new URL(normalized);
+    const host = url.hostname.replace(/^www\./, "").toLowerCase();
+    if (host !== "x.com" && host !== "twitter.com") {
+      return null;
+    }
+
+    const [handle] = url.pathname.split("/").filter(Boolean);
+    if (!handle) {
+      return null;
+    }
+
+    return `https://x.com/${handle.replace(/^@/, "")}`;
+  } catch {
+    return null;
+  }
 }

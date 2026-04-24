@@ -1,20 +1,20 @@
 # Product
 
-Orchid builds composable agent systems for outbound and ops-heavy workflows.
+The product described by the current ICP is PlayKit.
 
-For the SDR use case, the product story is:
+PlayKit is a Clay-native expertise layer for GTM engineers, RevOps teams, agencies, and agent builders who need better workflow design, provider choices, documentation, and operational confidence.
 
-- ingest public signals
-- qualify and enrich them
-- run grounded research
-- draft and send outreach
-- classify replies
-- escalate to humans when judgment or account context matters
+For outreach, the product story is:
 
-The system should feel like infrastructure, not a toy demo:
+- help operators design Clay workflows correctly the first time
+- reduce credit burn through better table architecture, waterfalls, and prompts
+- make Clay expertise queryable inside MCP-native clients and agents
+- produce production-ready outputs instead of generic advice
+- support workflow design, audits, docs, prompts, and implementation guidance
 
-- durable state
-- clear audit trails
-- explicit policy gates
-- modular providers
-- predictable handoff behavior
+The product should feel like infrastructure, not a toy demo:
+
+- opinionated, senior-level workflow guidance
+- concrete recommendations instead of vague summaries
+- composable with existing agent stacks and MCP clients
+- useful to both in-house operators and delivery teams

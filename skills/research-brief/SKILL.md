@@ -50,6 +50,29 @@ The summary should usually cover five things in this order:
 5. Risks or unknowns
    - what is still weak, missing, or speculative
 
+## Required Copy Guidance
+
+Every brief should also produce explicit downstream copy guidance:
+
+- `primaryAngle`
+- `bestOpeningHook`
+- `whyNow`
+- `avoidMentioning`
+- `ctaSuggestion`
+
+These fields are for the drafter, not for human theatrics.
+
+They should answer:
+
+- what is the strongest real angle?
+- what should the opener anchor on?
+- what timing context is actually credible?
+- what should we avoid saying even if it is technically true?
+- what low-friction CTA fits this lead?
+
+The goal is to reduce improvisation in copy generation.
+The copy layer should not need to reverse-engineer the whole brief every time.
+
 ## Summary Standard
 
 Write the summary so a human operator could glance at it and immediately know:
@@ -104,6 +127,7 @@ Good briefs are:
 - evidence-led
 - commercially useful
 - honest about uncertainty
+- specific enough that a drafter can write from them without reinterpreting the whole research set
 
 Bad briefs are:
 

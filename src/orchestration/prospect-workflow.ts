@@ -20,11 +20,120 @@ interface DraftReplyOutput extends DraftEmailOutput {
 interface ResearchOutput {
   summary: string;
   confidence: number;
+  copyGuidance: {
+    primaryAngle: string;
+    bestOpeningHook: string;
+    whyNow: string;
+    avoidMentioning: string[];
+    ctaSuggestion: string;
+  } | null;
   evidence: Array<{
     title: string;
     url: string;
     note: string;
   }>;
+}
+
+export interface DraftPreview {
+  kind: "first_outbound" | "follow_up" | "reply";
+  subject: string;
+  bodyText: string;
+  generatedBy: "sandbox" | "fallback";
+  action?: "reply" | "handoff";
+  reason?: string;
+  fallbackReason?: string;
+}
+
+interface DraftFact {
+  label: string;
+  detail: string;
+}
+
+type PreviewDraftResult<T> = T & {
+  generatedBy: "sandbox" | "fallback";
+  fallbackReason?: string;
+};
+
+async function runPreviewDraft<T extends DraftEmailOutput | DraftReplyOutput>(
+  buildDraft: () => Promise<T>,
+  buildFallback: () => T,
+): Promise<PreviewDraftResult<T>> {
+  try {
+    const draft = await buildDraft();
+    return {
+      ...draft,
+      generatedBy: "sandbox",
+    };
+  } catch (error) {
+    return {
+      ...buildFallback(),
+      generatedBy: "fallback",
+      fallbackReason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function buildFirstOutboundFallback(snapshot: ProspectSnapshot): DraftEmailOutput {
+  const hook =
+    snapshot.researchBrief?.copyGuidance?.bestOpeningHook
+    ?? snapshot.researchBrief?.evidence[0]?.title
+    ?? "your team's recent work";
+  const whyNow =
+    snapshot.researchBrief?.copyGuidance?.whyNow
+    ?? "We help teams turn signal-driven workflow ideas into grounded, production-ready outbound systems.";
+  const cta =
+    snapshot.researchBrief?.copyGuidance?.ctaSuggestion
+    ?? "If useful, I can send a short teardown.";
+
+  return {
+    subject: `Quick question, ${snapshot.prospect.firstName}`,
+    bodyText: [
+      `Hi ${snapshot.prospect.firstName},`,
+      "",
+      `Thought you might appreciate a quick note about ${hook}.`,
+      whyNow,
+      "",
+      cta,
+      "",
+      "Best,",
+      "Team",
+    ].join("\n"),
+  };
+}
+
+function buildFollowupFallback(snapshot: ProspectSnapshot): DraftEmailOutput {
+  const cta =
+    snapshot.researchBrief?.copyGuidance?.ctaSuggestion
+    ?? "If you're working through outbound, research automation, or human handoff design, I can send a concrete outline instead of a pitch.";
+
+  return {
+    subject: `Following up, ${snapshot.prospect.firstName}`,
+    bodyText: [
+      `Hi ${snapshot.prospect.firstName},`,
+      "",
+      "Following up in case the earlier note was useful.",
+      cta,
+      "",
+      "Best,",
+      "Team",
+    ].join("\n"),
+  };
+}
+
+function buildReplyFallback(snapshot: ProspectSnapshot): DraftReplyOutput {
+  return {
+    action: "reply",
+    subject: `Re: ${snapshot.messages.findLast((message) => message.subject)?.subject ?? "follow up"}`,
+    bodyText: [
+      `Hi ${snapshot.prospect.firstName},`,
+      "",
+      "Appreciate the reply.",
+      "If helpful, I can send a tighter breakdown of how we'd approach the workflow so you can quickly see whether it fits what you're solving.",
+      "",
+      "Best,",
+      "Team",
+    ].join("\n"),
+  };
 }
 
 export async function executeProspectWorkflow(
@@ -80,6 +189,7 @@ export async function executeProspectWorkflow(
       prospectId,
       campaignId: snapshot.prospect.campaignId,
       summary: research.summary,
+      copyGuidance: research.copyGuidance,
       evidence: research.evidence,
       confidence: research.confidence,
       metadata: {
@@ -246,6 +356,7 @@ export async function executeProspectWorkflow(
 export async function processInboundReply(
   deps: WorkflowDependencies,
   input: {
+    providerInboxId?: string | null;
     providerThreadId: string;
     providerMessageId?: string | null;
     subject?: string | null;
@@ -278,6 +389,7 @@ export async function processInboundReply(
     status: "active",
     lastReplyClass: classification.classification,
     pausedReason: null,
+    providerInboxId: input.providerInboxId ?? undefined,
   });
   await deps.context.repository.updateProspectState({
     prospectId: threadRef.prospectId,
@@ -287,6 +399,7 @@ export async function processInboundReply(
     pausedReason: null,
   });
   await deps.context.repository.appendAuditEvent("thread", threadRef.threadId, "ReplyReceived", {
+    providerInboxId: input.providerInboxId ?? null,
     providerThreadId: input.providerThreadId,
     providerMessageId: input.providerMessageId ?? null,
   });
@@ -306,6 +419,61 @@ export async function processInboundReply(
   }
 
   return executeProspectWorkflow(deps, threadRef.prospectId);
+}
+
+export async function previewDraftForProspect(
+  deps: WorkflowDependencies,
+  prospectId: string,
+  kind: "first_outbound" | "follow_up" | "reply",
+): Promise<DraftPreview> {
+  const snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
+
+  if (kind === "first_outbound") {
+    const draft = await runPreviewDraft(
+      () => draftFirstOutbound(deps, snapshot),
+      () => buildFirstOutboundFallback(snapshot),
+    );
+    return {
+      kind,
+      subject: draft.subject,
+      bodyText: draft.bodyText,
+      generatedBy: draft.generatedBy,
+      fallbackReason: draft.fallbackReason,
+    };
+  }
+
+  if (kind === "follow_up") {
+    const draft = await runPreviewDraft(
+      () => draftFollowup(deps, snapshot),
+      () => buildFollowupFallback(snapshot),
+    );
+    return {
+      kind,
+      subject: draft.subject,
+      bodyText: draft.bodyText,
+      generatedBy: draft.generatedBy,
+      fallbackReason: draft.fallbackReason,
+    };
+  }
+
+  const latestInbound = await deps.context.repository.getLatestInboundMessage(snapshot.thread.id);
+  if (!latestInbound?.body_text) {
+    throw new Error(`thread ${snapshot.thread.id} has no inbound message to reply to`);
+  }
+
+  const draft = await runPreviewDraft(
+    () => draftReply(deps, snapshot, String(latestInbound.body_text)),
+    () => buildReplyFallback(snapshot),
+  );
+  return {
+    kind,
+    action: draft.action,
+    reason: draft.reason,
+    subject: draft.subject,
+    bodyText: draft.bodyText,
+    generatedBy: draft.generatedBy,
+    fallbackReason: draft.fallbackReason,
+  };
 }
 
 async function buildResearchBrief(
@@ -347,8 +515,9 @@ async function buildResearchBrief(
       "Use the orchid-sdr MCP tools, Firecrawl MCP tools, and local knowledge files when useful.",
       "If recent company context would help, use the Firecrawl MCP search tool `firecrawl_search` to look for company-related news.",
       "Research the prospect and return strict JSON only.",
-      'Schema: {"summary":"string","confidence":0.0,"evidence":[{"title":"string","url":"string","note":"string"}]}',
+      'Schema: {"summary":"string","confidence":0.0,"copyGuidance":{"primaryAngle":"string","bestOpeningHook":"string","whyNow":"string","avoidMentioning":["string"],"ctaSuggestion":"string"},"evidence":[{"title":"string","url":"string","note":"string"}]}',
       "The summary should cover: fit, signal, why now, outreach angle, and risks or unknowns.",
+      "The copyGuidance should tell downstream drafting exactly how to open, what angle to push, what timing matters, what to avoid mentioning, and what CTA to use.",
       "",
       `Prospect: ${snapshot.prospect.fullName}`,
       `Title: ${snapshot.prospect.title ?? "unknown"}`,
@@ -393,6 +562,23 @@ async function buildResearchBrief(
     return {
       summary: parsed.summary,
       confidence: clampConfidence(parsed.confidence),
+      copyGuidance:
+        parsed.copyGuidance &&
+        typeof parsed.copyGuidance.primaryAngle === "string" &&
+        typeof parsed.copyGuidance.bestOpeningHook === "string" &&
+        typeof parsed.copyGuidance.whyNow === "string" &&
+        Array.isArray(parsed.copyGuidance.avoidMentioning) &&
+        typeof parsed.copyGuidance.ctaSuggestion === "string"
+          ? {
+              primaryAngle: parsed.copyGuidance.primaryAngle,
+              bestOpeningHook: parsed.copyGuidance.bestOpeningHook,
+              whyNow: parsed.copyGuidance.whyNow,
+              avoidMentioning: parsed.copyGuidance.avoidMentioning
+                .filter((value): value is string => typeof value === "string")
+                .slice(0, 5),
+              ctaSuggestion: parsed.copyGuidance.ctaSuggestion,
+            }
+          : null,
       evidence: parsed.evidence.slice(0, 5),
     };
   }
@@ -409,6 +595,25 @@ async function buildResearchBrief(
         .join("\n")
       || sourceSignal?.content
       || "No research summary available.",
+    copyGuidance: {
+      primaryAngle:
+        snapshot.prospect.company && snapshot.prospect.title
+          ? `${snapshot.prospect.company} appears relevant based on ${snapshot.prospect.title} context and adjacent workflow signals.`
+          : "Lead with the strongest credible role or company context, not the raw acquisition source.",
+      bestOpeningHook:
+        snapshot.prospect.company && snapshot.prospect.title
+          ? `${snapshot.prospect.company} looks close to the workflow and systems work implied by ${snapshot.prospect.title}.`
+          : "Anchor on company or role context rather than mentioning the source post directly.",
+      whyNow:
+        companyNewsResults[0]?.excerpt
+        ?? searchResults[0]?.excerpt
+        ?? "Use timing carefully and only if recent company context actually supports it.",
+      avoidMentioning: [
+        "Do not say the prospect's post crossed our feed.",
+        "Do not mention internal acquisition mechanics.",
+      ],
+      ctaSuggestion: "If useful, I can send a short teardown.",
+    },
     confidence: sourceExtract?.markdown
       ? 0.72
       : searchResults.length > 0 || companyNewsResults.length > 0
@@ -442,14 +647,25 @@ async function draftFirstOutbound(
   deps: WorkflowDependencies,
   snapshot: ProspectSnapshot,
 ): Promise<DraftEmailOutput> {
+  const draftFacts = await buildDraftFacts(deps, snapshot);
   const turn = await deps.runSandboxTurn(
     buildTurnRequest(snapshot, "first_outbound", [
       "Use the `sdr-copy` skill.",
       "Use the orchid-sdr MCP tools and local knowledge files when useful.",
+      "Ground the message in `knowledge/product.md`, `knowledge/usp.md`, and `knowledge/icp.md`.",
+      "Use the actual product described in those knowledge files, not the repo or control-plane name.",
       "Draft the first outbound email for this prospect and return strict JSON only.",
       'Schema: {"subject":"string","bodyText":"string"}',
       "Keep it concise, grounded in the research brief, and avoid hype.",
       "Use one concrete reason for reaching out and one low-friction CTA.",
+      "Do not use em dashes or en dashes anywhere.",
+      "Do not overtly mention that we saw the prospect's post or that it crossed our feed unless there is no stronger anchor.",
+      "Prefer anchoring on role, company context, company research, and recent news over the raw source post.",
+      "Use the source signal as an internal clue for relevance, not the main line of the opener.",
+      "If the research brief includes copyGuidance, follow it closely.",
+      "",
+      "Verified facts for copy:",
+      JSON.stringify(draftFacts, null, 2),
       "",
       JSON.stringify(snapshot, null, 2),
     ]),
@@ -460,33 +676,30 @@ async function draftFirstOutbound(
     return parsed;
   }
 
-  return {
-    subject: `Quick question, ${snapshot.prospect.firstName}`,
-    bodyText: [
-      `Hi ${snapshot.prospect.firstName},`,
-      "",
-      `Saw your recent activity around ${snapshot.researchBrief?.evidence[0]?.title ?? "your team's recent work"}.`,
-      "Thought it might be relevant because Orchid builds agent systems that handle research, routing, and human handoff without turning outreach into brittle automation.",
-      "",
-      "If useful, I can send a short teardown of how we would structure that workflow for your team.",
-      "",
-      "Best,",
-      "Orchid",
-    ].join("\n"),
-  };
+  return buildFirstOutboundFallback(snapshot);
 }
 
 async function draftFollowup(
   deps: WorkflowDependencies,
   snapshot: ProspectSnapshot,
 ): Promise<DraftEmailOutput> {
+  const draftFacts = await buildDraftFacts(deps, snapshot);
   const turn = await deps.runSandboxTurn(
     buildTurnRequest(snapshot, "respond_or_handoff", [
       "Use the `sdr-copy` skill.",
+      "Ground the message in `knowledge/product.md`, `knowledge/usp.md`, and `knowledge/icp.md`.",
+      "Use the actual product described in those knowledge files, not the repo or control-plane name.",
       "Draft a short follow-up email and return strict JSON only.",
       'Schema: {"subject":"string","bodyText":"string"}',
       "Keep it under 90 words.",
       "Do not repeat the full pitch. Add one incremental angle only.",
+      "Do not use em dashes or en dashes anywhere.",
+      "Do not overtly mention that we saw the prospect's post or that it crossed our feed unless there is no stronger anchor.",
+      "Prefer anchoring on role, company context, company research, and recent news over the raw source post.",
+      "If the research brief includes copyGuidance, follow it closely.",
+      "",
+      "Verified facts for copy:",
+      JSON.stringify(draftFacts, null, 2),
       "",
       JSON.stringify(snapshot, null, 2),
     ]),
@@ -497,18 +710,7 @@ async function draftFollowup(
     return parsed;
   }
 
-  return {
-    subject: `Following up, ${snapshot.prospect.firstName}`,
-    bodyText: [
-      `Hi ${snapshot.prospect.firstName},`,
-      "",
-      "Following up in case the earlier note was useful.",
-      "If you're working through outbound, research automation, or human handoff design, I can send a concrete outline instead of a pitch.",
-      "",
-      "Best,",
-      "Orchid",
-    ].join("\n"),
-  };
+  return buildFollowupFallback(snapshot);
 }
 
 async function draftReply(
@@ -516,14 +718,22 @@ async function draftReply(
   snapshot: ProspectSnapshot,
   inboundBody: string,
 ): Promise<DraftReplyOutput> {
+  const draftFacts = await buildDraftFacts(deps, snapshot);
   const turn = await deps.runSandboxTurn(
     buildTurnRequest(snapshot, "respond_or_handoff", [
       "Use the `sdr-copy`, `reply-policy`, and `handoff-policy` skills.",
       "Use the orchid-sdr MCP tools and local knowledge files when useful.",
+      "Ground the message in `knowledge/product.md`, `knowledge/usp.md`, and `knowledge/icp.md`.",
+      "Use the actual product described in those knowledge files, not the repo or control-plane name.",
       "Draft the next reply for this inbound email and return strict JSON only.",
       'Schema: {"action":"reply"|"handoff","reason":"string","subject":"string","bodyText":"string"}',
       "Choose action=handoff if the response should be escalated to a human.",
       "If the thread becomes commercially important or ambiguous, hand off instead of bluffing.",
+      "Do not use em dashes or en dashes anywhere.",
+      "If the research brief includes copyGuidance, use it to stay consistent with the original angle.",
+      "",
+      "Verified facts for copy:",
+      JSON.stringify(draftFacts, null, 2),
       "",
       "Current prospect/thread snapshot:",
       JSON.stringify(snapshot, null, 2),
@@ -546,19 +756,7 @@ async function draftReply(
     };
   }
 
-  return {
-    action: "reply",
-    subject: `Re: ${snapshot.messages.findLast((message) => message.subject)?.subject ?? "follow up"}`,
-    bodyText: [
-      `Hi ${snapshot.prospect.firstName},`,
-      "",
-      "Appreciate the reply.",
-      "If helpful, I can send a tighter breakdown of how we'd approach the workflow so you can quickly see whether it fits what you're solving.",
-      "",
-      "Best,",
-      "Orchid",
-    ].join("\n"),
-  };
+  return buildReplyFallback(snapshot);
 }
 
 async function triggerHandoff(
@@ -597,7 +795,7 @@ function buildTurnRequest(
     campaignId: snapshot.prospect.campaignId,
     stage,
     systemPrompt: [
-      "You are Orchid SDR running inside a controlled sandbox.",
+      "You are the SDR agent for the product described in the local knowledge files.",
       "You can use orchid-sdr MCP tools for CRM context, research, enrichment, email, and handoff.",
       "Be factual, concise, and operationally safe.",
     ].join("\n"),
@@ -607,6 +805,133 @@ function buildTurnRequest(
       prospectId: snapshot.prospect.prospectId,
     },
   };
+}
+
+async function buildDraftFacts(
+  deps: WorkflowDependencies,
+  snapshot: ProspectSnapshot,
+): Promise<DraftFact[]> {
+  const facts: DraftFact[] = [];
+  const sourceSignal = snapshot.prospect.sourceSignalId
+    ? await deps.context.repository.getSignal(snapshot.prospect.sourceSignalId).catch(() => null)
+    : null;
+
+  if (snapshot.prospect.title) {
+    facts.push({
+      label: "role",
+      detail: `${snapshot.prospect.fullName} is ${snapshot.prospect.title}${snapshot.prospect.company ? ` at ${snapshot.prospect.company}` : ""}.`,
+    });
+  }
+
+  if (snapshot.qualificationReason) {
+    facts.push({
+      label: "qualification_reason",
+      detail: snapshot.qualificationReason,
+    });
+  }
+
+  for (const segment of snapshot.qualification?.matchedSegments ?? []) {
+    facts.push({
+      label: "matched_segment",
+      detail: segment,
+    });
+  }
+
+  for (const signal of snapshot.qualification?.matchedSignals ?? []) {
+    facts.push({
+      label: "matched_signal",
+      detail: signal,
+    });
+  }
+
+  for (const check of snapshot.qualification?.checks ?? []) {
+    if (check.passed && (check.kind === "fit" || check.kind === "supporting")) {
+      facts.push({
+        label: check.key,
+        detail: check.detail,
+      });
+    }
+  }
+
+  if (snapshot.researchBrief?.copyGuidance?.primaryAngle) {
+    facts.push({
+      label: "primary_angle",
+      detail: snapshot.researchBrief.copyGuidance.primaryAngle,
+    });
+  }
+  if (snapshot.researchBrief?.copyGuidance?.bestOpeningHook) {
+    facts.push({
+      label: "best_opening_hook",
+      detail: snapshot.researchBrief.copyGuidance.bestOpeningHook,
+    });
+  }
+  if (snapshot.researchBrief?.copyGuidance?.whyNow) {
+    facts.push({
+      label: "why_now",
+      detail: snapshot.researchBrief.copyGuidance.whyNow,
+    });
+  }
+
+  for (const evidence of snapshot.researchBrief?.evidence ?? []) {
+    facts.push({
+      label: "evidence",
+      detail: `${evidence.title}: ${evidence.note}`,
+    });
+  }
+
+  const profileUrl = extractLinkedinProfileUrl(sourceSignal?.metadata, snapshot.prospect.linkedinUrl);
+  if (profileUrl && profileUrl !== sourceSignal?.url) {
+    facts.push({
+      label: "profile_url",
+      detail: profileUrl,
+    });
+  }
+
+  if (sourceSignal?.authorTitle) {
+    facts.push({
+      label: "source_author_title",
+      detail: sourceSignal.authorTitle,
+    });
+  }
+
+  if (sourceSignal?.metadata && typeof sourceSignal.metadata === "object") {
+    const metadata = sourceSignal.metadata as Record<string, unknown>;
+    const featuredValues = [
+      metadata.headline,
+      metadata.about,
+      metadata.experienceSummary,
+      metadata.featuredSummary,
+    ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+    for (const value of featuredValues.slice(0, 4)) {
+      facts.push({
+        label: "profile_fact",
+        detail: value,
+      });
+    }
+  }
+
+  return dedupeDraftFacts(facts).slice(0, 16);
+}
+
+function dedupeDraftFacts(facts: DraftFact[]): DraftFact[] {
+  const seen = new Set<string>();
+  const deduped: DraftFact[] = [];
+
+  for (const fact of facts) {
+    const detail = fact.detail.trim();
+    if (!detail) {
+      continue;
+    }
+    const key = `${fact.label}:${detail.toLowerCase()}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push({ label: fact.label, detail });
+  }
+
+  return deduped;
 }
 
 async function setStage(

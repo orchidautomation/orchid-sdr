@@ -36,6 +36,7 @@ export async function handleAgentMailWebhook(
   deps: WorkflowDependencies,
   payload: {
     type: string;
+    inboxId?: string | null;
     threadId?: string | null;
     messageId?: string | null;
     subject?: string | null;
@@ -43,6 +44,14 @@ export async function handleAgentMailWebhook(
     payload?: Record<string, unknown>;
   },
 ) {
+  if (payload.type !== "message.received") {
+    return {
+      ok: true,
+      ignored: true,
+      reason: `unsupported event type ${payload.type}`,
+    };
+  }
+
   if (!payload.threadId || !payload.bodyText) {
     return {
       ok: true,
@@ -52,6 +61,7 @@ export async function handleAgentMailWebhook(
   }
 
   return processInboundReply(deps, {
+    providerInboxId: payload.inboxId ?? null,
     providerThreadId: payload.threadId,
     providerMessageId: payload.messageId ?? null,
     subject: payload.subject ?? null,

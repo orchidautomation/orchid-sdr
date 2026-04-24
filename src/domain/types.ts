@@ -57,6 +57,7 @@ export interface SignalRecord {
   authorTitle?: string | null;
   authorCompany?: string | null;
   companyDomain?: string | null;
+  twitterUrl?: string | null;
   topic: string;
   content: string;
   capturedAt: number;
@@ -73,6 +74,10 @@ export interface ProspectContext {
   company: string | null;
   companyDomain: string | null;
   linkedinUrl: string | null;
+  twitterUrl: string | null;
+  attioCompanyRecordId: string | null;
+  attioPersonRecordId: string | null;
+  attioListEntryId: string | null;
   sourceSignalId: string | null;
   status: ThreadStatus;
   stage: LifecycleStage;
@@ -80,11 +85,24 @@ export interface ProspectContext {
   pausedReason: string | null;
 }
 
+export interface CampaignSenderIdentity {
+  senderEmail: string | null;
+  senderDisplayName: string | null;
+  senderProviderInboxId: string | null;
+}
+
 export interface ResearchBrief {
   id: string;
   prospectId: string;
   campaignId: string;
   summary: string;
+  copyGuidance?: {
+    primaryAngle: string;
+    bestOpeningHook: string;
+    whyNow: string;
+    avoidMentioning: string[];
+    ctaSuggestion: string;
+  } | null;
   evidence: Array<{
     title: string;
     url: string;

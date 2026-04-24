@@ -18,62 +18,99 @@ const SANDBOX_AGENT_INSTALL_SCRIPT = "https://releases.rivet.dev/sandbox-agent/0
 const DEFAULT_SANDBOX_AGENTS = ["claude", "codex"];
 const CLAUDE_GATEWAY_MODEL = "moonshotai/kimi-k2.6";
 
+interface RunSandboxTurnOptions {
+  timeoutMs?: number;
+}
+
 export async function runSandboxTurn(
   context: AppContext,
   request: SandboxTurnRequest,
+  options: RunSandboxTurnOptions = {},
 ): Promise<SandboxTurnResponse> {
   assertSandboxReady(context);
 
   const sdk = await SandboxAgent.start({
     sandbox: createVercelSandboxProvider(context),
   });
+  let timedOut = false;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
   try {
-    await prepareSandboxWorkspace(sdk, context);
+    const runPromise = (async () => {
+      await prepareSandboxWorkspace(sdk, context);
 
-    const session = await sdk.createSession({
-      id: request.turnId,
-      agent: "claude",
-      cwd: SANDBOX_WORKSPACE,
-      model: CLAUDE_GATEWAY_MODEL,
-      mode: "bypassPermissions",
+      const session = await sdk.createSession({
+        id: request.turnId,
+        agent: "claude",
+        cwd: SANDBOX_WORKSPACE,
+        model: CLAUDE_GATEWAY_MODEL,
+        mode: "bypassPermissions",
+      });
+
+      const initialEvents = await collectSessionEvents(sdk, session.id);
+      const baselineCursor = String(initialEvents.items.length);
+      const transcript: unknown[] = [];
+      const unsubscribePermission = session.onPermissionRequest((permissionRequest) => {
+        transcript.push(permissionRequest);
+        void session.respondPermission(permissionRequest.id, "always");
+      });
+
+      try {
+        const response = await session.prompt([
+          {
+            type: "text",
+            text: [request.systemPrompt, "", request.prompt].join("\n"),
+          },
+        ]);
+
+        const events = await collectSessionEvents(sdk, session.id, baselineCursor);
+        transcript.push(...events.items);
+
+        const outputText =
+          extractAgentMessageText(events.items)
+          || collectTextFragments(events.items.map((event) => event.payload)).join("\n").trim();
+
+        return {
+          turnId: request.turnId,
+          outputText,
+          transcript,
+          usage: response.usage ?? undefined,
+        };
+      } finally {
+        unsubscribePermission();
+      }
+    })().catch((error) => {
+      if (timedOut) {
+        return undefined as unknown as SandboxTurnResponse;
+      }
+      throw error;
     });
 
-    const initialEvents = await collectSessionEvents(sdk, session.id);
-    const baselineCursor = String(initialEvents.items.length);
-    const transcript: unknown[] = [];
-    const unsubscribePermission = session.onPermissionRequest((permissionRequest) => {
-      transcript.push(permissionRequest);
-      void session.respondPermission(permissionRequest.id, "always");
-    });
-
-    try {
-      const response = await session.prompt([
-        {
-          type: "text",
-          text: [request.systemPrompt, "", request.prompt].join("\n"),
-        },
+    if (options.timeoutMs && options.timeoutMs > 0) {
+      const result = await Promise.race([
+        runPromise,
+        new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            timedOut = true;
+            reject(new Error(`sandbox turn timed out after ${options.timeoutMs}ms`));
+          }, options.timeoutMs);
+        }),
       ]);
 
-      const events = await collectSessionEvents(sdk, session.id, baselineCursor);
-      transcript.push(...events.items);
+      if (!result) {
+        throw new Error("sandbox turn aborted after timeout");
+      }
 
-      const outputText =
-        extractAgentMessageText(events.items)
-        || collectTextFragments(events.items.map((event) => event.payload)).join("\n").trim();
-
-      return {
-        turnId: request.turnId,
-        outputText,
-        transcript,
-        usage: response.usage ?? undefined,
-      };
-    } finally {
-      unsubscribePermission();
+      return result;
     }
+
+    return await runPromise;
   } finally {
-    await sdk.destroySandbox();
-    await sdk.dispose();
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+    await sdk.destroySandbox().catch(() => undefined);
+    await sdk.dispose().catch(() => undefined);
   }
 }
 

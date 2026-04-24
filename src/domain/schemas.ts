@@ -11,9 +11,10 @@ export const apifyWebhookSchema = z.object({
 });
 
 export const agentmailWebhookSchema = z.object({
-  type: z.string(),
-  threadId: z.string().optional(),
-  messageId: z.string().optional(),
+  type: z.string().optional(),
+  event_type: z.string().optional(),
+  message: z.record(z.string(), z.unknown()).optional(),
+  thread: z.record(z.string(), z.unknown()).optional(),
   payload: z.record(z.string(), z.unknown()).optional(),
 });
 

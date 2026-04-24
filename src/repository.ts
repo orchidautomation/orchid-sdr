@@ -2,8 +2,9 @@ import type { Pool } from "pg";
 
 import { getDb } from "./db/client.js";
 import { createId } from "./lib/ids.js";
-import { extractCompanyResearchUrl, extractLinkedinProfileUrl } from "./lib/signal-urls.js";
+import { extractCompanyResearchUrl, extractLinkedinProfileUrl, extractTwitterProfileUrl } from "./lib/signal-urls.js";
 import type {
+  CampaignSenderIdentity,
   ContactEmail,
   InternalEventName,
   LifecycleStage,
@@ -16,7 +17,7 @@ import type {
   ThreadStatus,
 } from "./domain/types.js";
 
-export interface CampaignPolicy {
+export interface CampaignPolicy extends CampaignSenderIdentity {
   id: string;
   name: string;
   status: string;
@@ -90,6 +91,7 @@ export interface DashboardActiveThreadRow {
   company: string | null;
   title: string | null;
   linkedinUrl: string | null;
+  twitterUrl: string | null;
   stage: string;
   status: string;
   qualificationReason: string | null;
@@ -122,6 +124,8 @@ export interface DashboardAuditEventRow {
 
 export interface ProspectSnapshot {
   prospect: ProspectContext;
+  qualificationReason: string | null;
+  qualification: QualificationAssessment | null;
   campaign: CampaignPolicy;
   thread: {
     id: string;
@@ -131,6 +135,7 @@ export interface ProspectSnapshot {
     pausedReason: string | null;
     nextFollowUpAt: string | null;
     providerThreadId: string | null;
+    providerInboxId: string | null;
   };
   email: ContactEmail | null;
   researchBrief: ResearchBrief | null;
@@ -167,6 +172,7 @@ type SignalRow = {
   author_title: string | null;
   author_company: string | null;
   company_domain: string | null;
+  twitter_url: string | null;
   topic: string;
   content: string;
   captured_at: Date;
@@ -235,7 +241,10 @@ export class OrchidRepository {
         touch_cap,
         email_confidence_threshold,
         research_confidence_threshold,
-        source_linkedin_enabled
+        source_linkedin_enabled,
+        sender_email,
+        sender_display_name,
+        sender_provider_inbox_id
       from campaigns
       where id = $1
       `,
@@ -257,6 +266,9 @@ export class OrchidRepository {
       emailConfidenceThreshold: Number(row.email_confidence_threshold),
       researchConfidenceThreshold: Number(row.research_confidence_threshold),
       sourceLinkedinEnabled: Boolean(row.source_linkedin_enabled),
+      senderEmail: row.sender_email,
+      senderDisplayName: row.sender_display_name,
+      senderProviderInboxId: row.sender_provider_inbox_id,
     };
   }
 
@@ -294,6 +306,45 @@ export class OrchidRepository {
       where id = $1
       `,
       [campaignId, enabled],
+    );
+  }
+
+  async updateCampaignSenderIdentity(input: {
+    campaignId: string;
+    senderEmail?: string | null;
+    senderDisplayName?: string | null;
+    senderProviderInboxId?: string | null;
+  }) {
+    const fields: string[] = [];
+    const values: unknown[] = [input.campaignId];
+    let index = 2;
+
+    if (input.senderEmail !== undefined) {
+      fields.push(`sender_email = $${index++}`);
+      values.push(input.senderEmail);
+    }
+    if (input.senderDisplayName !== undefined) {
+      fields.push(`sender_display_name = $${index++}`);
+      values.push(input.senderDisplayName);
+    }
+    if (input.senderProviderInboxId !== undefined) {
+      fields.push(`sender_provider_inbox_id = $${index++}`);
+      values.push(input.senderProviderInboxId);
+    }
+
+    if (fields.length === 0) {
+      return;
+    }
+
+    fields.push(`updated_at = now()`);
+
+    await this.db.query(
+      `
+      update campaigns
+      set ${fields.join(", ")}
+      where id = $1
+      `,
+      values,
     );
   }
 
@@ -389,6 +440,48 @@ export class OrchidRepository {
     }));
   }
 
+  async getProspectDashboardRow(prospectId: string): Promise<DashboardProspectRow | null> {
+    const result = await this.db.query(
+      `
+      select
+        id,
+        full_name,
+        company,
+        title,
+        stage,
+        status,
+        is_qualified,
+        qualification_reason,
+        metadata->'qualification' as qualification,
+        paused_reason,
+        updated_at
+      from prospects
+      where id = $1
+      limit 1
+      `,
+      [prospectId],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      fullName: row.full_name,
+      company: row.company,
+      title: row.title,
+      stage: row.stage,
+      status: row.status,
+      isQualified: Boolean(row.is_qualified),
+      qualificationReason: row.qualification_reason,
+      qualification: coerceQualification(row.qualification),
+      pausedReason: row.paused_reason,
+      updatedAt: new Date(row.updated_at).toISOString(),
+    };
+  }
+
   async listQualifiedLeads(limit = 20): Promise<DashboardQualifiedLeadRow[]> {
     const result = await this.db.query(
       `
@@ -426,6 +519,7 @@ export class OrchidRepository {
         p.company,
         p.title,
         p.linkedin_url,
+        p.twitter_url,
         t.stage,
         t.status,
         p.qualification_reason,
@@ -448,6 +542,7 @@ export class OrchidRepository {
       company: row.company as string | null,
       title: row.title as string | null,
       linkedinUrl: row.linkedin_url as string | null,
+      twitterUrl: row.twitter_url as string | null,
       stage: row.stage as string,
       status: row.status as string,
       qualificationReason: row.qualification_reason as string | null,
@@ -517,6 +612,32 @@ export class OrchidRepository {
     }));
   }
 
+  async listAuditEventsForEntity(
+    entityType: string,
+    entityId: string,
+    limit = 20,
+  ): Promise<DashboardAuditEventRow[]> {
+    const result = await this.db.query(
+      `
+      select id, entity_type, entity_id, event_name, payload, created_at
+      from audit_events
+      where entity_type = $1 and entity_id = $2
+      order by created_at desc
+      limit $3
+      `,
+      [entityType, entityId, limit],
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      eventName: row.event_name,
+      payload: coerceJson<Record<string, unknown>>(row.payload, {}),
+      createdAt: new Date(row.created_at).toISOString(),
+    }));
+  }
+
   async recordProviderRun(input: {
     provider: string;
     kind: string;
@@ -566,6 +687,7 @@ export class OrchidRepository {
   }
 
   async insertSignal(input: SignalRecord & { campaignId: string; datasetId?: string | null }) {
+    const twitterUrl = input.twitterUrl ?? extractTwitterProfileUrl(input.metadata, input.url);
     const result = await this.db.query<{ id: string }>(
       `
       insert into signals (
@@ -580,13 +702,14 @@ export class OrchidRepository {
         author_title,
         author_company,
         company_domain,
+        twitter_url,
         topic,
         content,
         captured_at,
         metadata
       )
       values (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, to_timestamp($14 / 1000.0), $15::jsonb
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, to_timestamp($15 / 1000.0), $16::jsonb
       )
       on conflict (source, source_ref)
       do update set
@@ -597,6 +720,7 @@ export class OrchidRepository {
         author_title = excluded.author_title,
         author_company = excluded.author_company,
         company_domain = excluded.company_domain,
+        twitter_url = excluded.twitter_url,
         topic = excluded.topic,
         content = excluded.content,
         captured_at = excluded.captured_at,
@@ -615,6 +739,7 @@ export class OrchidRepository {
         input.authorTitle ?? null,
         input.authorCompany ?? null,
         normalizeDomain(input.companyDomain),
+        twitterUrl,
         input.topic,
         input.content,
         input.capturedAt,
@@ -650,6 +775,7 @@ export class OrchidRepository {
       authorTitle: row.author_title,
       authorCompany: row.author_company,
       companyDomain: row.company_domain,
+      twitterUrl: row.twitter_url,
       topic: row.topic,
       content: row.content,
       capturedAt: row.captured_at.getTime(),
@@ -695,23 +821,49 @@ export class OrchidRepository {
       [signalId],
     );
 
-    const existingProspect = existingBySignal.rows[0]
-      ? existingBySignal
-      : await this.db.query(
-      `
-      select id
-      from prospects
-      where campaign_id = $1
-        and full_name = $2
-        and coalesce(company_domain, '') = coalesce($3, '')
-      limit 1
-      `,
-      [campaignId, signal.authorName, companyDomain],
+    const linkedinProfileUrl = extractLinkedinProfileUrl(signal.metadata, signal.url);
+    const twitterProfileUrl = signal.twitterUrl ?? extractTwitterProfileUrl(signal.metadata, signal.url);
+    let existingProspect = existingBySignal;
+    if (!existingProspect.rows[0] && linkedinProfileUrl) {
+      existingProspect = await this.db.query(
+        `
+        select id
+        from prospects
+        where campaign_id = $1
+          and linkedin_url = $2
+        limit 1
+        `,
+        [campaignId, linkedinProfileUrl],
       );
+    }
+    if (!existingProspect.rows[0] && twitterProfileUrl) {
+      existingProspect = await this.db.query(
+        `
+        select id
+        from prospects
+        where campaign_id = $1
+          and twitter_url = $2
+        limit 1
+        `,
+        [campaignId, twitterProfileUrl],
+      );
+    }
+    if (!existingProspect.rows[0]) {
+      existingProspect = await this.db.query(
+        `
+        select id
+        from prospects
+        where campaign_id = $1
+          and full_name = $2
+          and coalesce(company_domain, '') = coalesce($3, '')
+        limit 1
+        `,
+        [campaignId, signal.authorName, companyDomain],
+      );
+    }
 
     const firstName = signal.authorName.split(/\s+/)[0] ?? signal.authorName;
     const prospectId = existingProspect.rows[0]?.id ?? createId("pros");
-    const linkedinProfileUrl = extractLinkedinProfileUrl(signal.metadata, signal.url);
     const companyResearchUrl = extractCompanyResearchUrl({
       metadata: signal.metadata,
       companyDomain,
@@ -729,6 +881,7 @@ export class OrchidRepository {
         company,
         company_domain,
         linkedin_url,
+        twitter_url,
         source_signal_id,
         stage,
         status,
@@ -737,7 +890,7 @@ export class OrchidRepository {
         updated_at
       )
       values (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'capture_signal', 'active', $11::jsonb, now(), now()
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'capture_signal', 'active', $12::jsonb, now(), now()
       )
       on conflict (id)
       do update set
@@ -746,6 +899,7 @@ export class OrchidRepository {
         company = excluded.company,
         company_domain = excluded.company_domain,
         linkedin_url = excluded.linkedin_url,
+        twitter_url = excluded.twitter_url,
         source_signal_id = excluded.source_signal_id,
         updated_at = now()
       `,
@@ -758,7 +912,8 @@ export class OrchidRepository {
         signal.authorTitle ?? null,
         signal.authorCompany ?? null,
         companyDomain,
-        linkedinProfileUrl ?? signal.url,
+        linkedinProfileUrl,
+        twitterProfileUrl,
         signal.id,
         JSON.stringify({
           signalTopic: signal.topic,
@@ -808,7 +963,13 @@ export class OrchidRepository {
         p.company,
         p.company_domain,
         p.linkedin_url,
+        p.twitter_url,
+        p.attio_company_record_id,
+        p.attio_person_record_id,
+        p.attio_list_entry_id,
         p.source_signal_id,
+        p.qualification_reason,
+        p.metadata->'qualification' as qualification,
         p.status as prospect_status,
         p.stage as prospect_stage,
         p.last_reply_class as prospect_last_reply_class,
@@ -820,6 +981,7 @@ export class OrchidRepository {
         t.paused_reason as thread_paused_reason,
         t.next_follow_up_at,
         t.provider_thread_id,
+        t.provider_inbox_id,
         c.id as campaign_id,
         c.name as campaign_name,
         c.status as campaign_status,
@@ -828,7 +990,10 @@ export class OrchidRepository {
         c.touch_cap,
         c.email_confidence_threshold,
         c.research_confidence_threshold,
-        c.source_linkedin_enabled
+        c.source_linkedin_enabled,
+        c.sender_email,
+        c.sender_display_name,
+        c.sender_provider_inbox_id
       from prospects p
       join threads t on t.prospect_id = p.id
       join campaigns c on c.id = p.campaign_id
@@ -859,12 +1024,18 @@ export class OrchidRepository {
         company: row.company,
         companyDomain: row.company_domain,
         linkedinUrl: row.linkedin_url,
+        twitterUrl: row.twitter_url,
+        attioCompanyRecordId: row.attio_company_record_id,
+        attioPersonRecordId: row.attio_person_record_id,
+        attioListEntryId: row.attio_list_entry_id,
         sourceSignalId: row.source_signal_id,
         status: row.prospect_status,
         stage: row.prospect_stage,
         lastReplyClass: row.prospect_last_reply_class,
         pausedReason: row.prospect_paused_reason,
       },
+      qualificationReason: row.qualification_reason,
+      qualification: coerceQualification(row.qualification),
       campaign: {
         id: row.campaign_id,
         name: row.campaign_name,
@@ -875,6 +1046,9 @@ export class OrchidRepository {
         emailConfidenceThreshold: Number(row.email_confidence_threshold),
         researchConfidenceThreshold: Number(row.research_confidence_threshold),
         sourceLinkedinEnabled: Boolean(row.source_linkedin_enabled),
+        senderEmail: row.sender_email,
+        senderDisplayName: row.sender_display_name,
+        senderProviderInboxId: row.sender_provider_inbox_id,
       },
       thread: {
         id: row.thread_id,
@@ -884,6 +1058,7 @@ export class OrchidRepository {
         pausedReason: row.thread_paused_reason,
         nextFollowUpAt: row.next_follow_up_at?.toISOString?.() ?? null,
         providerThreadId: row.provider_thread_id,
+        providerInboxId: row.provider_inbox_id,
       },
       email,
       researchBrief: research,
@@ -966,6 +1141,10 @@ export class OrchidRepository {
 
   async saveResearchBrief(input: Omit<ResearchBrief, "id" | "createdAt"> & { metadata?: Record<string, unknown> }) {
     const id = createId("brief");
+    const metadata = {
+      ...(input.metadata ?? {}),
+      copyGuidance: input.copyGuidance ?? null,
+    };
     await this.db.query(
       `
       insert into research_briefs (
@@ -980,7 +1159,7 @@ export class OrchidRepository {
         input.summary,
         JSON.stringify(input.evidence),
         input.confidence,
-        JSON.stringify(input.metadata ?? {}),
+        JSON.stringify(metadata),
       ],
     );
 
@@ -990,7 +1169,7 @@ export class OrchidRepository {
   async getLatestResearchBrief(prospectId: string): Promise<ResearchBrief | null> {
     const result = await this.db.query(
       `
-      select id, prospect_id, campaign_id, summary, evidence, confidence, created_at
+      select id, prospect_id, campaign_id, summary, evidence, confidence, metadata, created_at
       from research_briefs
       where prospect_id = $1
       order by created_at desc
@@ -1008,6 +1187,10 @@ export class OrchidRepository {
       prospectId: row.prospect_id,
       campaignId: row.campaign_id,
       summary: row.summary,
+      copyGuidance:
+        row.metadata && typeof row.metadata === "object" && row.metadata.copyGuidance
+          ? row.metadata.copyGuidance
+          : null,
       evidence: Array.isArray(row.evidence) ? row.evidence : [],
       confidence: Number(row.confidence),
       createdAt: new Date(row.created_at).getTime(),
@@ -1078,6 +1261,7 @@ export class OrchidRepository {
     lastReplyClass?: ReplyClass | null;
     pausedReason?: string | null;
     providerThreadId?: string | null;
+    providerInboxId?: string | null;
     nextFollowUpAt?: string | null;
   }) {
     const fields: string[] = [];
@@ -1103,6 +1287,10 @@ export class OrchidRepository {
     if (input.providerThreadId !== undefined) {
       fields.push(`provider_thread_id = $${index++}`);
       values.push(input.providerThreadId);
+    }
+    if (input.providerInboxId !== undefined) {
+      fields.push(`provider_inbox_id = $${index++}`);
+      values.push(input.providerInboxId);
     }
     if (input.nextFollowUpAt !== undefined) {
       fields.push(`next_follow_up_at = $${index++}`);
@@ -1147,6 +1335,45 @@ export class OrchidRepository {
     if (input.pausedReason !== undefined) {
       fields.push(`paused_reason = $${index++}`);
       values.push(input.pausedReason);
+    }
+
+    fields.push(`updated_at = now()`);
+
+    await this.db.query(
+      `
+      update prospects
+      set ${fields.join(", ")}
+      where id = $1
+      `,
+      values,
+    );
+  }
+
+  async updateProspectCrmReferences(input: {
+    prospectId: string;
+    attioCompanyRecordId?: string | null;
+    attioPersonRecordId?: string | null;
+    attioListEntryId?: string | null;
+  }) {
+    const fields: string[] = [];
+    const values: unknown[] = [input.prospectId];
+    let index = 2;
+
+    if (input.attioCompanyRecordId !== undefined) {
+      fields.push(`attio_company_record_id = $${index++}`);
+      values.push(input.attioCompanyRecordId);
+    }
+    if (input.attioPersonRecordId !== undefined) {
+      fields.push(`attio_person_record_id = $${index++}`);
+      values.push(input.attioPersonRecordId);
+    }
+    if (input.attioListEntryId !== undefined) {
+      fields.push(`attio_list_entry_id = $${index++}`);
+      values.push(input.attioListEntryId);
+    }
+
+    if (fields.length === 0) {
+      return;
     }
 
     fields.push(`updated_at = now()`);
@@ -1266,6 +1493,7 @@ export class OrchidRepository {
     const result = await this.db.query(
       `
       select id, prospect_id, campaign_id, stage, status, last_reply_class, paused_reason, provider_thread_id
+      , provider_inbox_id
       from threads
       where id = $1
       `,

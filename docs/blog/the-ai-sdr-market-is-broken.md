@@ -82,7 +82,7 @@ That means:
 
 That is exactly what I built.
 
-In about five hours.
+In about eight hours.
 
 Not a demo.
 
@@ -95,6 +95,8 @@ The system wakes up on a schedule and starts from the ICP itself.
 It reads `icp.md`, decides what kinds of signals are worth searching for, and launches discovery runs.
 
 Today that discovery layer uses Apify, which means it can monitor public LinkedIn now and public X next without changing the core workflow.
+
+It can also ingest normalized signal batches from arbitrary sources through a generic webhook, which means LinkedIn is just one source adapter, not the architecture.
 
 From there, each candidate moves through a real pipeline:
 
@@ -214,7 +216,7 @@ The result is a category full of expensive software that still does not feel nat
 
 ## The Point
 
-If this much can be built in five hours with modern AI-native infrastructure, then the category is going to get rewritten.
+If this much can be built in eight hours with modern AI-native infrastructure, then the category is going to get rewritten.
 
 Not because outbound suddenly became easy.
 

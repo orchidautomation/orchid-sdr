@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import {
+  AttioAdapter,
   AgentMailAdapter,
   ApifySourceAdapter,
   FirecrawlExtractAdapter,
@@ -29,6 +30,7 @@ export interface AppContext {
   prospeo: ProspeoEmailEnricher;
   parallel: ParallelResearchAdapter;
   firecrawl: FirecrawlExtractAdapter;
+  attio: AttioAdapter;
   agentMail: AgentMailAdapter;
   slack: SlackWebhookAdapter;
   policy: {
@@ -69,6 +71,7 @@ export function getAppContext(): AppContext {
     prospeo: new ProspeoEmailEnricher(),
     parallel: new ParallelResearchAdapter(),
     firecrawl: new FirecrawlExtractAdapter(),
+    attio: new AttioAdapter(),
     agentMail: new AgentMailAdapter(),
     slack: new SlackWebhookAdapter(),
     policy: {

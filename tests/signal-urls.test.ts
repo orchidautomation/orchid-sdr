@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractCompanyResearchUrl, extractLinkedinProfileUrl } from "../src/lib/signal-urls.js";
+import { extractCompanyResearchUrl, extractLinkedinProfileUrl, extractTwitterProfileUrl } from "../src/lib/signal-urls.js";
 
 describe("signal url helpers", () => {
   it("prefers the author linkedin profile url over a post url", () => {
@@ -32,5 +32,16 @@ describe("signal url helpers", () => {
     });
 
     expect(url).toBe("https://www.linkedin.com/company/athennian/");
+  });
+
+  it("derives a canonical twitter/x profile url from a post url fallback", () => {
+    const url = extractTwitterProfileUrl(
+      {
+        authorUsername: "profit-management",
+      },
+      "https://x.com/profit-management/status/1234567890",
+    );
+
+    expect(url).toBe("https://x.com/profit-management");
   });
 });

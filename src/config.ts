@@ -79,11 +79,20 @@ const envSchema = z.object({
   AGENTMAIL_API_KEY: z.string().optional(),
   AGENTMAIL_BASE_URL: z.string().default("https://api.agentmail.to"),
   AGENTMAIL_WEBHOOK_SECRET: z.string().optional(),
+  AGENTMAIL_AUTO_PROVISION_INBOX: booleanFromEnv,
+  AGENTMAIL_DEFAULT_SENDER_NAME: z.string().optional(),
+  AGENTMAIL_DEFAULT_INBOX_DOMAIN: z.string().optional(),
 
   SLACK_BOT_TOKEN: z.string().optional(),
   SLACK_DEFAULT_CHANNEL: z.string().optional(),
   SLACK_WEBHOOK_URL: z.string().optional(),
 
+  ATTIO_API_KEY: z.string().optional(),
+  ATTIO_BASE_URL: z.string().default("https://api.attio.com/v2"),
+  ATTIO_DEFAULT_LIST_ID: z.string().optional(),
+  ATTIO_DEFAULT_LIST_STAGE: z.string().optional(),
+
+  ORCHID_SDR_MCP_TOKEN: z.string().optional(),
   ORCHID_SDR_SANDBOX_TOKEN: z.string().min(1),
   HANDOFF_WEBHOOK_SECRET: z.string().min(1),
 
@@ -93,6 +102,7 @@ const envSchema = z.object({
 
 export type AppConfig = z.infer<typeof envSchema> & {
   gatewayApiKey: string | undefined;
+  mcpToken: string;
 };
 
 let cachedConfig: AppConfig | null = null;
@@ -106,6 +116,7 @@ export function getConfig(): AppConfig {
   cachedConfig = {
     ...parsed,
     gatewayApiKey: parsed.AI_GATEWAY_API_KEY ?? parsed.VERCEL_AI_GATEWAY_KEY,
+    mcpToken: parsed.ORCHID_SDR_MCP_TOKEN ?? parsed.ORCHID_SDR_SANDBOX_TOKEN,
   };
   return cachedConfig;
 }

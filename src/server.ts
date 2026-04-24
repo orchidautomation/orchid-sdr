@@ -128,7 +128,7 @@ export async function createApp() {
 
   app.all("/mcp/orchid-sdr", async (c) => {
     const authorization = c.req.header("authorization");
-    if (authorization !== `Bearer ${context.config.ORCHID_SDR_SANDBOX_TOKEN}`) {
+    if (authorization !== `Bearer ${context.config.mcpToken}`) {
       return c.json({ error: "unauthorized" }, 401);
     }
 
@@ -244,15 +244,45 @@ export async function createApp() {
     }
 
     const json = JSON.parse(rawBody) as Record<string, unknown>;
+    const eventType = readString(json, ["event_type", "type"]) ?? "";
+    const message = (json.message && typeof json.message === "object" ? json.message : {}) as Record<string, unknown>;
+    const thread = (json.thread && typeof json.thread === "object" ? json.thread : {}) as Record<string, unknown>;
     const payload = (json.payload && typeof json.payload === "object" ? json.payload : {}) as Record<string, unknown>;
+    const inboxId =
+      readString(message, ["inbox_id", "inboxId"])
+      ?? readString(thread, ["inbox_id", "inboxId"])
+      ?? readString(payload, ["inboxId", "inbox_id"]);
+    const threadId =
+      readString(message, ["thread_id", "threadId"])
+      ?? readString(thread, ["thread_id", "threadId"])
+      ?? readString(json, ["threadId", "thread_id"])
+      ?? readString(payload, ["threadId", "thread_id"]);
+    const messageId =
+      readString(message, ["message_id", "messageId"])
+      ?? readString(json, ["messageId", "message_id"])
+      ?? readString(payload, ["messageId", "message_id"]);
+    let bodyText =
+      readString(message, ["text", "extracted_text", "preview"])
+      ?? readString(json, ["bodyText", "body_text", "text"])
+      ?? readString(payload, ["bodyText", "body_text", "text"]);
+
+    if (!bodyText && inboxId && messageId && context.agentMail.isConfigured()) {
+      const fullMessage = await context.agentMail.getMessage(inboxId, messageId).catch(() => null);
+      bodyText = fullMessage?.bodyText ?? null;
+    }
+
     const result = await handleAgentMailWebhook(workflowDeps, {
-      type: String(json.type ?? ""),
-      threadId: readString(json, ["threadId", "thread_id"]) ?? readString(payload, ["threadId", "thread_id"]),
-      messageId: readString(json, ["messageId", "message_id"]) ?? readString(payload, ["messageId", "message_id"]),
-      subject: readString(json, ["subject"]) ?? readString(payload, ["subject"]),
-      bodyText:
-        readString(json, ["bodyText", "body_text", "text"]) ?? readString(payload, ["bodyText", "body_text", "text"]),
-      payload,
+      type: eventType,
+      inboxId,
+      threadId,
+      messageId,
+      subject:
+        readString(message, ["subject"])
+        ?? readString(thread, ["subject"])
+        ?? readString(json, ["subject"])
+        ?? readString(payload, ["subject"]),
+      bodyText,
+      payload: json,
     });
 
     return c.json(result ?? { ok: true, ignored: true });

@@ -40,17 +40,51 @@ It should not feel like:
 
 - do not invent metrics, customers, use cases, or outcomes
 - do not say "I came across your profile" or other empty openers
+- do not say "your post crossed my feed", "saw your post", "caught my attention", or other surveillance-coded openers
 - do not compliment the person unless the compliment is directly tied to a real observed fact
 - do not over-explain the product in the first email
 - do not stack multiple asks in one note
 - do not write paragraphs that could have been sent to anyone
 - do not pretend the sender read more than the research actually shows
+- never use em dashes or en dashes in subject lines or body copy
+- do not overtly reveal the acquisition source unless it materially improves credibility
+
+## Signal Handling
+
+Use the source signal as an internal routing clue first, not as the headline of the email.
+
+Default personalization order:
+
+1. company context
+2. person profile and role context
+3. research brief
+4. recent company news
+5. source signal
+
+That means:
+
+- prefer references to the company's workflow, team shape, product motion, or operator context
+- prefer references to the person's role, remit, or public company-building work
+- use the signal to decide why they are in the funnel and what angle to take
+- only mention the post directly if it is the strongest credible fact and there is no better anchor
+
+Bad:
+
+- "Your breakdown of X crossed my feed"
+- "Saw your LinkedIn post about Y"
+- "Your post caught my attention"
+
+Better:
+
+- "Looks like your team is investing heavily in signal-driven outbound"
+- "You seem to sit close to the Clay workflow and GTM systems work"
+- "Given the way your team approaches outbound infrastructure..."
 
 ## First Outbound Structure
 
 The first outbound should usually do four things:
 
-1. anchor on one specific observed fact
+1. anchor on one specific observed fact, preferably from role, company, or research context
 2. connect that fact to one plausible problem or opportunity
 3. explain why the product may be relevant in one or two lines
 4. make one low-friction ask
@@ -135,6 +169,19 @@ Personalization should answer:
 - why would this product plausibly matter now?
 
 If you cannot answer those questions, the note is not ready.
+
+In most cases, the prospect should not feel that we are narrating the exact post that put them into the system.
+The email should feel informed, not watched.
+
+If the research brief includes explicit copy guidance, use it as the primary drafting aid:
+
+- `primaryAngle`
+- `bestOpeningHook`
+- `whyNow`
+- `avoidMentioning`
+- `ctaSuggestion`
+
+Those fields should override generic drafting instincts when they are present.
 
 ## CTA Standard
 

@@ -1,11 +1,23 @@
-alter table prospects
-  add column if not exists is_qualified boolean not null default false;
+alter table signals
+  add column if not exists twitter_url text;
 
 alter table prospects
-  add column if not exists qualified_at timestamptz;
+  add column if not exists twitter_url text;
 
 alter table prospects
-  add column if not exists qualification_reason text;
+  add column if not exists attio_company_record_id text;
+
+alter table prospects
+  add column if not exists attio_person_record_id text;
+
+alter table prospects
+  add column if not exists attio_list_entry_id text;
+
+create index if not exists idx_signals_twitter_url on signals(twitter_url);
+create index if not exists idx_prospects_linkedin_url on prospects(linkedin_url);
+create index if not exists idx_prospects_twitter_url on prospects(twitter_url);
+create index if not exists idx_prospects_attio_company_record_id on prospects(attio_company_record_id);
+create index if not exists idx_prospects_attio_person_record_id on prospects(attio_person_record_id);
 
 drop view if exists qualified_leads;
 
@@ -40,6 +52,7 @@ select
   p.company,
   p.company_domain,
   p.linkedin_url,
+  p.twitter_url,
   p.source_signal_id,
   p.is_qualified,
   p.qualified_at,
