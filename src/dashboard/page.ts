@@ -419,6 +419,23 @@ export function renderDashboardPage() {
       .btn-ghost {
         color: var(--muted);
       }
+      .btn-danger {
+        background: rgba(239, 137, 120, 0.14);
+        border-color: rgba(239, 137, 120, 0.34);
+        color: #ffd7d0;
+      }
+      .btn-danger:hover {
+        background: rgba(239, 137, 120, 0.2);
+        border-color: rgba(239, 137, 120, 0.48);
+      }
+      .btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.58;
+      }
+      .btn:disabled:hover {
+        border-color: var(--line);
+        background: var(--surface-2);
+      }
       .btn:focus-visible,
       .tab-button:focus-visible,
       .inline-link:focus-visible {
@@ -856,6 +873,13 @@ export function renderDashboardPage() {
                   <strong id="kill-status" class="status-value">Checking...</strong>
                 </div>
               </div>
+              <div class="status-row">
+                <span id="pause-dot" class="status-dot"></span>
+                <div class="status-copy">
+                  <span class="status-meta">Automation</span>
+                  <strong id="pause-status" class="status-value">Checking...</strong>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -892,6 +916,7 @@ export function renderDashboardPage() {
           <section class="sidebar-section">
             <p class="section-label">Actions</p>
             <div class="sidebar-actions">
+              <button id="toggle-pause" class="btn btn-danger" type="button">Pause AI</button>
               <button id="trigger-discovery" class="btn btn-primary" type="button">Run Discovery</button>
               <button id="run-probe" class="btn" type="button">Run Probe</button>
               <form method="post" action="/dashboard/logout">
@@ -1093,6 +1118,7 @@ export function renderDashboardPage() {
       const byId = (id) => document.getElementById(id);
       const tabs = Array.from(document.querySelectorAll("[data-tab]"));
       const panels = Array.from(document.querySelectorAll("[data-panel]"));
+      let latestState = null;
       const tabMeta = {
         overview: {
           title: "Overview",
@@ -1354,13 +1380,41 @@ export function renderDashboardPage() {
         return \`<a class="inline-link" href="\${escapeHtml(url)}" target="_blank" rel="noreferrer">Open profile</a>\`;
       }
 
-      function updateTopline(summary) {
+      function isCampaignPaused(state) {
+        const campaignId = state?.campaignId || "cmp_default";
+        const pausedCampaignIds = Array.isArray(state?.actors?.campaignOps?.flags?.pausedCampaignIds)
+          ? state.actors.campaignOps.flags.pausedCampaignIds
+          : [];
+        return pausedCampaignIds.includes(campaignId);
+      }
+
+      function updateTopline(state) {
+        const summary = state.summary;
+        const campaignPaused = isCampaignPaused(state);
+        const killSwitchOn = Boolean(state?.actors?.campaignOps?.flags?.globalKillSwitch ?? summary.globalKillSwitch);
+        const automationPaused = campaignPaused || killSwitchOn;
+        const pauseButton = byId("toggle-pause");
+
         byId("service-status").textContent = "Dashboard online";
         byId("sends-status").textContent = summary.noSendsMode ? "No sends mode ON" : "Sending enabled";
         byId("kill-status").textContent = summary.globalKillSwitch ? "Kill switch ON" : "Kill switch OFF";
+        byId("pause-status").textContent = killSwitchOn
+          ? "Blocked by kill switch"
+          : campaignPaused
+            ? "AI pause ON"
+            : "AI active";
         byId("service-dot").className = "status-dot success";
         byId("sends-dot").className = \`status-dot \${summary.noSendsMode ? "warn" : "success"}\`.trim();
         byId("kill-dot").className = \`status-dot \${summary.globalKillSwitch ? "danger" : "success"}\`.trim();
+        byId("pause-dot").className = \`status-dot \${killSwitchOn ? "danger" : campaignPaused ? "warn" : "success"}\`.trim();
+
+        pauseButton.textContent = campaignPaused ? "Resume AI" : "Pause AI";
+        pauseButton.className = campaignPaused ? "btn btn-primary" : "btn btn-danger";
+        pauseButton.disabled = killSwitchOn;
+        pauseButton.setAttribute("aria-pressed", campaignPaused ? "true" : "false");
+
+        byId("trigger-discovery").disabled = automationPaused;
+        byId("run-probe").disabled = automationPaused;
       }
 
       function showToast(message) {
@@ -1379,6 +1433,11 @@ export function renderDashboardPage() {
         });
 
         if (!response.ok) {
+          const contentType = response.headers.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const payload = await response.json().catch(() => null);
+            throw new Error(payload?.error || JSON.stringify(payload));
+          }
           throw new Error(await response.text());
         }
 
@@ -1397,11 +1456,12 @@ export function renderDashboardPage() {
         }
 
         const state = await response.json();
+        latestState = state;
         renderStats(state.summary);
         renderActors(state.actors, state.discovery);
         renderFeed(state.auditEvents);
         renderQualificationOverview(state.recentProspects);
-        updateTopline(state.summary);
+        updateTopline(state);
         byId("generated-at").textContent = "Updated " + timeLabel(state.generatedAt);
 
         renderRows("sandbox-jobs", state.sandboxJobs, (job) => \`
@@ -1529,6 +1589,23 @@ export function renderDashboardPage() {
           </tr>
         \`, 4);
       }
+
+      byId("toggle-pause").addEventListener("click", async () => {
+        const button = byId("toggle-pause");
+        const nextPaused = !isCampaignPaused(latestState);
+        button.disabled = true;
+        try {
+          await postJson("/api/dashboard/automation-pause", {
+            paused: nextPaused,
+          });
+          showToast(nextPaused ? "AI automation paused" : "AI automation resumed");
+          await refresh();
+        } catch (error) {
+          showToast(\`Pause update failed: \${error.message || error}\`);
+        } finally {
+          button.disabled = false;
+        }
+      });
 
       byId("trigger-discovery").addEventListener("click", async () => {
         try {

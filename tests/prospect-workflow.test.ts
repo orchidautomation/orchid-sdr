@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { previewDraftForProspect, processInboundReply } from "../src/orchestration/prospect-workflow.js";
+import {
+  executeProspectWorkflow,
+  previewDraftForProspect,
+  processInboundReply,
+} from "../src/orchestration/prospect-workflow.js";
 
 function createSnapshot() {
   return {
@@ -190,6 +194,59 @@ describe("previewDraftForProspect", () => {
       bodyText: "Hi Ada,\n\nWorth a brief look?",
       generatedBy: "sandbox",
       fallbackReason: undefined,
+    });
+  });
+});
+
+describe("executeProspectWorkflow", () => {
+  it("pauses before qualification and research when the campaign is paused", async () => {
+    const snapshot = {
+      ...createSnapshot(),
+      prospect: {
+        ...createSnapshot().prospect,
+        stage: "qualify",
+      },
+      thread: {
+        ...createSnapshot().thread,
+        stage: "qualify",
+      },
+      qualification: null,
+      qualificationReason: null,
+      researchBrief: null,
+    };
+    const repository = {
+      getProspectSnapshot: vi.fn(async () => snapshot),
+      getControlFlags: vi.fn(async () => ({
+        noSendsMode: false,
+        globalKillSwitch: false,
+        pausedCampaignIds: ["cmp_default"],
+      })),
+      getSignal: vi.fn(async () => null),
+      pauseThread: vi.fn(async () => undefined),
+      appendAuditEvent: vi.fn(async () => undefined),
+    };
+    const runSandboxTurn = vi.fn();
+
+    const result = await executeProspectWorkflow(
+      {
+        context: {
+          repository,
+        },
+        runSandboxTurn,
+      } as any,
+      "pros_1",
+    );
+
+    expect(repository.pauseThread).toHaveBeenCalledWith("thr_1", "campaign is paused");
+    expect(repository.appendAuditEvent).toHaveBeenCalledWith("thread", "thr_1", "ThreadPaused", {
+      reason: "campaign is paused",
+    });
+    expect(runSandboxTurn).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      action: "paused",
+      prospectId: "pros_1",
+      threadId: "thr_1",
+      reason: "campaign is paused",
     });
   });
 });

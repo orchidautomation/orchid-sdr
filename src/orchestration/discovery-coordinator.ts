@@ -14,6 +14,7 @@ import {
 import { getAppContext } from "../services/runtime-context.js";
 import { runSandboxTurn } from "./sandbox-broker.js";
 import { isWeekdayInTimezone } from "./discovery-window.js";
+import { getAutomationPauseReason } from "./workflow-control.js";
 
 interface DiscoveryActorState {
   campaignId: string | null;
@@ -571,6 +572,21 @@ async function runDiscoveryTick(
 
   try {
     const campaign = await context.repository.getCampaign(campaignId);
+    const controlFlags = await context.repository.getControlFlags();
+    const automationPauseReason = getAutomationPauseReason(controlFlags, campaignId);
+    if (automationPauseReason) {
+      c.state.lastStatus = "paused";
+      return {
+        ok: true,
+        source,
+        campaignId,
+        scheduledNextTickAt: await scheduleNextTick(c),
+        planner,
+        startedRuns,
+        skipped: true,
+        reason: automationPauseReason,
+      };
+    }
     if (!isSourceEnabled(context.config, campaign, source)) {
       c.state.lastStatus = "skipped";
       return {

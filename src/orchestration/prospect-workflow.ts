@@ -8,6 +8,7 @@ import {
   shouldRejectAtSignalTriage,
 } from "../services/qualification-engine.js";
 import type { WorkflowDependencies, WorkflowOutcome } from "./types.js";
+import { getAutomationPauseReason } from "./workflow-control.js";
 
 const FOLLOWUP_DELAY_MS = 3 * 24 * 60 * 60 * 1000;
 
@@ -153,6 +154,7 @@ export async function executeProspectWorkflow(
   const sourceSignal = snapshot.prospect.sourceSignalId
     ? await deps.context.repository.getSignal(snapshot.prospect.sourceSignalId)
     : null;
+  const automationPauseReason = getAutomationPauseReason(controlFlags, snapshot.prospect.campaignId);
 
   if (sourceSignal?.source === "linkedin_public_post" && !snapshot.campaign.sourceLinkedinEnabled) {
     await deps.context.repository.pauseThread(threadId, "linkedin source disabled");
@@ -160,6 +162,18 @@ export async function executeProspectWorkflow(
       reason: "linkedin source disabled",
     });
     return paused(snapshot, "linkedin source disabled");
+  }
+
+  if (automationPauseReason) {
+    if (snapshot.thread.status !== "paused" || snapshot.thread.pausedReason !== automationPauseReason) {
+      await deps.context.repository.pauseThread(threadId, automationPauseReason);
+      await deps.context.repository.appendAuditEvent("thread", threadId, "ThreadPaused", {
+        reason: automationPauseReason,
+      });
+      snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
+    }
+
+    return paused(snapshot, automationPauseReason);
   }
 
   if (needsQualification(snapshot)) {

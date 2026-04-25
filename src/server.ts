@@ -20,6 +20,7 @@ import {
   handleSignalWebhook,
 } from "./orchestration/webhook-handlers.js";
 import { runSandboxTurn } from "./orchestration/sandbox-broker.js";
+import { getAutomationPauseReason } from "./orchestration/workflow-control.js";
 
 export function createApp() {
   const app = new Hono();
@@ -104,6 +105,13 @@ export function createApp() {
       source?: "linkedin_public_post" | "x_public_post";
     };
     const campaign = await context.repository.ensureDefaultCampaign();
+    const automationPauseReason = getAutomationPauseReason(
+      await context.repository.getControlFlags(),
+      campaign.id,
+    );
+    if (automationPauseReason) {
+      return c.json({ error: `automation paused: ${automationPauseReason}` }, 409);
+    }
     const source = body.source === "x_public_post" ? "x_public_post" : "linkedin_public_post";
     const client = getActorClient();
     const actor = client.discoveryCoordinator.getOrCreate([campaign.id, source]);
@@ -122,12 +130,21 @@ export function createApp() {
       return c.json({ error: "unauthorized" }, 401);
     }
 
+    const campaign = await context.repository.ensureDefaultCampaign();
+    const automationPauseReason = getAutomationPauseReason(
+      await context.repository.getControlFlags(),
+      campaign.id,
+    );
+    if (automationPauseReason) {
+      return c.json({ error: `automation paused: ${automationPauseReason}` }, 409);
+    }
+
     const client = getActorClient();
     const actor = client.sandboxBroker.getOrCreate();
     const job = await actor.enqueueTurn({
       turnId: `dashboard-firecrawl-probe-${Date.now()}`,
       prospectId: "dashboard",
-      campaignId: (await context.repository.ensureDefaultCampaign()).id,
+      campaignId: campaign.id,
       stage: "build_research_brief",
       systemPrompt: "Use available tools when needed. Keep the final answer to one short line.",
       prompt: "Use the Firecrawl MCP server to inspect https://playkit.sh and reply with the page title only.",
@@ -137,6 +154,30 @@ export function createApp() {
     });
 
     return c.json(job, 202);
+  });
+
+  app.post("/api/dashboard/automation-pause", async (c) => {
+    if (!isDashboardAuthenticated(c.req.raw, dashboardCookieName, getDashboardPassword(context))) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+
+    const body = await c.req.json().catch(() => ({})) as {
+      paused?: boolean;
+    };
+    const paused = Boolean(body.paused);
+    const campaign = await context.repository.ensureDefaultCampaign();
+    const client = getActorClient();
+    const actor = client.campaignOps.getOrCreate();
+    const result = paused
+      ? await actor.pauseCampaign(campaign.id)
+      : await actor.resumeCampaign(campaign.id);
+
+    return c.json({
+      paused,
+      campaignId: campaign.id,
+      ...result,
+      flags: await context.repository.getControlFlags(),
+    });
   });
 
   app.all("/mcp/orchid-sdr", async (c) => {
@@ -449,6 +490,7 @@ async function buildDashboardState(context: ReturnType<typeof getAppContext>) {
   ]);
 
   return {
+    campaignId: campaign.id,
     generatedAt: new Date().toISOString(),
     summary,
     actors: {
