@@ -513,7 +513,7 @@ async function buildDashboardState(context: ReturnType<typeof getAppContext>) {
     context.repository.listActiveThreads(12),
     context.repository.listRecentProviderRuns(12),
     context.repository.listRecentAuditEvents(16),
-    sandboxActor.listJobs({ limit: 12 }),
+    sandboxActor.listJobs({ limit: 12 }).catch(() => []),
     client.sourceIngest.getOrCreate().getSnapshot().catch(() => null),
     client.campaignOps.getOrCreate().getSnapshot().catch(() => null),
     sandboxActor.getSnapshot().catch(() => null),
