@@ -15,7 +15,8 @@ const SANDBOX_WORKSPACE = `${SANDBOX_HOME}/orchid-sdr`;
 const SKILL_PROFILE_NAME = "default";
 const MCP_NAME = "orchid-sdr";
 const PARALLEL_SEARCH_MCP_NAME = "parallel-search";
-const SANDBOX_AGENT_INSTALL_SCRIPT = "https://releases.rivet.dev/sandbox-agent/0.5.0-rc.2/install.sh";
+const SANDBOX_AGENT_VERSION = "0.5.0-rc.2";
+const SANDBOX_AGENT_BINARY_PATH = `${SANDBOX_HOME}/.local/bin/sandbox-agent`;
 const DEFAULT_SANDBOX_AGENTS = ["claude", "codex"];
 const CLAUDE_GATEWAY_MODEL = "moonshotai/kimi-k2.6";
 
@@ -326,6 +327,32 @@ export function createTurnRequest(input: Omit<SandboxTurnRequest, "turnId">): Sa
   };
 }
 
+export function buildSandboxAgentBootstrapScript() {
+  return `
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+const version = "0.5.0-rc.2";
+const installPath = "/home/vercel-sandbox/.local/bin/sandbox-agent";
+
+const target = (() => {
+  if (process.platform !== "linux") throw new Error("sandbox-agent bootstrap only supports linux sandboxes");
+  if (process.arch === "x64") return "sandbox-agent-x86_64-unknown-linux-musl";
+  if (process.arch === "arm64") return "sandbox-agent-aarch64-unknown-linux-musl";
+  throw new Error(\`unsupported sandbox architecture: \${process.arch}\`);
+})();
+
+const url = \`https://releases.rivet.dev/sandbox-agent/\${version}/binaries/\${target}\`;
+const response = await fetch(url);
+if (!response.ok) throw new Error(\`failed to download sandbox-agent: \${response.status} \${response.statusText}\`);
+const buffer = Buffer.from(await response.arrayBuffer());
+mkdirSync(path.dirname(installPath), { recursive: true });
+writeFileSync(installPath, buffer);
+chmodSync(installPath, 0o755);
+console.log(\`installed sandbox-agent from \${url}\`);
+`.trim();
+}
+
 function createVercelSandboxProvider(context: AppContext) {
   const agentPort = 3000;
 
@@ -354,12 +381,12 @@ function createVercelSandboxProvider(context: AppContext) {
         },
       });
 
-      await runVercelCommand(sandbox, "sh", ["-c", `curl -fsSL ${SANDBOX_AGENT_INSTALL_SCRIPT} | sh`]);
+      await runVercelCommand(sandbox, "node", ["-e", buildSandboxAgentBootstrapScript()]);
       for (const agent of DEFAULT_SANDBOX_AGENTS) {
-        await runVercelCommand(sandbox, "sandbox-agent", ["install-agent", agent]);
+        await runVercelCommand(sandbox, SANDBOX_AGENT_BINARY_PATH, ["install-agent", agent]);
       }
       await sandbox.runCommand({
-        cmd: "sandbox-agent",
+        cmd: SANDBOX_AGENT_BINARY_PATH,
         args: ["server", "--no-token", "--host", "0.0.0.0", "--port", String(agentPort)],
         detached: true,
       });
@@ -377,7 +404,7 @@ function createVercelSandboxProvider(context: AppContext) {
     async ensureServer(sandboxId: string) {
       const sandbox = await getVercelSandbox(context, sandboxId);
       await sandbox.runCommand({
-        cmd: "sandbox-agent",
+        cmd: SANDBOX_AGENT_BINARY_PATH,
         args: ["server", "--no-token", "--host", "0.0.0.0", "--port", String(agentPort)],
         detached: true,
       });

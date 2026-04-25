@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSandboxMcpConfig } from "../src/orchestration/sandbox-broker.js";
+import { buildSandboxAgentBootstrapScript, buildSandboxMcpConfig } from "../src/orchestration/sandbox-broker.js";
 
 describe("buildSandboxMcpConfig", () => {
   it("includes the free Parallel Search MCP by default", () => {
@@ -26,6 +26,15 @@ describe("buildSandboxMcpConfig", () => {
         },
       },
     });
+  });
+
+  it("downloads the sandbox-agent binary with node fetch instead of curl", () => {
+    const script = buildSandboxAgentBootstrapScript();
+
+    expect(script).toContain("await fetch(url)");
+    expect(script).toContain("writeFileSync(installPath, buffer)");
+    expect(script).toContain("/home/vercel-sandbox/.local/bin/sandbox-agent");
+    expect(script).not.toContain("curl -fsSL");
   });
 
   it("adds auth-backed Parallel Search and Firecrawl when keys are present", () => {
