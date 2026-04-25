@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 
 import { getDb } from "./db/client.js";
+import { getConfig } from "./config.js";
 import { createId } from "./lib/ids.js";
 import { extractCompanyResearchUrl, extractLinkedinProfileUrl, extractTwitterProfileUrl } from "./lib/signal-urls.js";
 import type {
@@ -21,6 +22,7 @@ export interface CampaignPolicy extends CampaignSenderIdentity {
   id: string;
   name: string;
   status: string;
+  timezone: string;
   quietHoursStart: number;
   quietHoursEnd: number;
   touchCap: number;
@@ -213,6 +215,7 @@ export class OrchidRepository {
         id,
         name,
         status,
+        timezone,
         quiet_hours_start,
         quiet_hours_end,
         touch_cap,
@@ -220,10 +223,10 @@ export class OrchidRepository {
         research_confidence_threshold,
         source_linkedin_enabled
       )
-      values ($1, $2, 'active', 21, 8, 5, 0.75, 0.65, true)
+      values ($1, $2, 'active', $3, 21, 8, 5, 0.75, 0.65, true)
       on conflict (id) do nothing
       `,
-      [DEFAULT_CAMPAIGN_ID, "Default SDR Campaign"],
+      [DEFAULT_CAMPAIGN_ID, "Default SDR Campaign", getConfig().DEFAULT_CAMPAIGN_TIMEZONE],
     );
 
     return this.getCampaign(DEFAULT_CAMPAIGN_ID);
@@ -236,6 +239,7 @@ export class OrchidRepository {
         id,
         name,
         status,
+        timezone,
         quiet_hours_start,
         quiet_hours_end,
         touch_cap,
@@ -260,6 +264,7 @@ export class OrchidRepository {
       id: row.id,
       name: row.name,
       status: row.status,
+      timezone: row.timezone,
       quietHoursStart: row.quiet_hours_start,
       quietHoursEnd: row.quiet_hours_end,
       touchCap: row.touch_cap,
@@ -306,6 +311,18 @@ export class OrchidRepository {
       where id = $1
       `,
       [campaignId, enabled],
+    );
+  }
+
+  async setCampaignTimezone(campaignId: string, timezone: string) {
+    await this.db.query(
+      `
+      update campaigns
+      set timezone = $2,
+          updated_at = now()
+      where id = $1
+      `,
+      [campaignId, timezone],
     );
   }
 
@@ -985,6 +1002,7 @@ export class OrchidRepository {
         c.id as campaign_id,
         c.name as campaign_name,
         c.status as campaign_status,
+        c.timezone as campaign_timezone,
         c.quiet_hours_start,
         c.quiet_hours_end,
         c.touch_cap,
@@ -1040,6 +1058,7 @@ export class OrchidRepository {
         id: row.campaign_id,
         name: row.campaign_name,
         status: row.campaign_status,
+        timezone: row.campaign_timezone,
         quietHoursStart: row.quiet_hours_start,
         quietHoursEnd: row.quiet_hours_end,
         touchCap: row.touch_cap,

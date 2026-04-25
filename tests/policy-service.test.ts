@@ -31,6 +31,7 @@ function buildSnapshot(overrides?: Partial<ProspectSnapshot>): ProspectSnapshot 
       id: "cmp_default",
       name: "Default",
       status: "active",
+      timezone: "UTC",
       quietHoursStart: 21,
       quietHoursEnd: 8,
       touchCap: 5,
@@ -88,6 +89,32 @@ describe("evaluateSendAuthority", () => {
 
     expect(result.allowed).toBe(true);
     expect(result.reasons).toEqual([]);
+  });
+
+  it("evaluates quiet hours in campaign local time instead of UTC", () => {
+    const snapshot = buildSnapshot({
+      campaign: {
+        ...buildSnapshot().campaign,
+        timezone: "America/New_York",
+      },
+    });
+
+    const result = evaluateSendAuthority({
+      snapshot,
+      controlFlags: {
+        globalKillSwitch: false,
+        noSendsMode: false,
+        pausedCampaignIds: [],
+      },
+      kind: "first_outbound",
+      emailConfidence: 0.9,
+      researchConfidence: 0.8,
+      policyPass: true,
+      now: new Date("2026-04-24T23:00:00.000Z"),
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(result.reasons).not.toContain("quiet hours active");
   });
 
   it("blocks quiet hours, low confidence, and kill switch", () => {

@@ -28,12 +28,12 @@ It is the set of things that are still untested, partially tested, or still need
   - the AgentMail sender provisioning bug was fixed (invalid `client_id` format)
   - one clean allowed send through MCP completed and advanced the thread to `await_reply`
 
-- [ ] Fix or intentionally accept quiet-hours timezone behavior.
-  Current state:
-  - quiet hours are evaluated in UTC in `src/services/policy-service.ts`
-  Need decision:
-  - keep UTC and document it
-  - or move to campaign-local timezone and test it
+- [x] Fix quiet-hours timezone behavior.
+  Proven on Apr 24, 2026:
+  - quiet hours are evaluated in the campaign's local IANA timezone
+  - the default campaign was updated live to `America/New_York`
+  - new campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE`
+  - the first-party MCP now exposes `control.setCampaignTimezone` for live updates
 
 - [x] Auto-sync Attio after `OutboundSent` and promote the card on classified replies.
   Current state:
@@ -127,7 +127,7 @@ It is the set of things that are still untested, partially tested, or still need
 
 - [x] Add automated post-send CRM sync if that remains the chosen behavior.
 - [ ] Add first-class X discovery once the source adapter is ready.
-- [ ] Add per-campaign timezone support if outbound becomes customer-facing.
+- [x] Add per-campaign timezone support if outbound becomes customer-facing.
 - [ ] Add stronger throughput / cost / conversion scorecards.
 - [ ] Add one prospect detail page that shows:
   - qualification reasoning
@@ -163,4 +163,4 @@ If the question is:
 
 The answer is:
 
-Almost, but not until quiet-hours behavior is resolved and live `mail.preview` feels predictable.
+Yes for operator-guided outbound, with `mail.preview` latency still the main rough edge to smooth out.

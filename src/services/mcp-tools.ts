@@ -59,6 +59,8 @@ export class OrchidMcpToolService {
         return this.handleRunDiscovery(args);
       case "control.setNoSendsMode":
         return this.handleSetNoSendsMode(args);
+      case "control.setCampaignTimezone":
+        return this.handleSetCampaignTimezone(args);
       case "mail.send":
         return this.handleMailSend(args);
       case "mail.preview":
@@ -871,6 +873,32 @@ export class OrchidMcpToolService {
     const client = getActorClient();
     const actor = client.campaignOps.getOrCreate();
     return actor.setNoSendsMode(enabled);
+  }
+
+  private async handleSetCampaignTimezone(args: Record<string, unknown>) {
+    const timezone = String(args.timezone ?? "").trim();
+    if (!timezone) {
+      throw new Error("timezone is required");
+    }
+
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date());
+    } catch {
+      throw new Error("invalid IANA timezone: " + timezone);
+    }
+
+    const campaignId = args.campaignId
+      ? String(args.campaignId)
+      : (await this.context.repository.ensureDefaultCampaign()).id;
+    await this.context.repository.setCampaignTimezone(campaignId, timezone);
+    const campaign = await this.context.repository.getCampaign(campaignId);
+    await this.context.repository.appendAuditEvent("campaign", campaignId, "CampaignTimezoneUpdated", {
+      timezone,
+    });
+    return {
+      ok: true,
+      campaign,
+    };
   }
 
   private async handleMailSend(args: Record<string, unknown>) {

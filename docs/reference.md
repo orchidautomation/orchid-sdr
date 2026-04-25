@@ -19,6 +19,7 @@ Minimum local env:
 
 - `DATABASE_URL`
 - `NO_SENDS_MODE=true` if you want append-only mode with outbound blocked
+- `DEFAULT_CAMPAIGN_TIMEZONE=America/New_York` if you want new campaigns to inherit a local quiet-hours timezone
 - `HANDOFF_WEBHOOK_SECRET`
 - `ORCHID_SDR_SANDBOX_TOKEN`
 - `ORCHID_SDR_MCP_TOKEN` if you want a dedicated token for remote MCP access
@@ -52,6 +53,21 @@ npm test
 npm run build
 npm run discovery:tick
 npm run sandbox:probe
+```
+
+## Campaign Timezones and Quiet Hours
+
+Campaign quiet hours are evaluated in the campaign's local IANA timezone, not UTC.
+
+- each campaign stores a `timezone` value
+- new campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE`
+- you can update a live campaign through the first-party MCP tool `control.setCampaignTimezone`
+- quiet-hours start/end remain integer hours, but they are interpreted in that campaign-local timezone
+
+Example:
+
+```text
+control.setCampaignTimezone({"campaignId":"cmp_default","timezone":"America/New_York"})
 ```
 
 ## Changing the Model
@@ -181,6 +197,8 @@ Operator and pipeline tools:
 - `runtime.sandboxJobs`
 - `runtime.flags`
 - `control.runDiscovery`
+- `control.setNoSendsMode`
+- `control.setCampaignTimezone`
 
 Workflow and actuation tools:
 

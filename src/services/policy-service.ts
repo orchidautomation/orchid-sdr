@@ -14,7 +14,7 @@ export interface SendAuthorityInput {
 export function evaluateSendAuthority(input: SendAuthorityInput): SendAuthorityResult {
   const reasons: string[] = [];
   const now = input.now ?? new Date();
-  const hour = now.getUTCHours();
+  const hour = getHourForCampaignTimezone(now, input.snapshot.campaign.timezone);
 
   if (input.controlFlags.globalKillSwitch) {
     reasons.push("global kill switch enabled");
@@ -78,14 +78,30 @@ function hasBlockingReplyClass(replyClass: ReplyClass | null) {
   return replyClass === "unsubscribe" || replyClass === "bounce" || replyClass === "wrong_person" || replyClass === "spam_risk";
 }
 
-function isQuietHours(currentHourUtc: number, quietStart: number, quietEnd: number) {
+function isQuietHours(currentHour: number, quietStart: number, quietEnd: number) {
   if (quietStart === quietEnd) {
     return false;
   }
 
   if (quietStart > quietEnd) {
-    return currentHourUtc >= quietStart || currentHourUtc < quietEnd;
+    return currentHour >= quietStart || currentHour < quietEnd;
   }
 
-  return currentHourUtc >= quietStart && currentHourUtc < quietEnd;
+  return currentHour >= quietStart && currentHour < quietEnd;
+}
+
+function getHourForCampaignTimezone(now: Date, timeZone: string) {
+  try {
+    const formatted = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour: "numeric",
+      hourCycle: "h23",
+    }).format(now);
+    const hour = Number.parseInt(formatted, 10);
+    if (Number.isFinite(hour)) {
+      return hour;
+    }
+  } catch {}
+
+  return now.getUTCHours();
 }

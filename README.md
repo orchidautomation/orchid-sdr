@@ -12,6 +12,7 @@ It wakes up on a schedule, finds leads from public signals, researches the perso
 - qualifies leads against the repo knowledge pack
 - writes the full audit trail to Postgres
 - exposes the system through a dashboard and a remote MCP server
+- enforces quiet hours in the campaign's local IANA timezone
 - can auto-sync outbound accounts into Attio and promote CRM stages on replies
 - can optionally send and reply through AgentMail
 
@@ -133,6 +134,8 @@ http://localhost:3000/dashboard
 
 If you want the full runtime, add provider keys such as Apify, Firecrawl, Vercel AI Gateway, AgentMail, and Attio. When Attio is configured, the first outbound can auto-create or update the company and contact, and classified replies can automatically promote the Attio stage.
 
+Campaign quiet hours are evaluated in the campaign's local timezone. New campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE` and you can update a live campaign later through the remote MCP tool `control.setCampaignTimezone`.
+
 Parallel Search MCP is mounted into sandbox turns by default using the free `https://search.parallel.ai/mcp` endpoint. If you set `PARALLEL_API_KEY`, the sandbox uses the same MCP with a bearer token for higher rate limits.
 
 ## Multiple Campaigns
@@ -145,6 +148,7 @@ That is the right model when you want multiple outbound agents for the same prod
 - different discovery sources
 - different sender identities
 - different outreach strategies
+- different timezones and quiet-hour windows
 
 In that setup, keep one deployed control plane and create multiple campaigns inside it.
 

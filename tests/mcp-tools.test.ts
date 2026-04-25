@@ -81,6 +81,17 @@ describe("OrchidMcpToolService operator tools", () => {
       ensureDefaultCampaign: vi.fn(async () => ({
         id: "cmp_default",
         name: "Default SDR Campaign",
+        status: "active",
+        timezone: "UTC",
+        quietHoursStart: 21,
+        quietHoursEnd: 8,
+        touchCap: 5,
+        emailConfidenceThreshold: 0.75,
+        researchConfidenceThreshold: 0.65,
+        sourceLinkedinEnabled: true,
+        senderEmail: null,
+        senderDisplayName: null,
+        senderProviderInboxId: null,
       })),
       getDashboardSummary: vi.fn(async () => ({
         signals: 10,
@@ -229,6 +240,7 @@ describe("OrchidMcpToolService operator tools", () => {
           id: "cmp_default",
           name: "Default SDR Campaign",
           status: "active",
+          timezone: "UTC",
           quietHoursStart: 21,
           quietHoursEnd: 8,
           touchCap: 5,
@@ -336,6 +348,22 @@ describe("OrchidMcpToolService operator tools", () => {
       updateThreadState: vi.fn(async () => undefined),
       updateProspectState: vi.fn(async () => undefined),
       addMessage: vi.fn(async () => "msg_1"),
+      setCampaignTimezone: vi.fn(async () => undefined),
+      getCampaign: vi.fn(async () => ({
+        id: "cmp_default",
+        name: "Default SDR Campaign",
+        status: "active",
+        timezone: "UTC",
+        quietHoursStart: 21,
+        quietHoursEnd: 8,
+        touchCap: 5,
+        emailConfidenceThreshold: 0.75,
+        researchConfidenceThreshold: 0.65,
+        sourceLinkedinEnabled: true,
+        senderEmail: null,
+        senderDisplayName: null,
+        senderProviderInboxId: null,
+      })),
       updateCampaignSenderIdentity: vi.fn(async () => undefined),
     };
 
@@ -701,6 +729,38 @@ describe("OrchidMcpToolService operator tools", () => {
       prospectId: "pros_1",
       stage: "first_outbound",
       reason: "smoke test",
+    });
+  });
+
+  it("sets the campaign timezone through the repository", async () => {
+    const { service, repository } = createService();
+    repository.setCampaignTimezone = vi.fn(async () => undefined);
+    repository.getCampaign = vi.fn(async () => ({
+      id: "cmp_default",
+      name: "Default SDR Campaign",
+      status: "active",
+      timezone: "America/New_York",
+      quietHoursStart: 21,
+      quietHoursEnd: 8,
+      touchCap: 5,
+      emailConfidenceThreshold: 0.75,
+      researchConfidenceThreshold: 0.65,
+      sourceLinkedinEnabled: true,
+      senderEmail: null,
+      senderDisplayName: null,
+      senderProviderInboxId: null,
+    }));
+
+    const result = await service.handleTool("control.setCampaignTimezone", {
+      timezone: "America/New_York",
+    });
+
+    expect(repository.setCampaignTimezone).toHaveBeenCalledWith("cmp_default", "America/New_York");
+    expect(result).toMatchObject({
+      ok: true,
+      campaign: {
+        timezone: "America/New_York",
+      },
     });
   });
 

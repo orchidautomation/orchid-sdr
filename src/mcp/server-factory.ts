@@ -292,6 +292,19 @@ export function createOrchidMcpServer(context: AppContext) {
   );
 
   server.registerTool(
+    "control.setCampaignTimezone",
+    {
+      description: "Set the IANA timezone used for campaign-local quiet hours.",
+      inputSchema: {
+        campaignId: z.string().optional(),
+        timezone: z.string(),
+      },
+    },
+    async ({ campaignId, timezone }) =>
+      toToolResult(await context.mcpTools.handleTool("control.setCampaignTimezone", { campaignId, timezone })),
+  );
+
+  server.registerTool(
     "mail.send",
     {
       description: "Send the first outbound or a follow-up after deterministic policy checks.",

@@ -95,6 +95,8 @@ const envSchema = z.object({
   ATTIO_AUTO_POSITIVE_REPLY_STAGE: z.string().default("Qualification"),
   ATTIO_AUTO_NEGATIVE_REPLY_STAGE: z.string().default("Paused"),
 
+  DEFAULT_CAMPAIGN_TIMEZONE: z.string().default("UTC"),
+
   ORCHID_SDR_MCP_TOKEN: z.string().optional(),
   ORCHID_SDR_SANDBOX_TOKEN: z.string().min(1),
   HANDOFF_WEBHOOK_SECRET: z.string().min(1),

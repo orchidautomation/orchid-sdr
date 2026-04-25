@@ -50,6 +50,7 @@ function createSnapshot() {
       id: "cmp_default",
       name: "Default SDR Campaign",
       status: "active",
+      timezone: "UTC",
       quietHoursStart: 21,
       quietHoursEnd: 8,
       touchCap: 5,
