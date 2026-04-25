@@ -59,11 +59,28 @@ export const aiSdrModuleSmokeCheckSchema = z.object({
   command: z.string().optional(),
 });
 
+export const aiSdrContractIdSchema = z.enum([
+  "signal.normalized.v1",
+  "signal.webhook.v1",
+  "signal.discovery.v1",
+  "crm.prospectSync.v1",
+  "crm.stageUpdate.v1",
+  "email.outbound.v1",
+  "email.inbound.v1",
+  "research.search.v1",
+  "research.extract.v1",
+  "model.gateway.v1",
+  "runtime.sandbox.v1",
+  "mcp.tools.v1",
+  "handoff.notify.v1",
+]);
+
 export const aiSdrModuleDefinitionSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
   packageName: z.string().optional(),
   description: z.string().optional(),
+  contracts: z.array(aiSdrContractIdSchema).optional(),
   providers: z.array(aiSdrProviderDefinitionSchema).optional(),
   skills: z.array(aiSdrSkillDefinitionSchema).optional(),
   requiredEnv: z.array(aiSdrEnvVarSchema).optional(),
@@ -91,6 +108,7 @@ export type AiSdrKnowledgeDefinition = z.infer<typeof aiSdrKnowledgeDefinitionSc
 export type AiSdrCampaignDefinition = z.infer<typeof aiSdrCampaignDefinitionSchema>;
 export type AiSdrModuleDoc = z.infer<typeof aiSdrModuleDocSchema>;
 export type AiSdrModuleSmokeCheck = z.infer<typeof aiSdrModuleSmokeCheckSchema>;
+export type AiSdrContractId = z.infer<typeof aiSdrContractIdSchema>;
 export type AiSdrModuleDefinition = z.infer<typeof aiSdrModuleDefinitionSchema>;
 export type AiSdrConfig = z.infer<typeof aiSdrConfigSchema>;
 
@@ -159,6 +177,7 @@ export function providersFromModules(modules: AiSdrModuleDefinition[]): AiSdrPro
 }
 
 export * from "./signals.js";
+export * from "./crm.js";
 export * from "./provider-contracts.js";
 export * from "./validation.js";
 export * from "./builtin-modules.js";

@@ -18,6 +18,7 @@ export function validateAiSdrConfigReferences(config: AiSdrConfig): AiSdrConfigI
     ...findDuplicateIds("campaign", (config.campaigns ?? []).map((campaign) => campaign.id)),
     ...findUnknownCampaignSources(config),
     ...findProvidersMissingFromConfig(config),
+    ...findModulesWithoutContracts(config),
   ];
 }
 
@@ -88,4 +89,14 @@ function findProvidersMissingFromConfig(config: AiSdrConfig): AiSdrConfigIssue[]
   }
 
   return issues;
+}
+
+function findModulesWithoutContracts(config: AiSdrConfig): AiSdrConfigIssue[] {
+  return (config.modules ?? [])
+    .filter((module) => (module.contracts ?? []).length === 0)
+    .map((module) => ({
+      severity: "warning" as const,
+      code: "module_without_contracts",
+      message: `Module "${module.id}" does not declare any normalized framework contracts`,
+    }));
 }

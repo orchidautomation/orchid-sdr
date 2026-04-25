@@ -150,6 +150,7 @@ describe("AI SDR framework config helpers", () => {
     expect(config.providers?.some((item) => item.id === "attio")).toBe(true);
     expect(collectConfigEnv(config).some((envVar) => envVar.name === "ATTIO_API_KEY")).toBe(true);
     expect(collectModuleDocs(config).some((doc) => doc.path === "docs/self-hosting.md")).toBe(true);
+    expect(config.modules?.flatMap((item) => item.contracts ?? [])).toContain("crm.prospectSync.v1");
     expect(validateAiSdrConfigReferences(config)).toEqual([]);
   });
 });

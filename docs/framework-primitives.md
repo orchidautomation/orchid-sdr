@@ -45,12 +45,26 @@ That matters because future CLI commands and coding agents need a runtime-verifi
 Current provider modules are defined in [src/framework/builtin-modules.ts](../src/framework/builtin-modules.ts). Each module can bundle:
 
 - provider definitions
+- normalized framework contracts
 - env vars
 - docs
 - future smoke checks
 - package names for future extraction
 
 That is the beginning of the `ai-sdr add <module>` shape.
+
+Contract examples:
+
+```text
+signal.normalized.v1
+crm.prospectSync.v1
+crm.stageUpdate.v1
+email.outbound.v1
+research.extract.v1
+runtime.sandbox.v1
+```
+
+This lets a future Salesforce, HubSpot, or Nango-backed module say exactly which normalized surfaces it supports.
 
 ## Signals
 
@@ -93,6 +107,8 @@ Examples:
 - Model: Vercel AI Gateway, OpenAI, Anthropic, OpenRouter, local models
 
 The early executable contracts live in [src/framework/provider-contracts.ts](../src/framework/provider-contracts.ts).
+
+CRM normalization is covered separately in [CRM Normalization](crm-normalization.md). That layer keeps Salesforce, HubSpot, Twenty, Attio, and Nango-backed adapters from leaking vendor-specific shapes into the core SDR workflow.
 
 Current contract examples:
 

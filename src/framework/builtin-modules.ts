@@ -17,6 +17,7 @@ export function attioModule(): AiSdrModuleDefinition {
     displayName: "Attio CRM",
     packageName: "@ai-sdr/attio",
     description: "Sync qualified prospects into Attio and promote list stages on reply events.",
+    contracts: ["crm.prospectSync.v1", "crm.stageUpdate.v1"],
     providers: [attioProvider()],
     docs: [
       {
@@ -39,6 +40,7 @@ export function agentMailModule(): AiSdrModuleDefinition {
     displayName: "AgentMail",
     packageName: "@ai-sdr/agentmail",
     description: "Provide agent-native outbound email, sender inboxes, reply fetching, and inbound webhooks.",
+    contracts: ["email.outbound.v1", "email.inbound.v1"],
     providers: [agentMailProvider()],
     docs: [
       {
@@ -69,6 +71,7 @@ export function apifyLinkedInModule(): AiSdrModuleDefinition {
     displayName: "Apify LinkedIn public-post discovery",
     packageName: "@ai-sdr/apify-linkedin",
     description: "Discover LinkedIn public posts and normalize them into SDR signals.",
+    contracts: ["signal.discovery.v1", "signal.normalized.v1"],
     providers: [apifyLinkedInProvider()],
     docs: [
       {
@@ -91,6 +94,7 @@ export function normalizedWebhookModule(): AiSdrModuleDefinition {
     displayName: "Normalized signal webhook",
     packageName: "@ai-sdr/webhooks",
     description: "Accept warm leads and custom source signals through a normalized webhook contract.",
+    contracts: ["signal.webhook.v1", "signal.normalized.v1"],
     providers: [normalizedWebhookProvider()],
     docs: [
       {
@@ -113,6 +117,7 @@ export function firecrawlModule(): AiSdrModuleDefinition {
     displayName: "Firecrawl research",
     packageName: "@ai-sdr/firecrawl",
     description: "Search and extract pages for lead, company, and news research.",
+    contracts: ["research.search.v1", "research.extract.v1"],
     providers: [firecrawlProvider()],
     smokeChecks: [
       {
@@ -129,6 +134,7 @@ export function vercelAiGatewayModule(): AiSdrModuleDefinition {
     displayName: "Vercel AI Gateway",
     packageName: "@ai-sdr/vercel-ai-gateway",
     description: "Route structured model calls and sandbox turns through a swappable model gateway.",
+    contracts: ["model.gateway.v1"],
     providers: [vercelAiGatewayProvider()],
   });
 }
@@ -139,6 +145,7 @@ export function vercelSandboxModule(): AiSdrModuleDefinition {
     displayName: "Vercel Sandbox runtime",
     packageName: "@ai-sdr/vercel-sandbox",
     description: "Run turn-scoped coding-agent style workflows with mounted skills and MCP tools.",
+    contracts: ["runtime.sandbox.v1"],
     providers: [vercelSandboxProvider()],
     smokeChecks: [
       {
@@ -156,6 +163,7 @@ export function orchidMcpModule(): AiSdrModuleDefinition {
     displayName: "First-party MCP",
     packageName: "@ai-sdr/mcp",
     description: "Expose pipeline, lead, runtime, mail, CRM, and handoff tools through MCP.",
+    contracts: ["mcp.tools.v1"],
     providers: [orchidMcpProvider()],
     docs: [
       {
@@ -178,6 +186,7 @@ export function slackHandoffModule(): AiSdrModuleDefinition {
     displayName: "Slack handoff",
     packageName: "@ai-sdr/slack",
     description: "Route handoff events into Slack.",
+    contracts: ["handoff.notify.v1"],
     providers: [slackHandoffProvider()],
     smokeChecks: [
       {

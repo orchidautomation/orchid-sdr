@@ -170,6 +170,8 @@ Separate deploys are safer when the underlying product or knowledge pack is diff
   Full setup, env, MCP, skill, knowledge-pack, Attio, and webhook details.
 - `docs/framework-primitives.md`
   Emerging modular primitives for GTM engineers building custom AI SDRs with coding agents.
+- `docs/crm-normalization.md`
+  Normalized CRM contracts for Salesforce, HubSpot, Twenty, Attio, and Nango-backed adapters.
 - `docs/self-hosting.md`
   Clone-and-deploy guide for running Orchid SDR on a customer's own server.
 - `docs/email-providers.md`
@@ -185,6 +187,7 @@ Separate deploys are safer when the underlying product or knowledge pack is diff
 
 - [Reference](docs/reference.md)
 - [Framework Primitives](docs/framework-primitives.md)
+- [CRM Normalization](docs/crm-normalization.md)
 - [Self-Hosting](docs/self-hosting.md)
 - [Email Providers](docs/email-providers.md)
 - [Blog Series](blog/README.md)

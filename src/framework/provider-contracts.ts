@@ -1,4 +1,10 @@
 import type { ProviderSignal } from "./signals.js";
+import type {
+  CrmProspectSyncRequest,
+  CrmProspectSyncResult,
+  CrmStageUpdateRequest,
+  CrmStageUpdateResult,
+} from "./crm.js";
 
 export interface ConfigurableProvider {
   isConfigured(): boolean;
@@ -71,6 +77,12 @@ export interface WebExtractProvider {
 }
 
 export interface CrmProvider extends ConfigurableProvider {}
+
+export interface ProspectCrmProvider extends CrmProvider {
+  providerId: string;
+  syncProspect(input: CrmProspectSyncRequest): Promise<CrmProspectSyncResult>;
+  updateStage?(input: CrmStageUpdateRequest): Promise<CrmStageUpdateResult>;
+}
 
 export interface EmailInboxReference {
   providerInboxId: string | null;

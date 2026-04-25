@@ -67,6 +67,7 @@ function printPlan(module: AiSdrModuleDefinition) {
   console.log(`Module: ${plan.displayName} (${plan.moduleId})`);
   console.log(`Package: ${plan.packageName ?? "not assigned"}`);
   console.log(`Status: ${plan.alreadyInstalled ? "installed" : "available"}`);
+  printList("Contracts", plan.contracts);
   printList("Providers", plan.providers);
   printList("Env", plan.envVars);
   printList("Docs", plan.docs);

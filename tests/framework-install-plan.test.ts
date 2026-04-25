@@ -8,6 +8,7 @@ describe("framework module install plans", () => {
 
     expect(plan.moduleId).toBe("attio");
     expect(plan.packageName).toBe("@ai-sdr/attio");
+    expect(plan.contracts).toEqual(["crm.prospectSync.v1", "crm.stageUpdate.v1"]);
     expect(plan.providers).toEqual(["attio"]);
     expect(plan.envVars).toContain("ATTIO_API_KEY");
     expect(plan.smokeChecks).toContain("crm.syncProspect");

@@ -5,6 +5,7 @@ export type AiSdrModuleInstallPlan = {
   displayName: string;
   packageName: string | null;
   alreadyInstalled: boolean;
+  contracts: string[];
   providers: string[];
   envVars: string[];
   docs: string[];
@@ -30,6 +31,7 @@ export function buildModuleInstallPlan(
     displayName: module.displayName,
     packageName: module.packageName ?? null,
     alreadyInstalled,
+    contracts: module.contracts ?? [],
     providers: (module.providers ?? []).map((provider) => provider.id),
     envVars: [...new Set(envVars)].sort(),
     docs: (module.docs ?? []).map((doc) => `${doc.label}: ${doc.path}`),
