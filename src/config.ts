@@ -19,6 +19,11 @@ const optionalBooleanFromEnv = z
   .optional()
   .transform((value) => (value === undefined ? undefined : value === "true"));
 
+const optionalUrlFromEnv = z
+  .union([z.string().url(), z.literal("")])
+  .optional()
+  .transform((value) => value || undefined);
+
 const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   APP_URL: z.string().url().default("http://localhost:3000"),
@@ -32,6 +37,12 @@ const envSchema = z.object({
   RIVET_TOKEN: z.string().optional(),
   RIVET_PROJECT: z.string().optional(),
   RIVET_ENV: z.string().optional(),
+
+  CONVEX_DEPLOYMENT: z.string().optional(),
+  CONVEX_DEPLOY_KEY: z.string().optional(),
+  CONVEX_URL: optionalUrlFromEnv,
+  NEXT_PUBLIC_CONVEX_URL: optionalUrlFromEnv,
+  CONVEX_SITE_URL: optionalUrlFromEnv,
 
   AI_GATEWAY_API_KEY: z.string().optional(),
   VERCEL_AI_GATEWAY_KEY: z.string().optional(),

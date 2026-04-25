@@ -121,6 +121,7 @@ export function convexProvider(): AiSdrProviderDefinition {
     env: [
       { name: "CONVEX_DEPLOYMENT", description: "Convex deployment selector used by the Convex CLI." },
       { name: "CONVEX_DEPLOY_KEY", description: "Convex deploy key for CI and production deploys." },
+      { name: "CONVEX_URL", description: "Server-side Convex deployment URL used by the Node service." },
       { name: "NEXT_PUBLIC_CONVEX_URL", description: "Convex deployment URL used by browser clients." },
       { name: "CONVEX_SITE_URL", description: "Convex HTTP actions site URL for webhooks and callbacks." },
     ],
@@ -131,6 +132,28 @@ export function convexProvider(): AiSdrProviderDefinition {
       "state.auditLog",
       "dashboard.liveQueries",
       "agent.memory",
+    ],
+  });
+}
+
+export function rivetProvider(): AiSdrProviderDefinition {
+  return provider({
+    id: "rivet",
+    kind: "runtime",
+    displayName: "Rivet",
+    packageName: "@ai-sdr/rivet",
+    env: [
+      { name: "RIVET_ENDPOINT", description: "Optional Rivet endpoint for hosted or self-hosted actor runtime." },
+      { name: "RIVET_TOKEN", description: "Optional Rivet auth token." },
+      { name: "RIVET_PROJECT", description: "Optional Rivet project slug or ID." },
+      { name: "RIVET_ENV", description: "Optional Rivet environment name." },
+    ],
+    capabilities: [
+      "runtime.actors",
+      "runtime.queues",
+      "runtime.realtime",
+      "runtime.workflows",
+      "agent.controlPlane",
     ],
   });
 }

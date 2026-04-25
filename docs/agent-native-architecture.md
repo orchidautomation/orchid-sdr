@@ -142,6 +142,7 @@ The default stack should compile from module commands such as:
 ```bash
 ai-sdr add state convex
 ai-sdr add runtime rivet
+ai-sdr add runtime vercel-sandbox
 ai-sdr add model vercel-ai-gateway
 ai-sdr add search parallel
 ai-sdr add extract firecrawl
@@ -150,6 +151,11 @@ ai-sdr add crm attio
 ai-sdr add handoff slack
 ai-sdr add mcp orchid-mcp
 ```
+
+Rivet and Vercel Sandbox are both `runtime` providers, but they satisfy different contracts:
+
+- Rivet satisfies `runtime.actor.v1` for live actors, queues, workflow control, and realtime runtime events.
+- Vercel Sandbox satisfies `runtime.sandbox.v1` for cloud code-harness execution.
 
 Optional swaps:
 
@@ -160,6 +166,48 @@ ai-sdr add model openrouter
 ai-sdr add crm salesforce
 ai-sdr add crm hubspot
 ```
+
+## Composition Profiles
+
+The framework now treats the stack as an executable composition instead of a loose list of integrations.
+
+The minimum runnable profile requires:
+
+```text
+capabilities: state, source, search, extract, runtime, model, mcp
+contracts: state.reactive.v1, state.workflow.v1, signal.normalized.v1,
+           research.search.v1, research.extract.v1, model.gateway.v1,
+           runtime.actor.v1, mcp.tools.v1
+```
+
+The current production-parity profile adds:
+
+```text
+capabilities: enrichment, email, crm, handoff
+contracts: state.agentThreads.v1, state.auditLog.v1, signal.discovery.v1,
+           research.enrich.v1, runtime.sandbox.v1,
+           email.outbound.v1, email.inbound.v1,
+           crm.prospectSync.v1, crm.stageUpdate.v1, handoff.notify.v1
+```
+
+This is how removal should behave:
+
+- Remove Attio and the stack no longer satisfies CRM sync/stage contracts.
+- Remove AgentMail and the stack no longer satisfies outbound/inbound email contracts.
+- Remove Convex and the stack no longer has canonical reactive state or workflow checkpoints.
+- Remove Rivet and the stack no longer has the live actor runtime contract.
+- Remove all research providers that satisfy search/extract and the stack can no longer research leads.
+
+Parallel and Firecrawl intentionally overlap. Removing one may still leave research available if the other still satisfies the required contracts; a stricter profile can require a specific provider or browser-backed extraction later.
+
+Use:
+
+```bash
+npm run ai-sdr -- check
+npm run doctor
+```
+
+The check command reports missing capabilities/contracts. The doctor command treats missing minimum or production-parity composition as an error for this reference app.
 
 ## Future YAML Shape
 
@@ -232,8 +280,8 @@ ai-sdr dev
 
 ## Next Implementation Milestones
 
-1. Add `@ai-sdr/convex` package boundary and generated Convex schema/functions.
-2. Move canonical signal/prospect/thread state behind a state-plane contract.
+1. Expand the `@ai-sdr/convex` package boundary from signal/checkpoint writes to full prospect/thread/provider-run state.
+2. Move canonical signal/prospect/thread state fully behind the state-plane contract.
 3. Keep Rivet actors focused on live execution and checkpoint back to Convex.
 4. Generate sandbox MCP config from module manifests.
 5. Add YAML parsing and compilation into `ai-sdr.config.ts`.

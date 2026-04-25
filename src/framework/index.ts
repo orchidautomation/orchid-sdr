@@ -97,6 +97,7 @@ export const aiSdrContractIdSchema = z.enum([
   "research.deepResearch.v1",
   "research.monitor.v1",
   "model.gateway.v1",
+  "runtime.actor.v1",
   "runtime.sandbox.v1",
   "mcp.tools.v1",
   "handoff.notify.v1",
@@ -243,8 +244,10 @@ export function providersFromModules(modules: AiSdrModuleDefinition[]): AiSdrPro
 }
 
 export * from "./signals.js";
+export * from "./state.js";
 export * from "./crm.js";
 export * from "./provider-contracts.js";
 export * from "./validation.js";
+export * from "./composition.js";
 export * from "./builtin-modules.js";
 export * from "./install-plan.js";

@@ -7,7 +7,9 @@ import {
   collectKnowledgePaths,
   collectModuleDocs,
   collectSkillPaths,
+  evaluateModuleComposition,
   validateAiSdrConfigReferences,
+  type AiSdrCompositionProfileId,
   type AiSdrEnvVar,
 } from "../src/framework/index.js";
 
@@ -25,6 +27,8 @@ const checks: Check[] = [];
 
 await checkConfigReferences();
 checkConfigComposition();
+checkRequiredModuleComposition("minimum");
+checkRequiredModuleComposition("productionParity");
 await checkModuleDocs();
 await checkEnvExample();
 checkRuntimeEnv();
@@ -88,6 +92,33 @@ function checkConfigComposition() {
       detail: issue.message,
     });
   }
+}
+
+function checkRequiredModuleComposition(profile: AiSdrCompositionProfileId) {
+  const evaluation = evaluateModuleComposition(config.modules ?? [], { profile });
+  if (evaluation.ok) {
+    checks.push({
+      label: `${evaluation.profile.displayName} module composition`,
+      ok: true,
+      severity: "info",
+      detail: `${evaluation.providedCapabilities.length} capabilities, ${evaluation.providedContracts.length} contracts`,
+    });
+    return;
+  }
+
+  checks.push({
+    label: `${evaluation.profile.displayName} module composition`,
+    ok: false,
+    severity: "error",
+    detail: [
+      evaluation.missingCapabilities.length > 0
+        ? `missing capabilities: ${evaluation.missingCapabilities.join(", ")}`
+        : "",
+      evaluation.missingContracts.length > 0
+        ? `missing contracts: ${evaluation.missingContracts.join(", ")}`
+        : "",
+    ].filter(Boolean).join("; "),
+  });
 }
 
 async function checkModuleDocs() {

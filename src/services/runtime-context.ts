@@ -15,15 +15,18 @@ import { AiStructuredService } from "./ai-service.js";
 import { KnowledgeService } from "./knowledge-service.js";
 import { OrchidMcpToolService } from "./mcp-tools.js";
 import { evaluateSendAuthority, shouldHandoff } from "./policy-service.js";
+import { createDefaultStatePlaneProvider } from "./state-plane.js";
 import {
   verifyAgentMailWebhook,
   verifyHandoffSignature,
   verifySharedSecretHeader,
 } from "./webhook-security.js";
+import type { StatePlaneProvider } from "../framework/state.js";
 
 export interface AppContext {
   config: AppConfig;
   repository: OrchidRepository;
+  state: StatePlaneProvider;
   knowledge: KnowledgeService;
   ai: AiStructuredService;
   apify: ApifySourceAdapter;
@@ -65,6 +68,9 @@ export function getAppContext(): AppContext {
   cachedContext = {
     config,
     repository,
+    state: createDefaultStatePlaneProvider({
+      convexUrl: config.CONVEX_URL ?? config.NEXT_PUBLIC_CONVEX_URL,
+    }),
     knowledge,
     ai,
     apify: new ApifySourceAdapter(),

@@ -2,6 +2,7 @@ import config from "../ai-sdr.config.js";
 import {
   buildModuleInstallPlan,
   defaultOrchidModules,
+  evaluateModuleComposition,
   findModuleForAddCommand,
   type AiSdrModuleDefinition,
 } from "../src/framework/index.js";
@@ -19,6 +20,9 @@ switch (command) {
   case "add":
     printAddPlan(arg);
     break;
+  case "check":
+    printCompositionCheck();
+    break;
   default:
     console.error(`Unknown command: ${command}`);
     printHelp();
@@ -29,6 +33,7 @@ function printHelp() {
   console.log(`ai-sdr prototype commands:
 
   npm run ai-sdr -- modules
+  npm run ai-sdr -- check
   npm run ai-sdr -- add <module-id>
   npm run ai-sdr -- add <capability> <provider>
 
@@ -40,6 +45,7 @@ Examples:
   npm run ai-sdr -- add extract firecrawl
   npm run ai-sdr -- add enrichment parallel
   npm run ai-sdr -- add state convex
+  npm run ai-sdr -- add runtime rivet
   npm run ai-sdr -- add database neon
   npm run ai-sdr -- add source apify
   npm run ai-sdr -- add model vercel-ai-gateway
@@ -57,6 +63,15 @@ function listModules() {
     const status = installed.has(module.id) ? "installed" : "available";
     const pkg = module.packageName ? ` ${module.packageName}` : "";
     console.log(`${module.id}\t${status}\t${module.displayName}${pkg}`);
+  }
+}
+
+function printCompositionCheck() {
+  for (const profile of ["minimum", "productionParity"] as const) {
+    const evaluation = evaluateModuleComposition(config.modules ?? [], { profile });
+    console.log(`${evaluation.ok ? "ok" : "error"}: ${evaluation.profile.displayName}`);
+    printList("  Missing capabilities", evaluation.missingCapabilities);
+    printList("  Missing contracts", evaluation.missingContracts);
   }
 }
 

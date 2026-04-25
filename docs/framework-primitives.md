@@ -89,6 +89,7 @@ state.agentThreads.v1
 database.postgres.v1
 research.extract.v1
 research.monitor.v1
+runtime.actor.v1
 runtime.sandbox.v1
 ```
 
@@ -135,7 +136,7 @@ Examples:
 - Extract: Parallel, Firecrawl, browser/sandbox tools
 - Enrichment: Parallel, Prospeo, Clay, custom data providers
 - Discovery: Apify, first-party sources, custom webhooks
-- Runtime: local, Vercel Sandbox, another cloud code harness
+- Runtime: Rivet actors, local development, Vercel Sandbox, another cloud code harness
 - Model: Vercel AI Gateway, OpenAI, Anthropic, OpenRouter, local models
 
 The early executable contracts live in [src/framework/provider-contracts.ts](../src/framework/provider-contracts.ts).
@@ -182,6 +183,7 @@ Current MVP package targets:
 | `ai-sdr add extract firecrawl` | `@ai-sdr/firecrawl` | `source`, `search`, `extract`, `enrichment`, `runtime`, `observability` |
 | `ai-sdr add database neon` | `@ai-sdr/neon` | `database` |
 | `ai-sdr add model vercel-ai-gateway` | `@ai-sdr/vercel-ai-gateway` | `model` |
+| `ai-sdr add runtime rivet` | `@ai-sdr/rivet` | `runtime` |
 | `ai-sdr add runtime vercel-sandbox` | `@ai-sdr/vercel-sandbox` | `runtime` |
 | `ai-sdr add handoff slack` | `@ai-sdr/slack` | `handoff` |
 | `ai-sdr add mcp orchid-mcp` | `@ai-sdr/mcp` | `mcp` |
@@ -196,8 +198,28 @@ Provider packages can satisfy more than one capability. The CLI should install b
 - `ai-sdr add enrichment firecrawl` also installs `@ai-sdr/firecrawl`.
 - Convex maps to `state` and should own canonical reactive SDR state.
 - Neon maps to `database` and satisfies the current Postgres state contract through `DATABASE_URL`.
+- Rivet maps to `runtime.actor.v1` and owns active agent orchestration.
+- Vercel Sandbox maps to `runtime.sandbox.v1` and owns cloud code-harness turns.
 
 `research` remains a CLI alias for search/extract/enrichment so `ai-sdr add research parallel` can still work, but manifests should use the granular capability IDs.
+
+## Minimum Runnable Stack
+
+The reference app has two composition profiles:
+
+| Profile | Purpose |
+| --- | --- |
+| `minimum` | Ingest one signal, research it, run model/runtime work, persist state, and expose MCP tools. |
+| `productionParity` | Recreate the current Orchid SDR behavior: state, source, research, enrichment, runtime actors, sandbox harness, model gateway, email, CRM, handoff, and MCP. |
+
+Run:
+
+```bash
+npm run ai-sdr -- check
+npm run doctor
+```
+
+This makes modularity concrete. A package can be removed, but the configured stack must still satisfy the selected profile's capabilities and contracts.
 
 MCP tools are indexed separately in [MCP Capability Index](mcp-capability-index.md). The module manifest should be able to compile provider MCP definitions into sandbox `.mcp.json`.
 

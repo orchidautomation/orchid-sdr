@@ -9,6 +9,7 @@ import {
   normalizedWebhookProvider,
   orchidMcpProvider,
   parallelProvider,
+  rivetProvider,
   slackHandoffProvider,
   vercelAiGatewayProvider,
   vercelSandboxProvider,
@@ -417,6 +418,31 @@ export function vercelAiGatewayModule(): AiSdrModuleDefinition {
   });
 }
 
+export function rivetModule(): AiSdrModuleDefinition {
+  return module({
+    id: "rivet",
+    displayName: "Rivet runtime",
+    packageName: "@ai-sdr/rivet",
+    description: "Run stateful agent actors, workflow control, queues, and realtime runtime events.",
+    providerKey: "rivet",
+    capabilityIds: ["runtime"],
+    contracts: ["runtime.actor.v1"],
+    providers: [rivetProvider()],
+    docs: [
+      {
+        label: "Agent-native architecture",
+        path: "docs/agent-native-architecture.md",
+      },
+    ],
+    smokeChecks: [
+      {
+        id: "runtime.rivetHealth",
+        description: "Start the app and confirm the Rivet manager serves /api/rivet traffic.",
+      },
+    ],
+  });
+}
+
 export function vercelSandboxModule(): AiSdrModuleDefinition {
   return module({
     id: "vercel-sandbox",
@@ -490,6 +516,7 @@ export function defaultOrchidModules(): AiSdrModuleDefinition[] {
     convexModule(),
     neonModule(),
     vercelAiGatewayModule(),
+    rivetModule(),
     vercelSandboxModule(),
     orchidMcpModule(),
     agentMailModule(),

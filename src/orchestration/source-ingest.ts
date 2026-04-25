@@ -37,6 +37,22 @@ async function ingestNormalizedSignals(
   });
 
   try {
+    await deps.context.state.recordWorkflowCheckpoint({
+      workflowName: "signal-ingest",
+      entityType: "providerRun",
+      entityId: providerRunId,
+      step: "started",
+      status: "running",
+      runtimeProvider: "rivet",
+      input: {
+        provider: input.provider,
+        kind: input.kind,
+        source: input.source,
+        campaignId: campaign.id,
+        signalCount: input.signals.length,
+      },
+    });
+
     const outcomes = [];
 
     for (const inbound of input.signals) {
@@ -57,21 +73,85 @@ async function ingestNormalizedSignals(
         capturedAt: inbound.capturedAt,
         metadata: inbound.metadata,
       });
+      const stateSignal = await deps.context.state.recordSignal({
+        campaignId: campaign.id,
+        provider: input.provider,
+        source: input.source,
+        externalId: input.externalId ?? null,
+        localSignalId: signalId,
+        signal: inbound,
+        metadata: {
+          source: input.source,
+          provider: input.provider,
+          discoveryTerm: input.term ?? null,
+        },
+      });
+      await deps.context.state.recordWorkflowCheckpoint({
+        workflowName: "signal-ingest",
+        entityType: "signal",
+        entityId: signalId,
+        step: "captured",
+        status: "succeeded",
+        runtimeProvider: "rivet",
+        output: {
+          stateProviderId: stateSignal.providerId,
+          stateSignalId: stateSignal.stateSignalId,
+          stateStored: stateSignal.stored,
+        },
+      });
       await deps.context.repository.appendAuditEvent("signal", signalId, "SignalCaptured", {
         source: input.source,
         provider: input.provider,
         externalId: input.externalId ?? null,
         discoveryTerm: input.term ?? null,
       });
+      await deps.context.state.appendAuditEvent({
+        entityType: "signal",
+        entityId: signalId,
+        eventName: "SignalCaptured",
+        payload: {
+          source: input.source,
+          provider: input.provider,
+          externalId: input.externalId ?? null,
+          discoveryTerm: input.term ?? null,
+        },
+      });
 
       const { prospectId } = await deps.context.repository.createOrUpdateProspectFromSignal(signalId, campaign.id);
-      outcomes.push(await executeProspectWorkflow(deps, prospectId));
+      const outcome = await executeProspectWorkflow(deps, prospectId);
+      await deps.context.state.recordWorkflowCheckpoint({
+        workflowName: "prospect-workflow",
+        entityType: "prospect",
+        entityId: prospectId,
+        step: outcome.action,
+        status: "succeeded",
+        runtimeProvider: "rivet",
+        output: compactRecord({
+          prospectId: outcome.prospectId,
+          threadId: outcome.threadId,
+          reason: outcome.reason,
+          followupDelayMs: outcome.followupDelayMs,
+        }),
+      });
+      outcomes.push(outcome);
     }
 
     await deps.context.repository.updateProviderRun(providerRunId, {
       status: "succeeded",
       responsePayload: {
         itemsSeen: input.signals.length,
+        signalsReceived: input.signals.length,
+        prospectsProcessed: outcomes.length,
+      },
+    });
+    await deps.context.state.recordWorkflowCheckpoint({
+      workflowName: "signal-ingest",
+      entityType: "providerRun",
+      entityId: providerRunId,
+      step: "completed",
+      status: "succeeded",
+      runtimeProvider: "rivet",
+      output: {
         signalsReceived: input.signals.length,
         prospectsProcessed: outcomes.length,
       },
@@ -85,12 +165,26 @@ async function ingestNormalizedSignals(
       outcomes,
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     await deps.context.repository.updateProviderRun(providerRunId, {
       status: "failed",
       responsePayload: {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage,
       },
     });
+    try {
+      await deps.context.state.recordWorkflowCheckpoint({
+        workflowName: "signal-ingest",
+        entityType: "providerRun",
+        entityId: providerRunId,
+        step: "failed",
+        status: "failed",
+        runtimeProvider: "rivet",
+        error: errorMessage,
+      });
+    } catch {
+      // Preserve the original workflow error if the state-plane failure checkpoint also fails.
+    }
     throw error;
   }
 }
@@ -174,4 +268,8 @@ export async function ingestSignalWebhook(
     signalsReceived: normalized.signals.length,
     results,
   };
+}
+
+function compactRecord(input: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
 }

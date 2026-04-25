@@ -61,6 +61,8 @@ Minimum safe-pilot values:
 PORT=3000
 APP_URL=https://sdr.example.com
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/orchid_sdr
+CONVEX_URL=https://your-deployment.convex.cloud
+NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
 NO_SENDS_MODE=true
 DEFAULT_CAMPAIGN_TIMEZONE=America/New_York
 
@@ -74,8 +76,8 @@ Important:
 
 - `APP_URL` must be reachable from Vercel Sandboxes.
 - `APP_URL` must be reachable from Apify and AgentMail if those webhooks are enabled.
-- For Neon, use the pooled or direct connection string they provide as `DATABASE_URL`.
-- Convex is the planned default state plane for the framework direction; the current reference app still requires Postgres migrations until the state-plane migration is implemented.
+- For Neon, use the pooled or direct connection string they provide as `DATABASE_URL`. This remains required while the repository layer is being ported to Convex.
+- For Convex, set `CONVEX_URL` for the Node service and `NEXT_PUBLIC_CONVEX_URL` for future browser/live-query clients.
 - Keep `NO_SENDS_MODE=true` until the customer has approved real sends.
 
 ## 2. Customize The Knowledge Pack
