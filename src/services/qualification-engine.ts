@@ -8,7 +8,7 @@ export interface QualificationInput {
   >;
   sourceSignal: Pick<
     SignalRecord,
-    "source" | "url" | "authorTitle" | "authorCompany" | "companyDomain" | "topic" | "content"
+    "source" | "url" | "authorTitle" | "authorCompany" | "companyDomain" | "topic" | "content" | "metadata"
   > | null;
   evidence?: {
     sourcePostExtract?: string | null;
@@ -97,6 +97,30 @@ function pushUnique(target: string[], values: string[]) {
       target.push(trimmed);
     }
   }
+}
+
+function extractMetadataSnippets(metadata: Record<string, unknown> | null | undefined) {
+  if (!metadata) {
+    return [] as string[];
+  }
+
+  const keys = [
+    "headline",
+    "about",
+    "experienceSummary",
+    "featuredSummary",
+    "skillsSummary",
+    "profileSummary",
+    "companySummary",
+    "latestActivitySummary",
+  ];
+
+  const values = keys
+    .map((key) => metadata[key])
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim());
+
+  return unique(values);
 }
 
 function sectionBucket(heading: string) {
@@ -245,10 +269,31 @@ export function buildQualificationInput(
           companyDomain: sourceSignal.companyDomain ?? null,
           topic: sourceSignal.topic,
           content: sourceSignal.content,
+          metadata: sourceSignal.metadata ?? {},
         }
       : null,
     evidence,
   };
+}
+
+export function shouldRejectAtSignalTriage(assessment: QualificationAssessment) {
+  if (assessment.ok) {
+    return false;
+  }
+
+  if (assessment.disqualifiers.length > 0) {
+    return true;
+  }
+
+  const dimensions = assessment.dimensions;
+  const noQualifiedDimensions = !dimensions?.personQualified
+    && !dimensions?.companyQualified
+    && !dimensions?.signalQualified;
+  const noStrongEvidence = assessment.matchedSegments.length === 0 && assessment.matchedSignals.length === 0;
+  const thinEvidence = assessment.matchedSegments.length === 0 && assessment.matchedSignals.length < 2;
+
+  return (noQualifiedDimensions && thinEvidence && assessment.confidence <= 0.58)
+    || (noStrongEvidence && assessment.confidence <= 0.45);
 }
 
 export function heuristicIcpQualification(
@@ -262,11 +307,14 @@ export function heuristicIcpQualification(
     || Boolean(input.prospect.linkedinUrl);
   const provenancePassed = Boolean(input.prospect.sourceSignalId);
 
+  const metadataSnippets = extractMetadataSnippets(input.sourceSignal?.metadata);
+
   const roleText = normalizeText(
     [
       input.prospect.title,
       input.sourceSignal?.authorTitle,
       input.evidence?.profileExtract,
+      ...metadataSnippets,
     ].filter(Boolean).join("\n"),
   );
   const companyText = normalizeText(
@@ -277,6 +325,7 @@ export function heuristicIcpQualification(
       input.sourceSignal?.companyDomain,
       input.evidence?.companyExtract,
       input.evidence?.companyUrl,
+      ...metadataSnippets,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -305,6 +354,7 @@ export function heuristicIcpQualification(
       input.evidence?.companyExtract,
       input.evidence?.profileUrl,
       input.evidence?.companyUrl,
+      ...metadataSnippets,
     ]
       .filter(Boolean)
       .join("\n"),

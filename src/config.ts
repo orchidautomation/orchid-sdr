@@ -42,7 +42,7 @@ const envSchema = z.object({
 
   APIFY_TOKEN: z.string().optional(),
   APIFY_BASE_URL: z.string().default("https://api.apify.com/v2"),
-  APIFY_LINKEDIN_DATASET_LIMIT: z.coerce.number().default(25),
+  APIFY_LINKEDIN_DATASET_LIMIT: z.coerce.number().default(50),
   APIFY_X_DATASET_LIMIT: z.coerce.number().default(25),
   APIFY_LINKEDIN_TASK_ID: z.string().optional(),
   APIFY_LINKEDIN_ACTOR_ID: z.string().optional(),
@@ -55,16 +55,20 @@ const envSchema = z.object({
 
   DISCOVERY_INTERVAL_MS: z.coerce.number().default(60 * 60 * 1000),
   DISCOVERY_MAX_RUNS_PER_TICK: z.coerce.number().default(2),
+  DISCOVERY_WEEKDAYS_ONLY: z
+    .union([z.literal("true"), z.literal("false")])
+    .default("true")
+    .transform((value) => value === "true"),
   DISCOVERY_LINKEDIN_ENABLED: z
     .union([z.literal("true"), z.literal("false")])
     .default("true")
     .transform((value) => value === "true"),
   DISCOVERY_X_ENABLED: booleanFromEnv,
   DISCOVERY_LINKEDIN_SEED_TERMS: csvListWithDefault(
-    "sales automation,revops,pipeline generation,lead routing",
+    "sales automation,revops,gtm,gtm engineering,claude code gtm,pipeline generation,lead routing",
   ),
   DISCOVERY_X_SEED_TERMS: csvListWithDefault(
-    "sales automation,revops,gtm engineering,pipeline generation",
+    "sales automation,revops,gtm,gtm engineering,claude code gtm,pipeline generation",
   ),
 
   PROSPEO_API_KEY: z.string().optional(),

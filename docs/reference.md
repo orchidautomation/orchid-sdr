@@ -30,6 +30,7 @@ For the full sandbox lane:
 - Vercel Sandbox auth: `VERCEL_OIDC_TOKEN` or `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`
 - provider keys such as `APIFY_TOKEN`, `FIRECRAWL_API_KEY`, `AGENTMAIL_API_KEY`, `ATTIO_API_KEY`
 - discovery config such as `APIFY_LINKEDIN_TASK_ID` or `APIFY_LINKEDIN_ACTOR_ID`
+- `DISCOVERY_WEEKDAYS_ONLY=true` if you want discovery to skip weekends (enabled by default)
 - `SIGNAL_WEBHOOK_SECRET` if you want to post normalized signals from arbitrary sources
 
 Important runtime notes:

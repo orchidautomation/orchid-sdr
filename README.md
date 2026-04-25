@@ -6,7 +6,7 @@ It wakes up on a schedule, finds leads from public signals, researches the perso
 
 ## What It Does
 
-- runs scheduled discovery with Rivet actors
+- runs hourly weekday discovery with Rivet actors
 - ingests signals from Apify or any normalized webhook source
 - researches the source post, person, company, and company news
 - qualifies leads against the repo knowledge pack
@@ -137,6 +137,8 @@ If you want the full runtime, add provider keys such as Apify, Firecrawl, Vercel
 Campaign quiet hours are evaluated in the campaign's local timezone. New campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE` and you can update a live campaign later through the remote MCP tool `control.setCampaignTimezone`.
 
 Parallel Search MCP is mounted into sandbox turns by default using the free `https://search.parallel.ai/mcp` endpoint. If you set `PARALLEL_API_KEY`, the sandbox uses the same MCP with a bearer token for higher rate limits.
+
+By default, discovery runs once per hour on weekdays only, and LinkedIn discovery will fetch up to 50 posts per run.
 
 ## Multiple Campaigns
 

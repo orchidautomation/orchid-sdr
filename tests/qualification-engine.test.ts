@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { heuristicIcpQualification } from "../src/services/qualification-engine.js";
+import {
+  heuristicIcpQualification,
+  shouldRejectAtSignalTriage,
+} from "../src/services/qualification-engine.js";
 
 const sampleIcp = `
 # Buyer Personas
@@ -46,6 +49,7 @@ describe("heuristicIcpQualification", () => {
         companyDomain: "signalforge.com",
         topic: "clay waterfall credit burn",
         content: "We keep wasting credits on poorly structured Clay workflows and outbound enrichment.",
+        metadata: {},
       },
     }, sampleIcp);
 
@@ -58,6 +62,31 @@ describe("heuristicIcpQualification", () => {
     expect(result.dimensions?.personQualified).toBe(true);
     expect(result.dimensions?.companyQualified).toBe(true);
     expect(result.dimensions?.signalQualified).toBe(true);
+  });
+
+  it("rejects obvious low-signal posts before deep research", () => {
+    const result = heuristicIcpQualification({
+      prospect: {
+        fullName: "Avery Kim",
+        title: "Marketing Coordinator",
+        company: "Neighborhood Bakery",
+        companyDomain: "bakery.example",
+        linkedinUrl: "https://www.linkedin.com/in/avery-kim",
+        sourceSignalId: "sig_456",
+      },
+      sourceSignal: {
+        source: "linkedin_public_post",
+        url: "https://www.linkedin.com/posts/avery-kim_local-email-blast-activity",
+        authorTitle: "Marketing Coordinator",
+        authorCompany: "Neighborhood Bakery",
+        companyDomain: "bakery.example",
+        topic: "email blasting",
+        content: "Looking for a simple email blasting tool for weekend promos.",
+        metadata: {},
+      },
+    }, sampleIcp);
+
+    expect(shouldRejectAtSignalTriage(result)).toBe(true);
   });
 
   it("rejects prospects without a real ICP signal", () => {
@@ -78,6 +107,7 @@ describe("heuristicIcpQualification", () => {
         companyDomain: "bakery.example",
         topic: "email blasting",
         content: "Looking for a simple email blasting tool for weekend promos.",
+        metadata: {},
       },
     }, sampleIcp);
 
@@ -106,6 +136,7 @@ describe("heuristicIcpQualification", () => {
         topic: "clay prospecting",
         content:
           "We're hiring a BDR. You'll use Clay, HubSpot, and AI-powered workflows to run signal-based outbound.",
+        metadata: {},
       },
     }, sampleIcp);
 
@@ -113,6 +144,35 @@ describe("heuristicIcpQualification", () => {
     expect(result.disqualifiers.some((value) => /recruiting|people/i.test(value))).toBe(true);
     expect(result.disqualifiers.some((value) => /hiring/i.test(value))).toBe(true);
     expect(result.dimensions?.negativeSignalsPresent).toBe(true);
+  });
+
+  it("uses captured metadata context to avoid rejecting plausible GTM fits too early", () => {
+    const result = heuristicIcpQualification({
+      prospect: {
+        fullName: "Eric Nowoslawski",
+        title: "Founder",
+        company: "Growth Engine X",
+        companyDomain: "growthenginex.com",
+        linkedinUrl: "https://www.linkedin.com/in/eric-nowoslawski",
+        sourceSignalId: "sig_321",
+      },
+      sourceSignal: {
+        source: "linkedin_public_post",
+        url: "https://www.linkedin.com/posts/eric-nowoslawski_tools-for-gtm",
+        authorTitle: "Founder",
+        authorCompany: "Growth Engine X",
+        companyDomain: "growthenginex.com",
+        topic: "favorite api tools",
+        content: "Sharing an updated list of tools we use for Clay, Claude Code, and GTM workflows.",
+        metadata: {
+          headline: "Founder Growth Engine X | Clay Enterprise Partner",
+          about: "I use Claude Code, Clay, and GTM engineering workflows to build outbound systems.",
+        },
+      },
+    }, sampleIcp);
+
+    expect(shouldRejectAtSignalTriage(result)).toBe(false);
+    expect(result.matchedSegments.length).toBeGreaterThan(0);
   });
 
   it("uses scraped evidence when shallow signal fields are missing", () => {
@@ -133,6 +193,7 @@ describe("heuristicIcpQualification", () => {
         companyDomain: "stackflow.io",
         topic: "new workflow",
         content: "Sharing a project update.",
+        metadata: {},
       },
       evidence: {
         profileExtract: "Priya Shah is a GTM Engineer building Clay systems and RevOps automation.",

@@ -2,7 +2,11 @@ import type { MessageInsertInput, ProspectSnapshot } from "../repository.js";
 import { extractJsonObject } from "../lib/json.js";
 import { extractCompanyResearchUrl, extractLinkedinProfileUrl } from "../lib/signal-urls.js";
 import type { QualificationAssessment, ReplyClass, ResearchBrief, SandboxTurnRequest } from "../domain/types.js";
-import { buildQualificationInput } from "../services/qualification-engine.js";
+import {
+  buildQualificationInput,
+  heuristicIcpQualification,
+  shouldRejectAtSignalTriage,
+} from "../services/qualification-engine.js";
 import type { WorkflowDependencies, WorkflowOutcome } from "./types.js";
 
 const FOLLOWUP_DELAY_MS = 3 * 24 * 60 * 60 * 1000;
@@ -963,6 +967,19 @@ async function qualifyProspect(
     ? await deps.context.repository.getSignal(snapshot.prospect.sourceSignalId)
     : null;
   const icpMarkdown = await deps.context.knowledge.getDocumentContent("icp.md");
+  const shallowAssessment = heuristicIcpQualification(
+    buildQualificationInput(snapshot, sourceSignal),
+    icpMarkdown ?? "",
+  );
+  if (shouldRejectAtSignalTriage(shallowAssessment)) {
+    return {
+      ...shallowAssessment,
+      engine: "heuristic_signal_triage_v1",
+      ruleVersion: "icp_doc_v2",
+      summary: `Rejected at low-cost signal triage before deep profile, company, and news research because ${shallowAssessment.reason}.`,
+    };
+  }
+
   const profileUrl = extractLinkedinProfileUrl(
     sourceSignal?.metadata,
     snapshot.prospect.linkedinUrl,
@@ -988,6 +1005,7 @@ async function qualifyProspect(
     buildTurnRequest(snapshot, "qualify", [
       "Use the `icp-qualification` skill.",
       "Decide whether this prospect actually matches the current ICP in icp.md.",
+      "This lead already passed shallow signal triage, so use the richer post, profile, and company evidence to confirm or reject.",
       "Follow a generic ICP methodology: identity, source provenance, person fit, company fit, pain or trigger fit, and negative signals.",
       "Evaluate whether the person is qualified, whether the company is qualified, and whether the observed signal shows relevant pain, timing, or buying intent.",
       "Use the Parallel Search MCP for broad current web context when you need it.",

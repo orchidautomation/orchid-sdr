@@ -64,6 +64,7 @@ Default personalization order:
 That means:
 
 - prefer references to the company's workflow, team shape, product motion, or operator context
+- when the evidence shows GTM, GTM engineering, Clay workflow ownership, or Claude Code plus GTM overlap, use that as the connective tissue in the note
 - prefer references to the person's role, remit, or public company-building work
 - use the signal to decide why they are in the funnel and what angle to take
 - only mention the post directly if it is the strongest credible fact and there is no better anchor
@@ -78,6 +79,7 @@ Better:
 
 - "Looks like your team is investing heavily in signal-driven outbound"
 - "You seem to sit close to the Clay workflow and GTM systems work"
+- "Looks like your team lives close to GTM engineering and agent-driven workflow design"
 - "Given the way your team approaches outbound infrastructure..."
 
 ## First Outbound Structure

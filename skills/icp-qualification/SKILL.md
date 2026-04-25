@@ -9,11 +9,12 @@ Qualify only real buyer, operator, company, and timing fit according to the acti
 ## Required Sequence
 
 1. Read the source post or source signal first.
-2. Inspect the author profile if a profile URL is available.
-3. Inspect the company page if a company URL or company domain is available.
-4. If useful, check recent company news with Firecrawl search to understand timing, launches, funding, hiring, or other supporting context.
-5. Compare the combined evidence against `knowledge/icp.md`.
-6. Decide:
+2. If the source signal is clearly irrelevant, generic, non-buyer noise, or an obvious poor-fit case, reject early before doing deeper profile or company research.
+3. Inspect the author profile if a profile URL is available and the signal looks plausibly relevant.
+4. Inspect the company page if a company URL or company domain is available and the signal still looks plausibly relevant.
+5. If useful, check recent company news with Firecrawl search to understand timing, launches, funding, hiring, or other supporting context.
+6. Compare the combined evidence against `knowledge/icp.md`.
+7. Decide:
    - is the person qualified?
    - is the company qualified?
    - is there relevant pain, timing, or buying intent?
@@ -38,6 +39,7 @@ Qualify only real buyer, operator, company, and timing fit according to the acti
 - Require identity and source provenance.
 - Produce separate verdicts for person fit, company fit, and pain/trigger fit.
 - Require evidence of person fit, company fit, and pain/trigger fit unless the ICP document clearly leaves one of those areas unspecified.
+- Treat post content as the first gating layer. If it is clearly junk or obviously poor fit, reject before deep research.
 - Treat post content as weak evidence unless the role and company context support the fit.
 - Treat company news as supporting context, not a replacement for role/company/post evidence.
 - Prefer direct observed facts over optimistic inference.

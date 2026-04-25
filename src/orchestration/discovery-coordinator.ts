@@ -13,6 +13,7 @@ import {
 } from "./discovery-planner.js";
 import { getAppContext } from "../services/runtime-context.js";
 import { runSandboxTurn } from "./sandbox-broker.js";
+import { isWeekdayInTimezone } from "./discovery-window.js";
 
 interface DiscoveryActorState {
   campaignId: string | null;
@@ -581,6 +582,19 @@ async function runDiscoveryTick(
         startedRuns,
         skipped: true,
         reason: `${source} discovery is disabled`,
+      };
+    }
+    if (context.config.DISCOVERY_WEEKDAYS_ONLY && !isWeekdayInTimezone(new Date(), campaign.timezone)) {
+      c.state.lastStatus = "skipped";
+      return {
+        ok: true,
+        source,
+        campaignId,
+        scheduledNextTickAt: await scheduleNextTick(c),
+        planner,
+        startedRuns,
+        skipped: true,
+        reason: `discovery only runs on weekdays in ${campaign.timezone}`,
       };
     }
     if (!context.apify.hasDiscoveryTarget(source)) {

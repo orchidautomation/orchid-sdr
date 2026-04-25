@@ -18,6 +18,7 @@ The strongest fit is not "anyone doing outbound." The strongest fit is operators
 Best fit:
 
 - dedicated GTM engineers or technical growth operators
+- GTM engineering leaders and builders explicitly using GTM as a systems or infrastructure discipline
 - individuals responsible for Clay architecture, provider selection, waterfalls, and automation quality
 - teams moving fast enough that wrong table design or bad enrichments have real cost
 
@@ -133,6 +134,8 @@ Strong timing triggers:
 Good signals in outreach or qualification:
 
 - mentions Clay, Claygent, waterfalls, enrichments, or provider comparison
+- mentions GTM, GTM engineering, GTM systems, or technical go-to-market infrastructure
+- mentions Claude Code, Codex, Cursor, or agents in the context of GTM, outbound, enrichment, or workflow design
 - mentions outbound systems, ABM workflows, or signal-based GTM plays
 - complaints about wasted credits or bad table structure
 - uses Claude Code, Codex, Cursor, n8n, or custom agents in ops workflows
