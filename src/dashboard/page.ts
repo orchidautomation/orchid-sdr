@@ -1392,6 +1392,10 @@ export function renderDashboardPage() {
           return;
         }
 
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+
         const state = await response.json();
         renderStats(state.summary);
         renderActors(state.actors, state.discovery);

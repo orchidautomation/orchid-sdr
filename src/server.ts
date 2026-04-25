@@ -35,7 +35,9 @@ export function createApp() {
   app.all("/api/rivet/*", (c) => handleRivetRequest(c.req.raw));
 
   app.use("*", async (_c, next) => {
-    await ensureRuntimeBootstrapped();
+    if (!shouldBypassRuntimeBootstrap(_c.req.raw)) {
+      await ensureRuntimeBootstrapped();
+    }
     await next();
   });
 
@@ -380,6 +382,18 @@ function stripRivetPrefix(pathname: string) {
   }
 
   return pathname;
+}
+
+function shouldBypassRuntimeBootstrap(request: Request) {
+  const { pathname } = new URL(request.url);
+
+  return pathname === "/"
+    || pathname === "/dashboard"
+    || pathname === "/dashboard/login"
+    || pathname === "/dashboard/logout"
+    || pathname === "/healthz"
+    || pathname === "/api/rivet"
+    || pathname.startsWith("/api/rivet/");
 }
 
 function getDashboardPassword(context: ReturnType<typeof getAppContext>) {
