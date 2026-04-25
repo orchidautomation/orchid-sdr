@@ -1118,7 +1118,9 @@ export function renderDashboardPage() {
       const byId = (id) => document.getElementById(id);
       const tabs = Array.from(document.querySelectorAll("[data-tab]"));
       const panels = Array.from(document.querySelectorAll("[data-panel]"));
+      const DASHBOARD_STATE_CACHE_KEY = "orchid-dashboard-state-v1";
       let latestState = null;
+      let refreshPromise = null;
       const tabMeta = {
         overview: {
           title: "Overview",
@@ -1149,6 +1151,29 @@ export function renderDashboardPage() {
       function writeStoredTab(value) {
         try {
           localStorage.setItem("orchid-dashboard-tab", value);
+        } catch {}
+      }
+
+      function readStoredState() {
+        try {
+          const raw = sessionStorage.getItem(DASHBOARD_STATE_CACHE_KEY);
+          if (!raw) return null;
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== "object" || !parsed.state || typeof parsed.state !== "object") {
+            return null;
+          }
+          return parsed.state;
+        } catch {
+          return null;
+        }
+      }
+
+      function writeStoredState(state) {
+        try {
+          sessionStorage.setItem(DASHBOARD_STATE_CACHE_KEY, JSON.stringify({
+            storedAt: Date.now(),
+            state,
+          }));
         } catch {}
       }
 
@@ -1417,52 +1442,28 @@ export function renderDashboardPage() {
         byId("run-probe").disabled = automationPaused;
       }
 
-      function showToast(message) {
-        const toast = byId("toast");
-        toast.textContent = message;
-        toast.classList.add("show");
-        clearTimeout(showToast.timeoutId);
-        showToast.timeoutId = setTimeout(() => toast.classList.remove("show"), 2800);
+      function setGeneratedAtLabel(state, options) {
+        const cache = state?.cache || {};
+        const labelParts = [];
+        if (cache.refreshing || options?.refreshing) {
+          labelParts.push("refreshing");
+        } else if (cache.servedFromCache || options?.cached) {
+          labelParts.push("cached");
+        }
+        byId("generated-at").textContent = [
+          "Updated " + timeLabel(state.generatedAt),
+          ...labelParts,
+        ].join(" · ");
       }
 
-      async function postJson(path, body) {
-        const response = await fetch(path, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body || {}),
-        });
-
-        if (!response.ok) {
-          const contentType = response.headers.get("content-type") || "";
-          if (contentType.includes("application/json")) {
-            const payload = await response.json().catch(() => null);
-            throw new Error(payload?.error || JSON.stringify(payload));
-          }
-          throw new Error(await response.text());
-        }
-
-        return await response.json();
-      }
-
-      async function refresh() {
-        const response = await fetch("/api/dashboard/state");
-        if (response.status === 401) {
-          window.location.href = "/dashboard";
-          return;
-        }
-
-        if (!response.ok) {
-          throw new Error(await response.text());
-        }
-
-        const state = await response.json();
+      function renderState(state, options) {
         latestState = state;
         renderStats(state.summary);
         renderActors(state.actors, state.discovery);
         renderFeed(state.auditEvents);
         renderQualificationOverview(state.recentProspects);
         updateTopline(state);
-        byId("generated-at").textContent = "Updated " + timeLabel(state.generatedAt);
+        setGeneratedAtLabel(state, options);
 
         renderRows("sandbox-jobs", state.sandboxJobs, (job) => \`
           <tr>
@@ -1590,6 +1591,68 @@ export function renderDashboardPage() {
         \`, 4);
       }
 
+      function showToast(message) {
+        const toast = byId("toast");
+        toast.textContent = message;
+        toast.classList.add("show");
+        clearTimeout(showToast.timeoutId);
+        showToast.timeoutId = setTimeout(() => toast.classList.remove("show"), 2800);
+      }
+
+      async function postJson(path, body) {
+        const response = await fetch(path, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body || {}),
+        });
+
+        if (!response.ok) {
+          const contentType = response.headers.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const payload = await response.json().catch(() => null);
+            throw new Error(payload?.error || JSON.stringify(payload));
+          }
+          throw new Error(await response.text());
+        }
+
+        return await response.json();
+      }
+
+      async function refresh(options) {
+        const force = Boolean(options?.force);
+        if (refreshPromise && !force) {
+          return await refreshPromise;
+        }
+
+        if (refreshPromise && force) {
+          await refreshPromise.catch(() => {});
+        }
+
+        const requestPath = force ? "/api/dashboard/state?fresh=1" : "/api/dashboard/state";
+        refreshPromise = (async () => {
+          const response = await fetch(requestPath);
+          if (response.status === 401) {
+            window.location.href = "/dashboard";
+            return null;
+          }
+
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          const state = await response.json();
+          writeStoredState(state);
+          renderState(state);
+          return state;
+        })();
+
+        try {
+          return await refreshPromise;
+        } finally {
+          refreshPromise = null;
+        }
+      }
+
       byId("toggle-pause").addEventListener("click", async () => {
         const button = byId("toggle-pause");
         const nextPaused = !isCampaignPaused(latestState);
@@ -1603,7 +1666,7 @@ export function renderDashboardPage() {
               ? "Automation paused · in-flight work will finish"
               : "Automation resumed",
           );
-          await refresh();
+          await refresh({ force: true });
         } catch (error) {
           showToast(\`Pause update failed: \${error.message || error}\`);
         } finally {
@@ -1615,7 +1678,7 @@ export function renderDashboardPage() {
         try {
           const result = await postJson("/api/dashboard/discovery-tick", {});
           showToast(\`Discovery queued for \${result.source}\`);
-          await refresh();
+          await refresh({ force: true });
         } catch (error) {
           showToast(\`Discovery trigger failed: \${error.message || error}\`);
         }
@@ -1625,11 +1688,19 @@ export function renderDashboardPage() {
         try {
           const result = await postJson("/api/dashboard/sandbox-probe", {});
           showToast(\`Firecrawl probe queued: \${result.jobId}\`);
-          await refresh();
+          await refresh({ force: true });
         } catch (error) {
           showToast(\`Probe failed: \${error.message || error}\`);
         }
       });
+
+      const storedState = readStoredState();
+      if (storedState) {
+        renderState(storedState, {
+          cached: true,
+          refreshing: true,
+        });
+      }
 
       refresh().catch((error) => showToast(\`Initial load failed: \${error.message || error}\`));
       setInterval(() => refresh().catch(() => {}), 10000);

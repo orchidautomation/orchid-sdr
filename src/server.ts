@@ -22,6 +22,14 @@ import {
 import { runSandboxTurn } from "./orchestration/sandbox-broker.js";
 import { getAutomationPauseReason } from "./orchestration/workflow-control.js";
 
+const DASHBOARD_CACHE_STALE_AFTER_MS = 8_000;
+const DASHBOARD_CACHE_MAX_AGE_MS = 5 * 60_000;
+const DASHBOARD_RUNTIME_TIMEOUT_MS = 1_200;
+
+let cachedDashboardState: Awaited<ReturnType<typeof buildDashboardState>> | null = null;
+let cachedDashboardStateAt = 0;
+let dashboardStateRefreshPromise: Promise<Awaited<ReturnType<typeof buildDashboardState>>> | null = null;
+
 export function createApp() {
   const app = new Hono();
   const context = getAppContext();
@@ -93,7 +101,9 @@ export function createApp() {
       return c.json({ error: "unauthorized" }, 401);
     }
 
-    return c.json(await buildDashboardState(context));
+    return c.json(await getDashboardState(context, {
+      forceFresh: c.req.query("fresh") === "1",
+    }));
   });
 
   app.post("/api/dashboard/discovery-tick", async (c) => {
@@ -513,15 +523,23 @@ async function buildDashboardState(context: ReturnType<typeof getAppContext>) {
     context.repository.listActiveThreads(12),
     context.repository.listRecentProviderRuns(12),
     context.repository.listRecentAuditEvents(16),
-    sandboxActor.listJobs({ limit: 12 }).catch(() => []),
-    client.sourceIngest.getOrCreate().getSnapshot().catch(() => null),
-    client.campaignOps.getOrCreate().getSnapshot().catch(() => null),
-    sandboxActor.getSnapshot().catch(() => null),
+    withFallback(sandboxActor.listJobs({ limit: 12 }), [], DASHBOARD_RUNTIME_TIMEOUT_MS),
+    withFallback(client.sourceIngest.getOrCreate().getSnapshot(), null, DASHBOARD_RUNTIME_TIMEOUT_MS),
+    withFallback(client.campaignOps.getOrCreate().getSnapshot(), null, DASHBOARD_RUNTIME_TIMEOUT_MS),
+    withFallback(sandboxActor.getSnapshot(), null, DASHBOARD_RUNTIME_TIMEOUT_MS),
     context.config.DISCOVERY_LINKEDIN_ENABLED
-      ? client.discoveryCoordinator.getOrCreate([campaign.id, "linkedin_public_post"]).getSnapshot().catch(() => null)
+      ? withFallback(
+        client.discoveryCoordinator.getOrCreate([campaign.id, "linkedin_public_post"]).getSnapshot(),
+        null,
+        DASHBOARD_RUNTIME_TIMEOUT_MS,
+      )
       : Promise.resolve(null),
     context.config.DISCOVERY_X_ENABLED
-      ? client.discoveryCoordinator.getOrCreate([campaign.id, "x_public_post"]).getSnapshot().catch(() => null)
+      ? withFallback(
+        client.discoveryCoordinator.getOrCreate([campaign.id, "x_public_post"]).getSnapshot(),
+        null,
+        DASHBOARD_RUNTIME_TIMEOUT_MS,
+      )
       : Promise.resolve(null),
   ]);
 
@@ -549,6 +567,93 @@ async function buildDashboardState(context: ReturnType<typeof getAppContext>) {
     recentSignals,
     auditEvents,
   };
+}
+
+async function getDashboardState(
+  context: ReturnType<typeof getAppContext>,
+  options?: {
+    forceFresh?: boolean;
+  },
+) {
+  const now = Date.now();
+  const forceFresh = options?.forceFresh === true;
+  const cacheAgeMs = cachedDashboardState ? now - cachedDashboardStateAt : null;
+  const cacheIsUsable = cachedDashboardState !== null
+    && cacheAgeMs !== null
+    && cacheAgeMs <= DASHBOARD_CACHE_MAX_AGE_MS;
+  const cacheIsFresh = cacheIsUsable && cacheAgeMs <= DASHBOARD_CACHE_STALE_AFTER_MS;
+
+  if (forceFresh || !cacheIsUsable) {
+    const freshState = await refreshDashboardState(context);
+    return {
+      ...freshState,
+      cache: {
+        servedFromCache: false,
+        ageMs: 0,
+        refreshing: false,
+      },
+    };
+  }
+
+  if (cacheIsFresh) {
+    return {
+      ...cachedDashboardState,
+      cache: {
+        servedFromCache: true,
+        ageMs: cacheAgeMs,
+        refreshing: false,
+      },
+    };
+  }
+
+  void refreshDashboardState(context).catch(() => {});
+
+  return {
+    ...cachedDashboardState,
+    cache: {
+      servedFromCache: true,
+      ageMs: cacheAgeMs,
+      refreshing: true,
+    },
+  };
+}
+
+function refreshDashboardState(context: ReturnType<typeof getAppContext>) {
+  if (dashboardStateRefreshPromise) {
+    return dashboardStateRefreshPromise;
+  }
+
+  dashboardStateRefreshPromise = buildDashboardState(context)
+    .then((state) => {
+      cachedDashboardState = state;
+      cachedDashboardStateAt = Date.now();
+      return state;
+    })
+    .finally(() => {
+      dashboardStateRefreshPromise = null;
+    });
+
+  return dashboardStateRefreshPromise;
+}
+
+async function withFallback<T>(input: T | PromiseLike<T>, fallback: Awaited<T>, timeoutMs: number) {
+  const promise = Promise.resolve(input);
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<Awaited<T>>((resolve) => {
+        timeoutHandle = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } catch {
+    return fallback;
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
 }
 
 function isSecureRequest(request: Request) {
