@@ -147,6 +147,8 @@ export function rivetProvider(): AiSdrProviderDefinition {
       { name: "RIVET_TOKEN", description: "Optional Rivet auth token." },
       { name: "RIVET_PROJECT", description: "Optional Rivet project slug or ID." },
       { name: "RIVET_ENV", description: "Optional Rivet environment name." },
+      { name: "RIVET_PUBLIC_ENDPOINT", description: "Public Rivet endpoint returned to clients in serverless mode." },
+      { name: "RIVET_PUBLIC_TOKEN", description: "Publishable Rivet token for public client connections." },
     ],
     capabilities: [
       "runtime.actors",

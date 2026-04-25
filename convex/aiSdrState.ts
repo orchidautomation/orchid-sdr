@@ -29,7 +29,7 @@ export const recordSignal = mutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("signals")
-      .withIndex("by_provider_source_ref", (q) =>
+      .withIndex("by_provider_source_ref", (q: any) =>
         q.eq("provider", args.provider)
           .eq("source", args.source)
           .eq("sourceRef", args.signal.sourceRef),

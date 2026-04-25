@@ -5,8 +5,14 @@ import { deleteCookie, setCookie } from "hono/cookie";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
 import { renderDashboardLoginPage, renderDashboardPage } from "./dashboard/page.js";
+import { registry } from "./registry.js";
 import { getAppContext } from "./services/runtime-context.js";
 import { getActorClient } from "./services/actor-client.js";
+import {
+  ensureRuntimeBootstrapped,
+  shouldSkipLocalRivetRuntime,
+  shouldUseRemoteRivetRuntime,
+} from "./services/runtime-bootstrap.js";
 import { createOrchidMcpServer } from "./mcp/server-factory.js";
 import {
   handleAgentMailWebhook,
@@ -15,7 +21,7 @@ import {
 } from "./orchestration/webhook-handlers.js";
 import { runSandboxTurn } from "./orchestration/sandbox-broker.js";
 
-export async function createApp() {
+export function createApp() {
   const app = new Hono();
   const context = getAppContext();
   const dashboardCookieName = "orchid_dashboard_auth";
@@ -24,6 +30,14 @@ export async function createApp() {
     context,
     runSandboxTurn: (request: Parameters<typeof runSandboxTurn>[1]) => runSandboxTurn(context, request),
   };
+
+  app.all("/api/rivet", (c) => handleRivetRequest(c.req.raw));
+  app.all("/api/rivet/*", (c) => handleRivetRequest(c.req.raw));
+
+  app.use("*", async (_c, next) => {
+    await ensureRuntimeBootstrapped();
+    await next();
+  });
 
   app.get("/", (c) => c.redirect("/dashboard"));
 
@@ -122,9 +136,6 @@ export async function createApp() {
 
     return c.json(job, 202);
   });
-
-  app.all("/api/rivet", (c) => proxyRivetManagerRequest(c.req.raw));
-  app.all("/api/rivet/*", (c) => proxyRivetManagerRequest(c.req.raw));
 
   app.all("/mcp/orchid-sdr", async (c) => {
     const authorization = c.req.header("authorization");
@@ -309,6 +320,8 @@ export async function createApp() {
   return app;
 }
 
+export default createApp();
+
 function readString(input: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = input[key];
@@ -332,6 +345,28 @@ async function proxyRivetManagerRequest(request: Request) {
       redirect: "manual",
     }),
   );
+}
+
+async function handleRivetRequest(request: Request) {
+  if (shouldUseRemoteRivetRuntime()) {
+    return registry.handler(request);
+  }
+
+  if (shouldSkipLocalRivetRuntime()) {
+    return new Response(
+      JSON.stringify({
+        error: "RIVET_ENDPOINT is required when orchid-sdr runs on Vercel.",
+      }),
+      {
+        status: 503,
+        headers: {
+          "content-type": "application/json",
+        },
+      },
+    );
+  }
+
+  return proxyRivetManagerRequest(request);
 }
 
 function stripRivetPrefix(pathname: string) {

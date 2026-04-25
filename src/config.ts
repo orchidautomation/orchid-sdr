@@ -24,9 +24,13 @@ const optionalUrlFromEnv = z
   .optional()
   .transform((value) => value || undefined);
 
+const defaultAppUrl = process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}`
+  : "http://localhost:3000";
+
 const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
-  APP_URL: z.string().url().default("http://localhost:3000"),
+  APP_URL: z.string().url().default(defaultAppUrl),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DASHBOARD_PASSWORD: z.string().optional(),
 
@@ -37,6 +41,8 @@ const envSchema = z.object({
   RIVET_TOKEN: z.string().optional(),
   RIVET_PROJECT: z.string().optional(),
   RIVET_ENV: z.string().optional(),
+  RIVET_PUBLIC_ENDPOINT: z.string().optional(),
+  RIVET_PUBLIC_TOKEN: z.string().optional(),
 
   CONVEX_DEPLOYMENT: z.string().optional(),
   CONVEX_DEPLOY_KEY: z.string().optional(),
