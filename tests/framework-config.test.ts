@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  aiSdrConfigSchema,
   collectConfigEnv,
   collectKnowledgePaths,
   collectSkillPaths,
@@ -67,5 +68,32 @@ describe("AI SDR framework config helpers", () => {
         description: undefined,
       },
     ]);
+  });
+
+  it("exposes a runtime schema for framework configs", () => {
+    const parsed = aiSdrConfigSchema.parse({
+      name: "schema-backed-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      providers: [
+        {
+          id: "attio",
+          kind: "crm",
+          displayName: "Attio",
+        },
+      ],
+    });
+
+    expect(parsed.providers?.[0]?.kind).toBe("crm");
+    expect(() =>
+      aiSdrConfigSchema.parse({
+        name: "broken",
+        knowledge: {
+          product: "knowledge/product.md",
+        },
+      }),
+    ).toThrow();
   });
 });

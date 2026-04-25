@@ -1,62 +1,74 @@
+import { z } from "zod";
+
+export const aiSdrProviderKindSchema = z.enum([
+  "crm",
+  "email",
+  "signal-source",
+  "research",
+  "model",
+  "runtime",
+  "mcp",
+  "handoff",
+]);
+
+export const aiSdrEnvVarSchema = z.object({
+  name: z.string().min(1),
+  required: z.boolean().optional(),
+  description: z.string().optional(),
+});
+
+export const aiSdrProviderDefinitionSchema = z.object({
+  id: z.string().min(1),
+  kind: aiSdrProviderKindSchema,
+  displayName: z.string().min(1),
+  packageName: z.string().optional(),
+  env: z.array(aiSdrEnvVarSchema).optional(),
+  capabilities: z.array(z.string().min(1)).optional(),
+});
+
+export const aiSdrSkillDefinitionSchema = z.object({
+  id: z.string().min(1),
+  path: z.string().min(1),
+  description: z.string().optional(),
+});
+
+export const aiSdrKnowledgeDefinitionSchema = z.object({
+  product: z.string().min(1),
+  icp: z.string().min(1),
+  compliance: z.string().optional(),
+  usp: z.string().optional(),
+  handoff: z.string().optional(),
+  negativeSignals: z.string().optional(),
+});
+
+export const aiSdrCampaignDefinitionSchema = z.object({
+  id: z.string().min(1),
+  timezone: z.string().optional(),
+  noSendsMode: z.boolean().optional(),
+  sources: z.array(z.string().min(1)).optional(),
+});
+
+export const aiSdrConfigSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  knowledge: aiSdrKnowledgeDefinitionSchema,
+  skills: z.array(aiSdrSkillDefinitionSchema).optional(),
+  providers: z.array(aiSdrProviderDefinitionSchema).optional(),
+  campaigns: z.array(aiSdrCampaignDefinitionSchema).optional(),
+  requiredEnv: z.array(aiSdrEnvVarSchema).optional(),
+});
+
 export type AiSdrProviderKind =
-  | "crm"
-  | "email"
-  | "signal-source"
-  | "research"
-  | "model"
-  | "runtime"
-  | "mcp"
-  | "handoff";
-
-export type AiSdrEnvVar = {
-  name: string;
-  required?: boolean;
-  description?: string;
-};
-
-export type AiSdrProviderDefinition = {
-  id: string;
-  kind: AiSdrProviderKind;
-  displayName: string;
-  packageName?: string;
-  env?: AiSdrEnvVar[];
-  capabilities?: string[];
-};
-
-export type AiSdrSkillDefinition = {
-  id: string;
-  path: string;
-  description?: string;
-};
-
-export type AiSdrKnowledgeDefinition = {
-  product: string;
-  icp: string;
-  compliance?: string;
-  usp?: string;
-  handoff?: string;
-  negativeSignals?: string;
-};
-
-export type AiSdrCampaignDefinition = {
-  id: string;
-  timezone?: string;
-  noSendsMode?: boolean;
-  sources?: string[];
-};
-
-export type AiSdrConfig = {
-  name: string;
-  description?: string;
-  knowledge: AiSdrKnowledgeDefinition;
-  skills?: AiSdrSkillDefinition[];
-  providers?: AiSdrProviderDefinition[];
-  campaigns?: AiSdrCampaignDefinition[];
-  requiredEnv?: AiSdrEnvVar[];
-};
+  z.infer<typeof aiSdrProviderKindSchema>;
+export type AiSdrEnvVar = z.infer<typeof aiSdrEnvVarSchema>;
+export type AiSdrProviderDefinition = z.infer<typeof aiSdrProviderDefinitionSchema>;
+export type AiSdrSkillDefinition = z.infer<typeof aiSdrSkillDefinitionSchema>;
+export type AiSdrKnowledgeDefinition = z.infer<typeof aiSdrKnowledgeDefinitionSchema>;
+export type AiSdrCampaignDefinition = z.infer<typeof aiSdrCampaignDefinitionSchema>;
+export type AiSdrConfig = z.infer<typeof aiSdrConfigSchema>;
 
 export function defineAiSdr(config: AiSdrConfig): AiSdrConfig {
-  return config;
+  return aiSdrConfigSchema.parse(config);
 }
 
 export function collectConfigEnv(config: AiSdrConfig): AiSdrEnvVar[] {

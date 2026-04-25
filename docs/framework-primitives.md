@@ -28,6 +28,18 @@ The root [ai-sdr.config.ts](../ai-sdr.config.ts) file describes this deployment 
 
 This is intentionally thin today. Over time it should evolve from descriptive metadata into the runtime composition layer for the framework.
 
+The config surface is schema-backed in [src/framework/index.ts](../src/framework/index.ts):
+
+```ts
+aiSdrConfigSchema
+aiSdrProviderDefinitionSchema
+aiSdrSkillDefinitionSchema
+aiSdrKnowledgeDefinitionSchema
+defineAiSdr
+```
+
+That matters because future CLI commands and coding agents need a runtime-verifiable shape, not only TypeScript hints.
+
 ## Signals
 
 Signals are normalized events that start or update a GTM workflow.
