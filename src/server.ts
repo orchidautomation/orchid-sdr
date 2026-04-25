@@ -168,14 +168,52 @@ export function createApp() {
     const campaign = await context.repository.ensureDefaultCampaign();
     const client = getActorClient();
     const actor = client.campaignOps.getOrCreate();
+    const discoverySources = [
+      ...(context.config.DISCOVERY_LINKEDIN_ENABLED ? (["linkedin_public_post"] as const) : []),
+      ...(context.config.DISCOVERY_X_ENABLED ? (["x_public_post"] as const) : []),
+    ];
     const result = paused
       ? await actor.pauseCampaign(campaign.id)
       : await actor.resumeCampaign(campaign.id);
+    const pausedDiscoveryResults = paused
+      ? await Promise.all(
+        discoverySources.map(async (source) => {
+          const coordinator = client.discoveryCoordinator.getOrCreate([campaign.id, source]);
+          const pauseResult = await coordinator.pauseAutomation({
+            campaignId: campaign.id,
+            source,
+            reason: "campaign paused by operator",
+          });
+          return {
+            source,
+            abortedRuns: Array.isArray(pauseResult.abortedRuns) ? pauseResult.abortedRuns : [],
+          };
+        }),
+      )
+      : [];
+    const resumedDiscoveryResults = paused
+      ? []
+      : await Promise.all(
+        discoverySources.map(async (source) => {
+          const coordinator = client.discoveryCoordinator.getOrCreate([campaign.id, source]);
+          const resumeResult = await coordinator.initialize({
+            campaignId: campaign.id,
+            source,
+            runNow: false,
+          });
+          return {
+            source,
+            scheduledNextTickAt: resumeResult.scheduledNextTickAt ?? null,
+          };
+        }),
+      );
 
     return c.json({
       paused,
       campaignId: campaign.id,
       ...result,
+      discovery: paused ? pausedDiscoveryResults : resumedDiscoveryResults,
+      abortedRunCount: pausedDiscoveryResults.reduce((total, entry) => total + entry.abortedRuns.length, 0),
       flags: await context.repository.getControlFlags(),
     });
   });

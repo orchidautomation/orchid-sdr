@@ -916,7 +916,7 @@ export function renderDashboardPage() {
           <section class="sidebar-section">
             <p class="section-label">Actions</p>
             <div class="sidebar-actions">
-              <button id="toggle-pause" class="btn btn-danger" type="button">Pause AI</button>
+              <button id="toggle-pause" class="btn btn-danger" type="button">Pause Automation</button>
               <button id="trigger-discovery" class="btn btn-primary" type="button">Run Discovery</button>
               <button id="run-probe" class="btn" type="button">Run Probe</button>
               <form method="post" action="/dashboard/logout">
@@ -1408,7 +1408,7 @@ export function renderDashboardPage() {
         byId("kill-dot").className = \`status-dot \${summary.globalKillSwitch ? "danger" : "success"}\`.trim();
         byId("pause-dot").className = \`status-dot \${killSwitchOn ? "danger" : campaignPaused ? "warn" : "success"}\`.trim();
 
-        pauseButton.textContent = campaignPaused ? "Resume AI" : "Pause AI";
+        pauseButton.textContent = campaignPaused ? "Resume Automation" : "Pause Automation";
         pauseButton.className = campaignPaused ? "btn btn-primary" : "btn btn-danger";
         pauseButton.disabled = killSwitchOn;
         pauseButton.setAttribute("aria-pressed", campaignPaused ? "true" : "false");
@@ -1595,10 +1595,14 @@ export function renderDashboardPage() {
         const nextPaused = !isCampaignPaused(latestState);
         button.disabled = true;
         try {
-          await postJson("/api/dashboard/automation-pause", {
+          const result = await postJson("/api/dashboard/automation-pause", {
             paused: nextPaused,
           });
-          showToast(nextPaused ? "AI automation paused" : "AI automation resumed");
+          showToast(
+            nextPaused
+              ? \`Automation paused\${result.abortedRunCount ? \` · aborted \${result.abortedRunCount} Apify run\${result.abortedRunCount === 1 ? "" : "s"}\` : ""}\`
+              : "Automation resumed",
+          );
           await refresh();
         } catch (error) {
           showToast(\`Pause update failed: \${error.message || error}\`);
