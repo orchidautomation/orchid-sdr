@@ -24,7 +24,9 @@ export async function ensureRuntimeBootstrapped() {
     }
 
     if (context.config.SANDBOX_COMPAT_PROBE_ON_STARTUP) {
-      await runSandboxCompatibilityProbe(context);
+      await runNonFatalBootstrapTask("sandbox compatibility probe", async () => {
+        await runSandboxCompatibilityProbe(context);
+      });
     }
 
     if (shouldSkipLocalRivetRuntime()) {
@@ -38,7 +40,7 @@ export async function ensureRuntimeBootstrapped() {
       registry.start();
     }
 
-    await bootstrapDiscoveryActors();
+    await runNonFatalBootstrapTask("discovery actor bootstrap", bootstrapDiscoveryActors);
   })().catch((error) => {
     bootstrapPromise = null;
     throw error;
@@ -53,6 +55,14 @@ export function shouldUseRemoteRivetRuntime() {
 
 export function shouldSkipLocalRivetRuntime() {
   return Boolean(process.env.VERCEL) && !shouldUseRemoteRivetRuntime();
+}
+
+async function runNonFatalBootstrapTask(label: string, task: () => Promise<void>) {
+  try {
+    await task();
+  } catch (error) {
+    console.error(`Non-fatal runtime bootstrap failure: ${label}`, error);
+  }
 }
 
 async function bootstrapDiscoveryActors() {
