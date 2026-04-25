@@ -65,6 +65,7 @@ Add providers and capabilities:
 npx ai-sdr add source hubspot
 npx ai-sdr add crm attio
 npx ai-sdr add email agentmail
+npx ai-sdr add state convex
 npx ai-sdr add source apify
 npx ai-sdr add search parallel
 npx ai-sdr add extract firecrawl
@@ -90,6 +91,14 @@ The exact CLI name can change, but the shape should stay simple:
 The long-term config should be close to a YAML manifest. TypeScript can remain the typed implementation surface, but a GTM engineer should be able to understand the whole system from one declarative file:
 
 ```yaml
+state:
+  provider: convex
+  package: "@ai-sdr/convex"
+
+runtime:
+  provider: rivet
+  package: "@ai-sdr/rivet"
+
 modules:
   - capability: search
     provider: parallel
@@ -105,6 +114,17 @@ modules:
 ```
 
 Twenty is a useful inspiration here: keep the repo self-hostable, package the extension points, and make the app manifest obvious enough for agents and humans to edit.
+
+The default stack should be opinionated:
+
+```text
+Convex = reactive source of truth
+Rivet = live agent runtime
+AI Gateway = model routing
+MCP = tool surface
+Skills = judgment layer
+Provider packages = GTM integrations
+```
 
 ## Package Naming Notes
 
@@ -139,6 +159,7 @@ ai-sdr
 @ai-sdr/salesforce
 @ai-sdr/twenty
 @ai-sdr/agentmail
+@ai-sdr/convex
 @ai-sdr/parallel
 @ai-sdr/apify
 @ai-sdr/firecrawl
@@ -212,6 +233,7 @@ Swappable integrations:
 
 - CRM: Attio, HubSpot, Salesforce, Twenty
 - email: AgentMail, Gmail, Outlook, custom SMTP/API
+- state: Convex by default
 - database: Neon Postgres, Supabase Postgres, RDS Postgres, self-hosted Postgres
 - discovery: Apify, custom webhooks, job boards, RSS, Clay, first-party data
 - search: Parallel, Firecrawl, search APIs, browser/sandbox tools
@@ -369,6 +391,7 @@ Turn current integrations into explicit adapters:
 
 - `@ai-sdr/attio`
 - `@ai-sdr/agentmail`
+- `@ai-sdr/convex`
 - `@ai-sdr/apify`
 - `@ai-sdr/parallel`
 - `@ai-sdr/firecrawl`
@@ -480,6 +503,7 @@ Build:
 - `ai-sdr doctor`
 - `ai-sdr add crm attio`
 - `ai-sdr add email agentmail`
+- `ai-sdr add state convex`
 - `ai-sdr add source hubspot`
 - `ai-sdr add search parallel`
 - `ai-sdr add extract firecrawl`

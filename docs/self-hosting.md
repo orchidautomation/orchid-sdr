@@ -32,6 +32,7 @@ Usually required for the full agent lane:
 
 - Vercel AI Gateway key
 - Vercel Sandbox credentials
+- Convex deployment details for the future default reactive state plane
 - Apify token and a LinkedIn public-post task or actor
 - Firecrawl key
 - Parallel API key for authenticated research MCP and Task MCP
@@ -74,6 +75,7 @@ Important:
 - `APP_URL` must be reachable from Vercel Sandboxes.
 - `APP_URL` must be reachable from Apify and AgentMail if those webhooks are enabled.
 - For Neon, use the pooled or direct connection string they provide as `DATABASE_URL`.
+- Convex is the planned default state plane for the framework direction; the current reference app still requires Postgres migrations until the state-plane migration is implemented.
 - Keep `NO_SENDS_MODE=true` until the customer has approved real sends.
 
 ## 2. Customize The Knowledge Pack

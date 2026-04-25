@@ -112,6 +112,29 @@ export function neonProvider(): AiSdrProviderDefinition {
   });
 }
 
+export function convexProvider(): AiSdrProviderDefinition {
+  return provider({
+    id: "convex",
+    kind: "state",
+    displayName: "Convex",
+    packageName: "@ai-sdr/convex",
+    env: [
+      { name: "CONVEX_DEPLOYMENT", description: "Convex deployment selector used by the Convex CLI." },
+      { name: "CONVEX_DEPLOY_KEY", description: "Convex deploy key for CI and production deploys." },
+      { name: "NEXT_PUBLIC_CONVEX_URL", description: "Convex deployment URL used by browser clients." },
+      { name: "CONVEX_SITE_URL", description: "Convex HTTP actions site URL for webhooks and callbacks." },
+    ],
+    capabilities: [
+      "state.reactive",
+      "state.workflow",
+      "state.agentThreads",
+      "state.auditLog",
+      "dashboard.liveQueries",
+      "agent.memory",
+    ],
+  });
+}
+
 export function vercelAiGatewayProvider(): AiSdrProviderDefinition {
   return provider({
     id: "vercel-ai-gateway",

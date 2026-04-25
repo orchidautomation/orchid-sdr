@@ -126,6 +126,11 @@ function normalizeCapabilities(value: string): AiSdrCapabilityId[] {
     case "storage":
     case "db":
       return ["database"];
+    case "convex":
+    case "reactive":
+    case "threads":
+    case "memory":
+      return ["state"];
     case "discovery":
     case "signal":
     case "signals":

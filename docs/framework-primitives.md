@@ -61,6 +61,7 @@ MVP capability IDs:
 crm
 email
 source
+state
 search
 extract
 enrichment
@@ -73,6 +74,8 @@ compliance
 
 Platform capabilities such as `database` and `mcp` are also modeled because a self-hosted SDR needs durable state and a tool surface. They are not GTM motions by themselves, but they should still be packages.
 
+The default agent-native stack uses Convex as `state` and Rivet as `runtime`. See [Agent-Native Architecture](agent-native-architecture.md).
+
 Contract examples:
 
 ```text
@@ -80,6 +83,9 @@ signal.normalized.v1
 crm.prospectSync.v1
 crm.stageUpdate.v1
 email.outbound.v1
+state.reactive.v1
+state.workflow.v1
+state.agentThreads.v1
 database.postgres.v1
 research.extract.v1
 research.monitor.v1
@@ -123,6 +129,7 @@ Examples:
 
 - CRM: Attio, HubSpot, Salesforce, Twenty
 - Email: AgentMail, Gmail, Outlook, custom SMTP/API
+- State: Convex by default, Neon/Postgres as a lower-level database adapter
 - Database: Neon Postgres, Supabase Postgres, RDS Postgres, self-hosted Postgres
 - Search: Parallel, Firecrawl, search APIs, browser/sandbox tools
 - Extract: Parallel, Firecrawl, browser/sandbox tools
@@ -154,6 +161,7 @@ Existing adapters are starting to implement these contracts directly. That creat
 @ai-sdr/attio
 @ai-sdr/hubspot
 @ai-sdr/agentmail
+@ai-sdr/convex
 @ai-sdr/parallel
 @ai-sdr/firecrawl
 @ai-sdr/neon
@@ -167,6 +175,7 @@ Current MVP package targets:
 | --- | --- | --- |
 | `ai-sdr add crm attio` | `@ai-sdr/attio` | `crm` |
 | `ai-sdr add email agentmail` | `@ai-sdr/agentmail` | `email` |
+| `ai-sdr add state convex` | `@ai-sdr/convex` | `state` |
 | `ai-sdr add source apify` | `@ai-sdr/apify-linkedin` | `source` |
 | `ai-sdr add source webhook` | `@ai-sdr/webhooks` | `source` |
 | `ai-sdr add search parallel` | `@ai-sdr/parallel` | `search`, `extract`, `enrichment`, `source` |
@@ -185,6 +194,7 @@ Provider packages can satisfy more than one capability. The CLI should install b
 - `ai-sdr add search firecrawl` installs `@ai-sdr/firecrawl`.
 - `ai-sdr add extract firecrawl` also installs `@ai-sdr/firecrawl`.
 - `ai-sdr add enrichment firecrawl` also installs `@ai-sdr/firecrawl`.
+- Convex maps to `state` and should own canonical reactive SDR state.
 - Neon maps to `database` and satisfies the current Postgres state contract through `DATABASE_URL`.
 
 `research` remains a CLI alias for search/extract/enrichment so `ai-sdr add research parallel` can still work, but manifests should use the granular capability IDs.
@@ -256,6 +266,7 @@ cd profound-sdr
 npx ai-sdr add source hubspot
 npx ai-sdr add crm attio
 npx ai-sdr add email agentmail
+npx ai-sdr add state convex
 npx ai-sdr add search parallel
 npx ai-sdr add extract firecrawl
 npx ai-sdr add enrichment parallel
@@ -269,6 +280,7 @@ The current repo has a local prototype for this CLI shape:
 ```bash
 npm run ai-sdr -- modules
 npm run ai-sdr -- add crm attio
+npm run ai-sdr -- add state convex
 npm run ai-sdr -- add search parallel
 npm run ai-sdr -- add extract firecrawl
 npm run ai-sdr -- add database neon

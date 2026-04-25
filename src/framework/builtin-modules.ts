@@ -3,6 +3,7 @@ import {
   agentMailProvider,
   apifyLinkedInProvider,
   attioProvider,
+  convexProvider,
   firecrawlProvider,
   neonProvider,
   normalizedWebhookProvider,
@@ -372,6 +373,37 @@ export function neonModule(): AiSdrModuleDefinition {
   });
 }
 
+export function convexModule(): AiSdrModuleDefinition {
+  return module({
+    id: "convex",
+    displayName: "Convex state plane",
+    packageName: "@ai-sdr/convex",
+    description: "Use Convex as the reactive source of truth for SDR state, workflow checkpoints, agent threads, and live dashboard queries.",
+    providerKey: "convex",
+    capabilityIds: ["state"],
+    contracts: [
+      "state.reactive.v1",
+      "state.workflow.v1",
+      "state.agentThreads.v1",
+      "state.auditLog.v1",
+    ],
+    providers: [convexProvider()],
+    docs: [
+      {
+        label: "Agent-native architecture",
+        path: "docs/agent-native-architecture.md",
+      },
+    ],
+    smokeChecks: [
+      {
+        id: "state.convexHealth",
+        command: "npx convex dev --once",
+        description: "Validate Convex deployment config and generated functions.",
+      },
+    ],
+  });
+}
+
 export function vercelAiGatewayModule(): AiSdrModuleDefinition {
   return module({
     id: "vercel-ai-gateway",
@@ -455,6 +487,7 @@ export function defaultOrchidModules(): AiSdrModuleDefinition[] {
     apifyLinkedInModule(),
     parallelModule(),
     firecrawlModule(),
+    convexModule(),
     neonModule(),
     vercelAiGatewayModule(),
     vercelSandboxModule(),

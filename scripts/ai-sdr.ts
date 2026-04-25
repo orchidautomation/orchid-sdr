@@ -39,6 +39,7 @@ Examples:
   npm run ai-sdr -- add search parallel
   npm run ai-sdr -- add extract firecrawl
   npm run ai-sdr -- add enrichment parallel
+  npm run ai-sdr -- add state convex
   npm run ai-sdr -- add database neon
   npm run ai-sdr -- add source apify
   npm run ai-sdr -- add model vercel-ai-gateway

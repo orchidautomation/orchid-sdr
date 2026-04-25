@@ -148,11 +148,19 @@ describe("AI SDR framework config helpers", () => {
     });
 
     expect(config.modules?.some((item) => item.id === "attio")).toBe(true);
+    expect(config.modules?.some((item) => item.id === "convex")).toBe(true);
     expect(config.modules?.some((item) => item.id === "neon")).toBe(true);
     expect(config.providers?.some((item) => item.id === "attio")).toBe(true);
     expect(config.providers?.some((item) => item.id === "parallel")).toBe(true);
     expect(collectConfigEnv(config).some((envVar) => envVar.name === "ATTIO_API_KEY")).toBe(true);
+    expect(collectConfigEnv(config).some((envVar) => envVar.name === "NEXT_PUBLIC_CONVEX_URL")).toBe(true);
     expect(collectConfigEnv(config).some((envVar) => envVar.name === "PARALLEL_API_KEY")).toBe(true);
+    expect(config.modules?.find((item) => item.id === "convex")?.contracts).toEqual([
+      "state.reactive.v1",
+      "state.workflow.v1",
+      "state.agentThreads.v1",
+      "state.auditLog.v1",
+    ]);
     expect(config.modules?.find((item) => item.id === "firecrawl")?.capabilityIds).toEqual([
       "source",
       "search",
