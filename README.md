@@ -160,24 +160,32 @@ Separate deploys are safer when the underlying product or knowledge pack is diff
 
 - `src/`
   API, actors, orchestration, adapters, MCP server, and dashboard.
+- `ai-sdr.config.ts`
+  Early typed framework config describing the current deployment as composable knowledge, skills, providers, and campaigns.
 - `knowledge/`
   Product context that feeds qualification, research, and drafting.
 - `skills/`
   Sandbox skill instructions for qualification, research, copy, reply policy, and handoff policy.
 - `docs/reference.md`
   Full setup, env, MCP, skill, knowledge-pack, Attio, and webhook details.
+- `docs/self-hosting.md`
+  Clone-and-deploy guide for running Orchid SDR on a customer's own server.
 - `docs/email-providers.md`
   Email provider guidance for agent-native outbound and why AgentMail is the default fit.
 - `blog/`
   Long-form posts on the architecture, product thesis, and category.
 - `docs/blog/`
   Blog and launch writing.
+- `future-ideas/`
+  Longer-horizon product and architecture ideas that are not part of the immediate production checklist.
 
 ## Read Next
 
 - [Reference](docs/reference.md)
+- [Self-Hosting](docs/self-hosting.md)
 - [Email Providers](docs/email-providers.md)
 - [Blog Series](blog/README.md)
+- [Future Ideas](future-ideas/README.md)
 - [The AI SDR Market Is Broken](docs/blog/the-ai-sdr-market-is-broken.md)
 - [LinkedIn Post Draft](docs/blog/linkedin-post-built-an-ai-sdr-in-eight-hours.md)
 

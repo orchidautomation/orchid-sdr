@@ -18,5 +18,5 @@
     "outDir": "dist",
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"]
+  "include": ["ai-sdr.config.ts", "src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"]
 }
