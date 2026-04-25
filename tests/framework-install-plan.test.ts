@@ -37,7 +37,16 @@ describe("framework module install plans", () => {
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "crm", provider: "attio" })?.id).toBe("attio");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "research", provider: "parallel" })?.id).toBe("parallel");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "search", provider: "parallel" })?.id).toBe("parallel");
+    expect(findModuleForAddCommand(modules, { capabilityOrModule: "extract", provider: "parallel" })?.id).toBe("parallel");
+    expect(findModuleForAddCommand(modules, { capabilityOrModule: "enrichment", provider: "parallel" })?.id).toBe("parallel");
+    expect(findModuleForAddCommand(modules, { capabilityOrModule: "search", provider: "firecrawl" })?.id).toBe("firecrawl");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "extract", provider: "firecrawl" })?.id).toBe("firecrawl");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "database", provider: "neon" })?.id).toBe("neon");
+    expect(findModuleForAddCommand(modules, { capabilityOrModule: "source", provider: "apify" })?.id).toBe("apify-linkedin");
+    expect(findModuleForAddCommand(modules, { capabilityOrModule: "source", provider: "webhook" })?.id).toBe("normalized-webhook");
+    expect(findModuleForAddCommand(modules, { capabilityOrModule: "model", provider: "vercel-ai-gateway" })?.id).toBe("vercel-ai-gateway");
+    expect(findModuleForAddCommand(modules, { capabilityOrModule: "runtime", provider: "vercel-sandbox" })?.id).toBe("vercel-sandbox");
+    expect(findModuleForAddCommand(modules, { capabilityOrModule: "handoff", provider: "slack" })?.id).toBe("slack-handoff");
+    expect(findModuleForAddCommand(modules, { capabilityOrModule: "mcp", provider: "orchid-mcp" })?.id).toBe("orchid-mcp");
   });
 });

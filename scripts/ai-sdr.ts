@@ -36,9 +36,16 @@ Examples:
 
   npm run ai-sdr -- add crm attio
   npm run ai-sdr -- add email agentmail
-  npm run ai-sdr -- add research parallel
-  npm run ai-sdr -- add research firecrawl
+  npm run ai-sdr -- add search parallel
+  npm run ai-sdr -- add extract firecrawl
+  npm run ai-sdr -- add enrichment parallel
   npm run ai-sdr -- add database neon
+  npm run ai-sdr -- add source apify
+  npm run ai-sdr -- add model vercel-ai-gateway
+  npm run ai-sdr -- add runtime vercel-sandbox
+  npm run ai-sdr -- add handoff slack
+
+The alias "research" also resolves to search/extract/enrichment providers.
 
 This is a local prototype for the future framework CLI. The add command prints an install plan; it does not mutate files yet.`);
 }
@@ -54,7 +61,7 @@ function listModules() {
 
 function printAddPlan(moduleId: string | undefined) {
   if (!moduleId) {
-    console.error("Missing module or capability. Example: npm run ai-sdr -- add research parallel");
+    console.error("Missing module or capability. Example: npm run ai-sdr -- add search parallel");
     process.exitCode = 1;
     return;
   }

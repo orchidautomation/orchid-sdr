@@ -66,8 +66,9 @@ npx ai-sdr add source hubspot
 npx ai-sdr add crm attio
 npx ai-sdr add email agentmail
 npx ai-sdr add source apify
-npx ai-sdr add research parallel
-npx ai-sdr add research firecrawl
+npx ai-sdr add search parallel
+npx ai-sdr add extract firecrawl
+npx ai-sdr add enrichment parallel
 npx ai-sdr add database neon
 npx ai-sdr add skill product-routing
 npx ai-sdr doctor
@@ -194,7 +195,9 @@ Swappable integrations:
 - email: AgentMail, Gmail, Outlook, custom SMTP/API
 - database: Neon Postgres, Supabase Postgres, RDS Postgres, self-hosted Postgres
 - discovery: Apify, custom webhooks, job boards, RSS, Clay, first-party data
-- research: Parallel, Firecrawl, search APIs, browser/sandbox tools
+- search: Parallel, Firecrawl, search APIs, browser/sandbox tools
+- extract: Parallel, Firecrawl, browser/sandbox tools
+- enrichment: Parallel, Clay, Prospeo, custom data providers
 - LLM: Vercel AI Gateway, OpenAI, Anthropic, local models, OpenRouter
 - execution: local runtime, Vercel Sandbox, other cloud code harnesses
 
@@ -348,7 +351,13 @@ Turn current integrations into explicit adapters:
 - `@ai-sdr/attio`
 - `@ai-sdr/agentmail`
 - `@ai-sdr/apify`
+- `@ai-sdr/parallel`
 - `@ai-sdr/firecrawl`
+- `@ai-sdr/neon`
+- `@ai-sdr/vercel-ai-gateway`
+- `@ai-sdr/vercel-sandbox`
+- `@ai-sdr/mcp`
+- `@ai-sdr/slack`
 - `@ai-sdr/hubspot`
 - `@ai-sdr/twenty`
 
@@ -453,7 +462,9 @@ Build:
 - `ai-sdr add crm attio`
 - `ai-sdr add email agentmail`
 - `ai-sdr add source hubspot`
-- `ai-sdr add research parallel`
+- `ai-sdr add search parallel`
+- `ai-sdr add extract firecrawl`
+- `ai-sdr add enrichment parallel`
 - `ai-sdr add database neon`
 - `ai-sdr mcp-config`
 

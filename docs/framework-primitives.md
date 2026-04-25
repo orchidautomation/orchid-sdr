@@ -46,7 +46,7 @@ Current provider modules are defined in [src/framework/builtin-modules.ts](../sr
 
 - provider definitions
 - provider keys
-- broad capability IDs
+- capability IDs
 - normalized framework contracts
 - env vars
 - docs
@@ -54,6 +54,24 @@ Current provider modules are defined in [src/framework/builtin-modules.ts](../sr
 - package names for future extraction
 
 That is the beginning of the `ai-sdr add <capability> <provider>` shape.
+
+MVP capability IDs:
+
+```text
+crm
+email
+source
+search
+extract
+enrichment
+runtime
+model
+handoff
+observability
+compliance
+```
+
+Platform capabilities such as `database` and `mcp` are also modeled because a self-hosted SDR needs durable state and a tool surface. They are not GTM motions by themselves, but they should still be packages.
 
 Contract examples:
 
@@ -106,7 +124,9 @@ Examples:
 - CRM: Attio, HubSpot, Salesforce, Twenty
 - Email: AgentMail, Gmail, Outlook, custom SMTP/API
 - Database: Neon Postgres, Supabase Postgres, RDS Postgres, self-hosted Postgres
-- Research: Parallel, Firecrawl, search APIs, browser/sandbox tools
+- Search: Parallel, Firecrawl, search APIs, browser/sandbox tools
+- Extract: Parallel, Firecrawl, browser/sandbox tools
+- Enrichment: Parallel, Prospeo, Clay, custom data providers
 - Discovery: Apify, first-party sources, custom webhooks
 - Runtime: local, Vercel Sandbox, another cloud code harness
 - Model: Vercel AI Gateway, OpenAI, Anthropic, OpenRouter, local models
@@ -141,11 +161,32 @@ Existing adapters are starting to implement these contracts directly. That creat
 @ai-sdr/twenty
 ```
 
-The MVP keeps the user-facing capability broad. `research` can map to Parallel or Firecrawl, while contracts describe the lower-level surfaces:
+Current MVP package targets:
 
-- Parallel maps to `research` and can satisfy search, URL extraction, async enrichment/deep research, monitoring, and lead discovery surfaces.
-- Firecrawl maps to `research` and is strongest for search plus clean page scraping, crawling, and structured extraction.
+| Command | Package | Capabilities |
+| --- | --- | --- |
+| `ai-sdr add crm attio` | `@ai-sdr/attio` | `crm` |
+| `ai-sdr add email agentmail` | `@ai-sdr/agentmail` | `email` |
+| `ai-sdr add source apify` | `@ai-sdr/apify-linkedin` | `source` |
+| `ai-sdr add source webhook` | `@ai-sdr/webhooks` | `source` |
+| `ai-sdr add search parallel` | `@ai-sdr/parallel` | `search`, `extract`, `enrichment`, `source` |
+| `ai-sdr add extract firecrawl` | `@ai-sdr/firecrawl` | `search`, `extract` |
+| `ai-sdr add database neon` | `@ai-sdr/neon` | `database` |
+| `ai-sdr add model vercel-ai-gateway` | `@ai-sdr/vercel-ai-gateway` | `model` |
+| `ai-sdr add runtime vercel-sandbox` | `@ai-sdr/vercel-sandbox` | `runtime` |
+| `ai-sdr add handoff slack` | `@ai-sdr/slack` | `handoff` |
+| `ai-sdr add mcp orchid-mcp` | `@ai-sdr/mcp` | `mcp` |
+
+Provider packages can satisfy more than one capability. The CLI should install by capability/provider pair, while the package remains provider-owned:
+
+- `ai-sdr add search parallel` installs `@ai-sdr/parallel`.
+- `ai-sdr add extract parallel` also installs `@ai-sdr/parallel`.
+- `ai-sdr add enrichment parallel` also installs `@ai-sdr/parallel`.
+- `ai-sdr add search firecrawl` installs `@ai-sdr/firecrawl`.
+- `ai-sdr add extract firecrawl` also installs `@ai-sdr/firecrawl`.
 - Neon maps to `database` and satisfies the current Postgres state contract through `DATABASE_URL`.
+
+`research` remains a CLI alias for search/extract/enrichment so `ai-sdr add research parallel` can still work, but manifests should use the granular capability IDs.
 
 ## Skills
 
@@ -212,8 +253,9 @@ cd profound-sdr
 npx ai-sdr add source hubspot
 npx ai-sdr add crm attio
 npx ai-sdr add email agentmail
-npx ai-sdr add research parallel
-npx ai-sdr add research firecrawl
+npx ai-sdr add search parallel
+npx ai-sdr add extract firecrawl
+npx ai-sdr add enrichment parallel
 npx ai-sdr add database neon
 npx ai-sdr add skill product-routing
 npx ai-sdr doctor
@@ -224,7 +266,8 @@ The current repo has a local prototype for this CLI shape:
 ```bash
 npm run ai-sdr -- modules
 npm run ai-sdr -- add crm attio
-npm run ai-sdr -- add research parallel
+npm run ai-sdr -- add search parallel
+npm run ai-sdr -- add extract firecrawl
 npm run ai-sdr -- add database neon
 ```
 

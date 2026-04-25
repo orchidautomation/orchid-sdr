@@ -13,18 +13,19 @@ export const aiSdrProviderKindSchema = z.enum([
 ]);
 
 export const aiSdrCapabilityIdSchema = z.enum([
-  "source",
   "crm",
   "email",
-  "database",
-  "research",
+  "source",
+  "search",
+  "extract",
   "enrichment",
-  "model",
   "runtime",
-  "mcp",
+  "model",
   "handoff",
   "observability",
   "compliance",
+  "database",
+  "mcp",
 ]);
 
 export const aiSdrEnvVarSchema = z.object({

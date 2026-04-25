@@ -60,7 +60,7 @@ export function findModuleForAddCommand(
     return modules.find((module) => normalizeAddToken(module.id) === capabilityOrModule);
   }
 
-  const capability = normalizeCapability(capabilityOrModule);
+  const capabilities = new Set(normalizeCapabilities(capabilityOrModule));
   return modules.find((module) => {
     const moduleProviderKeys = new Set([
       module.id,
@@ -69,7 +69,7 @@ export function findModuleForAddCommand(
     ].filter((value): value is string => Boolean(value)).map(normalizeAddToken));
 
     return (
-      module.capabilityIds?.includes(capability)
+      module.capabilityIds?.some((capability) => capabilities.has(capability))
       && moduleProviderKeys.has(provider)
     );
   });
@@ -94,31 +94,34 @@ function buildNextSteps(module: AiSdrModuleDefinition, alreadyInstalled: boolean
   ];
 }
 
-function normalizeCapability(value: string): AiSdrCapabilityId {
+function normalizeCapabilities(value: string): AiSdrCapabilityId[] {
   switch (normalizeAddToken(value)) {
-    case "search":
-    case "extract":
-    case "extraction":
-    case "enrich":
-    case "enrichment":
+    case "research":
     case "deep-research":
     case "deepresearch":
+      return ["search", "extract", "enrichment"];
+    case "extract":
+    case "extraction":
+      return ["extract"];
+    case "enrich":
+    case "enrichment":
+      return ["enrichment"];
     case "monitor":
     case "monitoring":
-      return "research";
+      return ["source", "observability"];
     case "postgres":
     case "storage":
     case "db":
-      return "database";
+      return ["database"];
     case "discovery":
     case "signal":
     case "signals":
-      return "source";
+      return ["source"];
     case "mail":
     case "outreach":
-      return "email";
+      return ["email"];
     default:
-      return normalizeAddToken(value) as AiSdrCapabilityId;
+      return [normalizeAddToken(value) as AiSdrCapabilityId];
   }
 }
 

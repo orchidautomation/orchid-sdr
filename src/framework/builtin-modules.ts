@@ -128,7 +128,7 @@ export function firecrawlModule(): AiSdrModuleDefinition {
     packageName: "@ai-sdr/firecrawl",
     description: "Search and extract pages for lead, company, and news research.",
     providerKey: "firecrawl",
-    capabilityIds: ["research"],
+    capabilityIds: ["search", "extract"],
     contracts: ["research.search.v1", "research.extract.v1"],
     providers: [firecrawlProvider()],
     smokeChecks: [
@@ -147,7 +147,7 @@ export function parallelModule(): AiSdrModuleDefinition {
     packageName: "@ai-sdr/parallel",
     description: "Run agentic research, URL extraction, enrichment, discovery, and web monitoring through Parallel APIs and MCP tools.",
     providerKey: "parallel",
-    capabilityIds: ["research"],
+    capabilityIds: ["search", "extract", "enrichment", "source"],
     contracts: [
       "research.search.v1",
       "research.extract.v1",
