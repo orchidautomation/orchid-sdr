@@ -126,11 +126,110 @@ export function firecrawlModule(): AiSdrModuleDefinition {
     id: "firecrawl",
     displayName: "Firecrawl research",
     packageName: "@ai-sdr/firecrawl",
-    description: "Search and extract pages for lead, company, and news research.",
+    description: "Search, scrape, crawl, extract, and operate browser-backed web research through Firecrawl.",
     providerKey: "firecrawl",
-    capabilityIds: ["search", "extract"],
+    capabilityIds: ["source", "search", "extract", "enrichment", "runtime", "observability"],
     contracts: ["research.search.v1", "research.extract.v1"],
     providers: [firecrawlProvider()],
+    mcpServers: [
+      {
+        id: "firecrawl",
+        displayName: "Firecrawl MCP",
+        providerKey: "firecrawl",
+        transport: "http",
+        url: "https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp",
+        auth: "url-token",
+        requiredEnv: [
+          { name: "FIRECRAWL_API_KEY", description: "Firecrawl API key embedded in the hosted MCP URL." },
+        ],
+        tools: [
+          {
+            name: "firecrawl_scrape",
+            description: "Scrape one URL into clean structured data.",
+            capabilityIds: ["extract"],
+            contracts: ["research.extract.v1"],
+          },
+          {
+            name: "firecrawl_map",
+            description: "Map/discover URLs on a site.",
+            capabilityIds: ["source"],
+            contracts: ["signal.discovery.v1"],
+          },
+          {
+            name: "firecrawl_search",
+            description: "Search the web and return page content.",
+            capabilityIds: ["search", "extract"],
+            contracts: ["research.search.v1", "research.extract.v1"],
+          },
+          {
+            name: "firecrawl_crawl",
+            description: "Crawl a site across multiple pages.",
+            capabilityIds: ["source", "extract"],
+            contracts: ["signal.discovery.v1", "research.extract.v1"],
+          },
+          {
+            name: "firecrawl_check_crawl_status",
+            description: "Check crawl job status.",
+            capabilityIds: ["observability"],
+          },
+          {
+            name: "firecrawl_extract",
+            description: "Extract structured data from one or more URLs.",
+            capabilityIds: ["extract", "enrichment"],
+            contracts: ["research.extract.v1", "research.enrich.v1"],
+          },
+          {
+            name: "firecrawl_agent",
+            description: "Run autonomous web research and extraction.",
+            capabilityIds: ["search", "extract", "enrichment"],
+            contracts: ["research.search.v1", "research.extract.v1", "research.enrich.v1"],
+          },
+          {
+            name: "firecrawl_agent_status",
+            description: "Check autonomous agent job status.",
+            capabilityIds: ["observability"],
+          },
+          {
+            name: "firecrawl_browser_create",
+            description: "Create a browser session for interactive workflows.",
+            capabilityIds: ["runtime"],
+          },
+          {
+            name: "firecrawl_browser_execute",
+            description: "Execute bash, Python, or JavaScript inside a browser session.",
+            capabilityIds: ["runtime", "extract"],
+            contracts: ["research.extract.v1"],
+          },
+          {
+            name: "firecrawl_browser_delete",
+            description: "Delete a browser session.",
+            capabilityIds: ["runtime"],
+          },
+          {
+            name: "firecrawl_browser_list",
+            description: "List browser sessions.",
+            capabilityIds: ["observability"],
+          },
+          {
+            name: "firecrawl_interact",
+            description: "Interact with a scraped page in a live browser session.",
+            capabilityIds: ["runtime", "extract"],
+            contracts: ["research.extract.v1"],
+          },
+          {
+            name: "firecrawl_interact_stop",
+            description: "Stop an interact session.",
+            capabilityIds: ["runtime"],
+          },
+        ],
+      },
+    ],
+    docs: [
+      {
+        label: "MCP capability index",
+        path: "docs/mcp-capability-index.md",
+      },
+    ],
     smokeChecks: [
       {
         id: "research.extract",
@@ -147,7 +246,7 @@ export function parallelModule(): AiSdrModuleDefinition {
     packageName: "@ai-sdr/parallel",
     description: "Run agentic research, URL extraction, enrichment, discovery, and web monitoring through Parallel APIs and MCP tools.",
     providerKey: "parallel",
-    capabilityIds: ["search", "extract", "enrichment", "source"],
+    capabilityIds: ["search", "extract", "enrichment", "source", "observability"],
     contracts: [
       "research.search.v1",
       "research.extract.v1",
@@ -157,6 +256,69 @@ export function parallelModule(): AiSdrModuleDefinition {
       "signal.discovery.v1",
     ],
     providers: [parallelProvider()],
+    mcpServers: [
+      {
+        id: "parallel-search",
+        displayName: "Parallel Search MCP",
+        providerKey: "parallel",
+        transport: "http",
+        url: "https://search.parallel.ai/mcp",
+        auth: "optional-bearer",
+        optionalEnv: [
+          { name: "PARALLEL_API_KEY", description: "Optional bearer token for higher Parallel Search MCP limits." },
+        ],
+        tools: [
+          {
+            name: "web_search",
+            description: "General-purpose web search inside an agent loop.",
+            capabilityIds: ["search", "source"],
+            contracts: ["research.search.v1", "signal.discovery.v1"],
+          },
+          {
+            name: "web_fetch",
+            description: "Fetch token-efficient markdown from a specific URL.",
+            capabilityIds: ["extract"],
+            contracts: ["research.extract.v1"],
+          },
+        ],
+      },
+      {
+        id: "parallel-task",
+        displayName: "Parallel Task MCP",
+        providerKey: "parallel",
+        transport: "http",
+        url: "https://task-mcp.parallel.ai/mcp",
+        auth: "bearer",
+        requiredEnv: [
+          { name: "PARALLEL_API_KEY", description: "Bearer token required by Parallel Task MCP." },
+        ],
+        tools: [
+          {
+            name: "createDeepResearch",
+            description: "Start an async deep research task.",
+            capabilityIds: ["search", "enrichment"],
+            contracts: ["research.deepResearch.v1", "research.enrich.v1"],
+          },
+          {
+            name: "createTaskGroup",
+            description: "Start parallel enrichment tasks for rows or entity lists.",
+            capabilityIds: ["enrichment"],
+            contracts: ["research.enrich.v1"],
+          },
+          {
+            name: "getStatus",
+            description: "Poll status for an in-flight task or task group.",
+            capabilityIds: ["observability"],
+          },
+          {
+            name: "getResultMarkdown",
+            description: "Fetch completed task output as markdown.",
+            capabilityIds: ["extract", "enrichment"],
+            contracts: ["research.extract.v1", "research.enrich.v1"],
+          },
+        ],
+      },
+    ],
     docs: [
       {
         label: "Parallel Search MCP",
@@ -165,6 +327,10 @@ export function parallelModule(): AiSdrModuleDefinition {
       {
         label: "Parallel Task MCP",
         path: "docs/reference.md",
+      },
+      {
+        label: "MCP capability index",
+        path: "docs/mcp-capability-index.md",
       },
     ],
     smokeChecks: [

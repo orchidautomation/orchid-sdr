@@ -204,7 +204,7 @@ export function buildSandboxMcpConfig(context: Pick<AppContext, "config">) {
       },
       [PARALLEL_SEARCH_MCP_NAME]: {
         type: "http",
-        url: "https://search-mcp.parallel.ai/mcp",
+        url: "https://search.parallel.ai/mcp",
         ...(context.config.PARALLEL_API_KEY
           ? {
               headers: {

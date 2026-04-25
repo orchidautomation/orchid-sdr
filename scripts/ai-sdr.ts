@@ -92,6 +92,8 @@ function printPlan(module: AiSdrModuleDefinition) {
   printList("Capabilities", plan.capabilityIds);
   printList("Contracts", plan.contracts);
   printList("Providers", plan.providers);
+  printList("MCP servers", plan.mcpServers);
+  printList("MCP tools", plan.mcpTools);
   printList("Env", plan.envVars);
   printList("Docs", plan.docs);
   printList("Smoke checks", plan.smokeChecks);

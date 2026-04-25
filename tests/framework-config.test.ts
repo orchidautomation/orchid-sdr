@@ -6,6 +6,7 @@ import {
   collectConfigEnv,
   collectKnowledgePaths,
   collectModuleDocs,
+  collectModuleMcpServers,
   collectSkillPaths,
   defaultOrchidModules,
   defineAiSdr,
@@ -152,15 +153,25 @@ describe("AI SDR framework config helpers", () => {
     expect(config.providers?.some((item) => item.id === "parallel")).toBe(true);
     expect(collectConfigEnv(config).some((envVar) => envVar.name === "ATTIO_API_KEY")).toBe(true);
     expect(collectConfigEnv(config).some((envVar) => envVar.name === "PARALLEL_API_KEY")).toBe(true);
-    expect(config.modules?.find((item) => item.id === "firecrawl")?.capabilityIds).toEqual(["search", "extract"]);
+    expect(config.modules?.find((item) => item.id === "firecrawl")?.capabilityIds).toEqual([
+      "source",
+      "search",
+      "extract",
+      "enrichment",
+      "runtime",
+      "observability",
+    ]);
     expect(config.modules?.find((item) => item.id === "parallel")?.capabilityIds).toEqual([
       "search",
       "extract",
       "enrichment",
       "source",
+      "observability",
     ]);
     expect(config.modules?.find((item) => item.id === "parallel")?.contracts).toContain("research.monitor.v1");
     expect(collectModuleDocs(config).some((doc) => doc.path === "docs/self-hosting.md")).toBe(true);
+    expect(collectModuleMcpServers(config).some((server) => server.id === "parallel-search")).toBe(true);
+    expect(collectModuleMcpServers(config).some((server) => server.id === "firecrawl")).toBe(true);
     expect(config.modules?.flatMap((item) => item.contracts ?? [])).toContain("crm.prospectSync.v1");
     expect(validateAiSdrConfigReferences(config)).toEqual([]);
   });

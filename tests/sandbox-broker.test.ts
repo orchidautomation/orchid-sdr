@@ -22,7 +22,7 @@ describe("buildSandboxMcpConfig", () => {
         },
         "parallel-search": {
           type: "http",
-          url: "https://search-mcp.parallel.ai/mcp",
+          url: "https://search.parallel.ai/mcp",
         },
       },
     });
@@ -47,7 +47,7 @@ describe("buildSandboxMcpConfig", () => {
 
     expect(config.mcpServers["parallel-search"]).toEqual({
       type: "http",
-      url: "https://search-mcp.parallel.ai/mcp",
+      url: "https://search.parallel.ai/mcp",
       headers: {
         Authorization: "Bearer ${PARALLEL_API_KEY}",
       },

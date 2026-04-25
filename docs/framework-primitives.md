@@ -170,7 +170,7 @@ Current MVP package targets:
 | `ai-sdr add source apify` | `@ai-sdr/apify-linkedin` | `source` |
 | `ai-sdr add source webhook` | `@ai-sdr/webhooks` | `source` |
 | `ai-sdr add search parallel` | `@ai-sdr/parallel` | `search`, `extract`, `enrichment`, `source` |
-| `ai-sdr add extract firecrawl` | `@ai-sdr/firecrawl` | `search`, `extract` |
+| `ai-sdr add extract firecrawl` | `@ai-sdr/firecrawl` | `source`, `search`, `extract`, `enrichment`, `runtime`, `observability` |
 | `ai-sdr add database neon` | `@ai-sdr/neon` | `database` |
 | `ai-sdr add model vercel-ai-gateway` | `@ai-sdr/vercel-ai-gateway` | `model` |
 | `ai-sdr add runtime vercel-sandbox` | `@ai-sdr/vercel-sandbox` | `runtime` |
@@ -184,9 +184,12 @@ Provider packages can satisfy more than one capability. The CLI should install b
 - `ai-sdr add enrichment parallel` also installs `@ai-sdr/parallel`.
 - `ai-sdr add search firecrawl` installs `@ai-sdr/firecrawl`.
 - `ai-sdr add extract firecrawl` also installs `@ai-sdr/firecrawl`.
+- `ai-sdr add enrichment firecrawl` also installs `@ai-sdr/firecrawl`.
 - Neon maps to `database` and satisfies the current Postgres state contract through `DATABASE_URL`.
 
 `research` remains a CLI alias for search/extract/enrichment so `ai-sdr add research parallel` can still work, but manifests should use the granular capability IDs.
+
+MCP tools are indexed separately in [MCP Capability Index](mcp-capability-index.md). The module manifest should be able to compile provider MCP definitions into sandbox `.mcp.json`.
 
 ## Skills
 

@@ -136,7 +136,7 @@ If you want the full runtime, add provider keys such as Neon, Apify, Parallel, F
 
 Campaign quiet hours are evaluated in the campaign's local timezone. New campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE` and you can update a live campaign later through the remote MCP tool `control.setCampaignTimezone`.
 
-Parallel Search MCP is mounted into sandbox turns by default using `https://search-mcp.parallel.ai/mcp`. If you set `PARALLEL_API_KEY`, the sandbox adds bearer auth and also mounts Parallel Task MCP at `https://task-mcp.parallel.ai/mcp` for async deep research and enrichment.
+Parallel Search MCP is mounted into sandbox turns by default using `https://search.parallel.ai/mcp`. If you set `PARALLEL_API_KEY`, the sandbox adds bearer auth and also mounts Parallel Task MCP at `https://task-mcp.parallel.ai/mcp` for async deep research and enrichment.
 
 By default, discovery runs once per hour on weekdays only, and LinkedIn discovery will fetch up to 50 posts per run.
 

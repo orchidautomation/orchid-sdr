@@ -87,6 +87,25 @@ The exact CLI name can change, but the shape should stay simple:
 - `ai-sdr doctor` verifies database, env, MCP, webhooks, provider auth, and send safety
 - `ai-sdr deploy` helps ship to the chosen target
 
+The long-term config should be close to a YAML manifest. TypeScript can remain the typed implementation surface, but a GTM engineer should be able to understand the whole system from one declarative file:
+
+```yaml
+modules:
+  - capability: search
+    provider: parallel
+    package: "@ai-sdr/parallel"
+    mcp:
+      - id: parallel-search
+      - id: parallel-task
+  - capability: extract
+    provider: firecrawl
+    package: "@ai-sdr/firecrawl"
+    mcp:
+      - id: firecrawl
+```
+
+Twenty is a useful inspiration here: keep the repo self-hostable, package the extension points, and make the app manifest obvious enough for agents and humans to edit.
+
 ## Package Naming Notes
 
 As of April 25, 2026, these npm package names returned `404 Not Found` from the public npm registry:

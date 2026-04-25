@@ -96,6 +96,34 @@ export const aiSdrContractIdSchema = z.enum([
   "handoff.notify.v1",
 ]);
 
+export const aiSdrMcpAuthModeSchema = z.enum([
+  "none",
+  "optional-bearer",
+  "bearer",
+  "url-token",
+]);
+
+export const aiSdrMcpToolCapabilitySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  capabilityIds: z.array(aiSdrCapabilityIdSchema),
+  contracts: z.array(aiSdrContractIdSchema).optional(),
+});
+
+export const aiSdrMcpServerDefinitionSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+  providerKey: z.string().min(1).optional(),
+  transport: z.enum(["http", "stdio"]),
+  url: z.string().min(1).optional(),
+  command: z.string().min(1).optional(),
+  args: z.array(z.string()).optional(),
+  auth: aiSdrMcpAuthModeSchema.optional(),
+  requiredEnv: z.array(aiSdrEnvVarSchema).optional(),
+  optionalEnv: z.array(aiSdrEnvVarSchema).optional(),
+  tools: z.array(aiSdrMcpToolCapabilitySchema).optional(),
+});
+
 export const aiSdrModuleDefinitionSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
@@ -107,6 +135,7 @@ export const aiSdrModuleDefinitionSchema = z.object({
   providers: z.array(aiSdrProviderDefinitionSchema).optional(),
   skills: z.array(aiSdrSkillDefinitionSchema).optional(),
   requiredEnv: z.array(aiSdrEnvVarSchema).optional(),
+  mcpServers: z.array(aiSdrMcpServerDefinitionSchema).optional(),
   docs: z.array(aiSdrModuleDocSchema).optional(),
   smokeChecks: z.array(aiSdrModuleSmokeCheckSchema).optional(),
 });
@@ -133,6 +162,9 @@ export type AiSdrCampaignDefinition = z.infer<typeof aiSdrCampaignDefinitionSche
 export type AiSdrModuleDoc = z.infer<typeof aiSdrModuleDocSchema>;
 export type AiSdrModuleSmokeCheck = z.infer<typeof aiSdrModuleSmokeCheckSchema>;
 export type AiSdrContractId = z.infer<typeof aiSdrContractIdSchema>;
+export type AiSdrMcpAuthMode = z.infer<typeof aiSdrMcpAuthModeSchema>;
+export type AiSdrMcpToolCapability = z.infer<typeof aiSdrMcpToolCapabilitySchema>;
+export type AiSdrMcpServerDefinition = z.infer<typeof aiSdrMcpServerDefinitionSchema>;
 export type AiSdrModuleDefinition = z.infer<typeof aiSdrModuleDefinitionSchema>;
 export type AiSdrConfig = z.infer<typeof aiSdrConfigSchema>;
 
@@ -174,6 +206,10 @@ export function collectModuleEnv(config: AiSdrConfig): AiSdrEnvVar[] {
 
 export function collectModuleDocs(config: AiSdrConfig): AiSdrModuleDoc[] {
   return (config.modules ?? []).flatMap((module) => module.docs ?? []);
+}
+
+export function collectModuleMcpServers(config: AiSdrConfig): AiSdrMcpServerDefinition[] {
+  return (config.modules ?? []).flatMap((module) => module.mcpServers ?? []);
 }
 
 export function collectKnowledgePaths(config: AiSdrConfig): string[] {

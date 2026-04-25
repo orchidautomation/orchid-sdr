@@ -155,9 +155,11 @@ Sandbox MCP servers are written into `.mcp.json` during sandbox setup in `src/or
 Current defaults:
 
 - `orchid-sdr` first-party MCP
-- `parallel-search` via `https://search-mcp.parallel.ai/mcp`
+- `parallel-search` via `https://search.parallel.ai/mcp`
 - `parallel-task` via `https://task-mcp.parallel.ai/mcp` when `PARALLEL_API_KEY` is set
 - `firecrawl` when `FIRECRAWL_API_KEY` is set
+
+Provider MCP tool capabilities are indexed in [MCP Capability Index](mcp-capability-index.md).
 
 To add another one:
 

@@ -9,6 +9,8 @@ export type AiSdrModuleInstallPlan = {
   capabilityIds: string[];
   contracts: string[];
   providers: string[];
+  mcpServers: string[];
+  mcpTools: string[];
   envVars: string[];
   docs: string[];
   smokeChecks: string[];
@@ -26,6 +28,10 @@ export function buildModuleInstallPlan(
   const envVars = [
     ...(module.requiredEnv ?? []),
     ...(module.providers ?? []).flatMap((provider) => provider.env ?? []),
+    ...(module.mcpServers ?? []).flatMap((server) => [
+      ...(server.requiredEnv ?? []),
+      ...(server.optionalEnv ?? []),
+    ]),
   ].map((envVar) => envVar.name);
 
   return {
@@ -37,6 +43,12 @@ export function buildModuleInstallPlan(
     capabilityIds: module.capabilityIds ?? [],
     contracts: module.contracts ?? [],
     providers: (module.providers ?? []).map((provider) => provider.id),
+    mcpServers: (module.mcpServers ?? []).map((server) =>
+      server.url ? `${server.id}: ${server.url}` : server.id,
+    ),
+    mcpTools: (module.mcpServers ?? []).flatMap((server) =>
+      (server.tools ?? []).map((tool) => `${server.id}.${tool.name}: ${tool.capabilityIds.join(", ")}`),
+    ),
     envVars: [...new Set(envVars)].sort(),
     docs: (module.docs ?? []).map((doc) => `${doc.label}: ${doc.path}`),
     smokeChecks: (module.smokeChecks ?? []).map((check) =>
@@ -88,6 +100,7 @@ function buildNextSteps(module: AiSdrModuleDefinition, alreadyInstalled: boolean
       ? `Install ${module.packageName} once packages are extracted.`
       : `Register module "${module.id}" in ai-sdr.config.ts.`,
     `Add provider definitions for: ${(module.providers ?? []).map((provider) => provider.id).join(", ") || "none"}.`,
+    `Mount MCP servers for: ${(module.mcpServers ?? []).map((server) => server.id).join(", ") || "none"}.`,
     "Copy required env vars into .env.example and deployment secrets.",
     "Run npm run doctor.",
     "Run the module smoke checks before enabling sends.",
