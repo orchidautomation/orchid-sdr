@@ -1,0 +1,191 @@
+# Framework Primitives
+
+This page describes the emerging modular shape of Orchid SDR.
+
+The target user is a GTM engineer, RevOps engineer, or technical founder using a coding agent such as Codex or Claude Code to assemble a custom AI SDR from reliable primitives.
+
+The goal is not to make every company use the same SDR. The goal is to give teams the blocks to build the exact GTM motion they need.
+
+## Mental Model
+
+An AI SDR is a stateful workflow made from a few composable parts:
+
+```text
+signals -> prospects -> threads -> skills -> providers -> MCP tools
+```
+
+Those parts should be explicit enough that a coding agent can safely modify, extend, test, and deploy them.
+
+## Current Config Surface
+
+The root [ai-sdr.config.ts](../ai-sdr.config.ts) file describes this deployment as a framework-style app:
+
+- knowledge files
+- tracked skills
+- provider modules
+- campaigns
+- required environment variables
+
+This is intentionally thin today. Over time it should evolve from descriptive metadata into the runtime composition layer for the framework.
+
+## Signals
+
+Signals are normalized events that start or update a GTM workflow.
+
+Examples:
+
+- HubSpot form submission
+- LinkedIn public post
+- X/Twitter post
+- job post
+- website visitor
+- funding event
+- CSV row
+- manual Slack submission
+
+The shared signal contract lives in [src/framework/signals.ts](../src/framework/signals.ts).
+
+Core schema:
+
+```ts
+normalizedSignalSchema
+signalWebhookPayloadSchema
+providerSignalSchema
+```
+
+The generic webhook path uses the same contract as provider adapters, so new sources can be added without inventing a new ingestion shape every time.
+
+## Providers
+
+Providers are swappable integrations.
+
+Examples:
+
+- CRM: Attio, HubSpot, Salesforce, Twenty
+- Email: AgentMail, Gmail, Outlook, custom SMTP/API
+- Research: Firecrawl, search APIs, browser/sandbox tools
+- Discovery: Apify, first-party sources, custom webhooks
+- Runtime: local, Vercel Sandbox, another cloud code harness
+- Model: Vercel AI Gateway, OpenAI, Anthropic, OpenRouter, local models
+
+The early executable contracts live in [src/framework/provider-contracts.ts](../src/framework/provider-contracts.ts).
+
+Current contract examples:
+
+```ts
+DiscoverySignalSourceAdapter
+EmailEnrichmentProvider
+BasicResearchSearchProvider
+ConfigurableResearchSearchProvider
+WebExtractProvider
+OutboundEmailProvider
+CrmProvider
+HandoffProvider
+```
+
+Existing adapters are starting to implement these contracts directly. That creates a path toward packages such as:
+
+```text
+@ai-sdr/attio
+@ai-sdr/hubspot
+@ai-sdr/agentmail
+@ai-sdr/firecrawl
+@ai-sdr/apify-linkedin
+@ai-sdr/twenty
+```
+
+## Skills
+
+Skills are the agent's operating judgment.
+
+Today they live under `skills/`:
+
+- `icp-qualification`
+- `research-brief`
+- `research-checks`
+- `sdr-copy`
+- `reply-policy`
+- `handoff-policy`
+
+In the framework direction, skills should become composable modules that a GTM engineer can add, remove, version, and test.
+
+Example future commands:
+
+```bash
+npx ai-sdr add skill product-routing
+npx ai-sdr add skill enterprise-compliance
+npx ai-sdr add skill founder-led-copy
+```
+
+## MCP Tools
+
+The first-party MCP server is the control surface for operators and agents.
+
+It lets a coding agent inspect and manipulate the live SDR system through typed tools instead of guessing against a database or dashboard.
+
+Important tool groups:
+
+- pipeline inspection
+- lead/thread inspection
+- research and qualification
+- mail preview/send/reply
+- CRM sync
+- runtime flags
+- discovery controls
+- handoff
+
+This is a major differentiator: a GTM engineer can use Codex or Claude Code to operate and extend the SDR through the same typed interface the system exposes to agents.
+
+## How A GTM Engineer Should Use This
+
+The intended workflow:
+
+1. Clone or scaffold an AI SDR project.
+2. Describe the company's ICP and product in `knowledge/`.
+3. Add providers for the actual stack.
+4. Add skills that encode the company's judgment.
+5. Run `npm run doctor`.
+6. Run in `NO_SENDS_MODE=true`.
+7. Feed real signals into the system.
+8. Inspect outcomes through MCP and the dashboard.
+9. Iterate with Codex or Claude Code.
+10. Only enable sends after the workflow is proven.
+
+Future ideal:
+
+```bash
+npx create-ai-sdr@latest profound-sdr
+cd profound-sdr
+npx ai-sdr add hubspot
+npx ai-sdr add attio
+npx ai-sdr add agentmail
+npx ai-sdr add skill product-routing
+npx ai-sdr doctor
+```
+
+## Current Boundary Between App And Framework
+
+Current app-specific code:
+
+- database repository
+- dashboard
+- Orchid-specific MCP tool implementation
+- current product knowledge
+- current skills
+- current provider instantiation
+
+Emerging framework code:
+
+- `src/framework/index.ts`
+- `src/framework/signals.ts`
+- `src/framework/provider-contracts.ts`
+- `ai-sdr.config.ts`
+- `scripts/doctor.ts`
+
+The next step is to keep moving stable contracts into `src/framework/` while leaving customer- or deployment-specific behavior in the app layer.
+
+## Design Rule
+
+Anything a future `npx ai-sdr add <thing>` command would need should become a typed contract, schema, test, or config entry.
+
+That is the path from a single working Orchid SDR repo to an open-source framework for agentic GTM.

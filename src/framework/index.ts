@@ -97,3 +97,6 @@ export function provider(
 ): AiSdrProviderDefinition {
   return definition;
 }
+
+export * from "./signals.js";
+export * from "./provider-contracts.js";

@@ -1,5 +1,18 @@
 import { getConfig } from "./config.js";
 import type { ContactEmail, DiscoverySource, ProspectContext } from "./domain/types.js";
+import type {
+  BasicResearchSearchProvider,
+  ConfigurableResearchSearchProvider,
+  CrmProvider,
+  DiscoveryRunInput,
+  DiscoveryRunSnapshot,
+  DiscoverySignalSourceAdapter,
+  EmailEnrichmentProvider,
+  HandoffProvider,
+  OutboundEmailProvider,
+  ProviderSignal,
+  WebExtractProvider,
+} from "./framework/index.js";
 
 interface ParallelSearchResult {
   title: string;
@@ -28,32 +41,7 @@ interface AttioListEntryReference {
   raw: Record<string, unknown>;
 }
 
-interface NormalizedSourceSignal {
-  sourceRef: string;
-  url: string;
-  authorName: string;
-  authorTitle?: string | null;
-  authorCompany?: string | null;
-  companyDomain?: string | null;
-  topic: string;
-  content: string;
-  metadata: Record<string, unknown>;
-}
-
-interface DiscoveryRunInput {
-  campaignId: string;
-  source: DiscoverySource;
-  term: string;
-  metadata?: Record<string, unknown>;
-}
-
-interface ApifyRunSnapshot {
-  actorRunId: string;
-  status: string;
-  defaultDatasetId: string | null;
-}
-
-export class ApifySourceAdapter {
+export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<DiscoverySource> {
   private readonly config = getConfig();
 
   hasDiscoveryTarget(source: DiscoverySource) {
@@ -90,7 +78,7 @@ export class ApifySourceAdapter {
     return (await response.json()) as Record<string, unknown>[];
   }
 
-  async startDiscoveryRun(input: DiscoveryRunInput) {
+  async startDiscoveryRun(input: DiscoveryRunInput<DiscoverySource>) {
     if (!this.config.APIFY_TOKEN) {
       throw new Error("APIFY_TOKEN is not configured");
     }
@@ -160,7 +148,7 @@ export class ApifySourceAdapter {
     };
   }
 
-  async getRun(actorRunId: string): Promise<ApifyRunSnapshot> {
+  async getRun(actorRunId: string): Promise<DiscoveryRunSnapshot> {
     if (!this.config.APIFY_TOKEN) {
       throw new Error("APIFY_TOKEN is not configured");
     }
@@ -190,13 +178,13 @@ export class ApifySourceAdapter {
     };
   }
 
-  normalizeSignals(source: DiscoverySource, items: Record<string, unknown>[]): NormalizedSourceSignal[] {
+  normalizeSignals(source: DiscoverySource, items: Record<string, unknown>[]): ProviderSignal[] {
     return source === "x_public_post"
       ? this.normalizeXSignals(items)
       : this.normalizeLinkedInSignals(items);
   }
 
-  normalizeLinkedInSignals(items: Record<string, unknown>[]): NormalizedSourceSignal[] {
+  normalizeLinkedInSignals(items: Record<string, unknown>[]): ProviderSignal[] {
     return items.map((item, index) => {
       const authorRecord = coerceRecord(item.author);
       const queryRecord = coerceRecord(item.query);
@@ -240,7 +228,7 @@ export class ApifySourceAdapter {
     });
   }
 
-  normalizeXSignals(items: Record<string, unknown>[]): NormalizedSourceSignal[] {
+  normalizeXSignals(items: Record<string, unknown>[]): ProviderSignal[] {
     return items.map((item, index) => {
       const username = pickString(item, ["authorUsername", "username", "screenName", "handle"]);
       const author =
@@ -332,7 +320,7 @@ export class ApifySourceAdapter {
   }
 }
 
-export class ProspeoEmailEnricher {
+export class ProspeoEmailEnricher implements EmailEnrichmentProvider<ProspectContext> {
   private readonly config = getConfig();
 
   async enrich(prospect: ProspectContext): Promise<ContactEmail | null> {
@@ -373,7 +361,7 @@ export class ProspeoEmailEnricher {
   }
 }
 
-export class ParallelResearchAdapter {
+export class ParallelResearchAdapter implements BasicResearchSearchProvider {
   private readonly config = getConfig();
 
   async search(query: string, limit = 5): Promise<ParallelSearchResult[]> {
@@ -411,7 +399,7 @@ export class ParallelResearchAdapter {
   }
 }
 
-export class FirecrawlExtractAdapter {
+export class FirecrawlExtractAdapter implements WebExtractProvider, ConfigurableResearchSearchProvider {
   private readonly config = getConfig();
 
   async extract(url: string) {
@@ -504,7 +492,7 @@ export class FirecrawlExtractAdapter {
   }
 }
 
-export class AttioAdapter {
+export class AttioAdapter implements CrmProvider {
   private readonly config = getConfig();
 
   isConfigured() {
@@ -923,7 +911,7 @@ export class AttioAdapter {
   }
 }
 
-export class AgentMailAdapter {
+export class AgentMailAdapter implements OutboundEmailProvider {
   private readonly config = getConfig();
 
   isConfigured() {
@@ -1049,7 +1037,7 @@ export class AgentMailAdapter {
   }
 }
 
-export class SlackWebhookAdapter {
+export class SlackWebhookAdapter implements HandoffProvider {
   private readonly config = getConfig();
 
   async notify(channel: string | undefined, text: string, metadata: Record<string, unknown>) {

@@ -16,6 +16,8 @@ Most AI SDR tools sell a fixed agent behind a dashboard. That is useful for simp
 
 Orchid should become the framework those teams use when they want to roll their own AI SDR with their own sources, skills, tools, policies, and infrastructure.
 
+The core builder persona is a GTM engineer, RevOps engineer, or technical founder using Codex, Claude Code, or another coding agent to generate and modify the SDR from stable primitives. The framework should give those coding agents typed contracts, schemas, tests, and docs so they can build useful customer-specific motion without turning the repo into a one-off tangle.
+
 ## Inspiration
 
 Twenty is a useful comparison point.

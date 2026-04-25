@@ -1,138 +1,16 @@
-import { createHash } from "node:crypto";
-
 import { createId } from "../lib/ids.js";
 import type { DiscoverySource, SignalSource } from "../domain/types.js";
+import {
+  normalizeSignalWebhookPayload,
+  type NormalizedSignal,
+  type SignalWebhookPayload as FrameworkSignalWebhookPayload,
+} from "../framework/signals.js";
 import type { WorkflowDependencies } from "./types.js";
 import { executeProspectWorkflow } from "./prospect-workflow.js";
 
-export interface NormalizedInboundSignal {
-  sourceRef: string;
-  url: string;
-  authorName: string;
-  authorTitle: string | null;
-  authorCompany: string | null;
-  companyDomain: string | null;
-  topic: string;
-  content: string;
-  metadata: Record<string, unknown>;
-  capturedAt: number;
-}
-
-export interface SignalWebhookPayload {
-  provider?: string;
-  source?: string;
-  campaignId?: string;
-  externalId?: string | null;
-  term?: string | null;
-  metadata?: Record<string, unknown>;
-  signal?: Record<string, unknown>;
-  signals?: Record<string, unknown>[];
-}
-
-function readString(input: Record<string, unknown>, keys: string[]) {
-  for (const key of keys) {
-    const value = input[key];
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
-    }
-  }
-
-  return null;
-}
-
-function readObject(input: Record<string, unknown>, key: string) {
-  const value = input[key];
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
-function readCapturedAt(input: Record<string, unknown>) {
-  const candidate = input.capturedAt ?? input.captured_at ?? input.timestamp ?? input.publishedAt;
-  if (typeof candidate === "number" && Number.isFinite(candidate)) {
-    return candidate > 10_000_000_000 ? candidate : candidate * 1000;
-  }
-  if (typeof candidate === "string") {
-    const asNumber = Number(candidate);
-    if (Number.isFinite(asNumber)) {
-      return asNumber > 10_000_000_000 ? asNumber : asNumber * 1000;
-    }
-    const parsed = Date.parse(candidate);
-    if (!Number.isNaN(parsed)) {
-      return parsed;
-    }
-  }
-  return Date.now();
-}
-
-function deriveSourceRef(source: string, input: Record<string, unknown>, url: string, content: string) {
-  return readString(input, ["sourceRef", "source_ref", "id", "externalId", "external_id"])
-    ?? createHash("sha256").update([source, url, content].join("|")).digest("hex").slice(0, 24);
-}
-
-export function normalizeSignalWebhookPayload(payload: SignalWebhookPayload) {
-  const provider = payload.provider?.trim() || "webhook";
-  const defaultSource = payload.source?.trim() || "other";
-  const rawSignals = Array.isArray(payload.signals)
-    ? payload.signals
-    : payload.signal && typeof payload.signal === "object"
-      ? [payload.signal]
-      : [];
-
-  const signals = rawSignals.reduce<Array<{ source: SignalSource; signal: NormalizedInboundSignal }>>((acc, rawSignal) => {
-    const normalized = normalizeSignalWebhookRecord(defaultSource, rawSignal);
-    if (normalized) {
-      acc.push(normalized);
-    }
-    return acc;
-  }, []);
-
-  return {
-    provider,
-    source: defaultSource as SignalSource,
-    campaignId: payload.campaignId,
-    externalId: payload.externalId ?? null,
-    term: payload.term ?? null,
-    metadata: payload.metadata ?? {},
-    signals,
-  };
-}
-
-function normalizeSignalWebhookRecord(defaultSource: string, rawSignal: Record<string, unknown>) {
-  const source = readString(rawSignal, ["source"]) ?? defaultSource;
-  const metadata = readObject(rawSignal, "metadata") ?? {};
-  const url = readString(rawSignal, ["url", "postUrl", "sourceUrl", "link"]);
-  if (!url) {
-    return null;
-  }
-
-  const content =
-    readString(rawSignal, ["content", "text", "body", "description", "excerpt"])
-    ?? "";
-  const topic =
-    readString(rawSignal, ["topic", "title", "query", "keyword"])
-    ?? source
-    ?? "other";
-
-  return {
-    source: source as SignalSource,
-    signal: {
-      sourceRef: deriveSourceRef(source, rawSignal, url, content),
-      url,
-      authorName: readString(rawSignal, ["authorName", "name", "author", "fullName"]) ?? "Unknown",
-      authorTitle: readString(rawSignal, ["authorTitle", "title", "headline", "role"]),
-      authorCompany: readString(rawSignal, ["authorCompany", "company", "companyName"]),
-      companyDomain: readString(rawSignal, ["companyDomain", "domain", "website"]),
-      topic,
-      content,
-      metadata: {
-        ...metadata,
-        raw: rawSignal,
-      },
-      capturedAt: readCapturedAt(rawSignal),
-    },
-  };
-}
+export type NormalizedInboundSignal = NormalizedSignal;
+export type SignalWebhookPayload = FrameworkSignalWebhookPayload;
+export { normalizeSignalWebhookPayload };
 
 async function ingestNormalizedSignals(
   deps: WorkflowDependencies,
