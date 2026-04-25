@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   aiSdrConfigSchema,
+  buildProviderMap,
   collectConfigEnv,
   collectKnowledgePaths,
   collectSkillPaths,
   defineAiSdr,
+  validateAiSdrConfigReferences,
 } from "../src/framework/index.js";
 
 describe("AI SDR framework config helpers", () => {
@@ -95,5 +97,37 @@ describe("AI SDR framework config helpers", () => {
         },
       }),
     ).toThrow();
+  });
+
+  it("validates composition references", () => {
+    const config = defineAiSdr({
+      name: "test-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      providers: [
+        {
+          id: "hubspot",
+          kind: "signal-source",
+          displayName: "HubSpot",
+        },
+      ],
+      campaigns: [
+        {
+          id: "default",
+          sources: ["hubspot", "missing-provider"],
+        },
+      ],
+    });
+
+    expect(buildProviderMap(config).has("hubspot")).toBe(true);
+    expect(validateAiSdrConfigReferences(config)).toEqual([
+      {
+        severity: "error",
+        code: "unknown_campaign_source",
+        message: 'Campaign "default" references source provider "missing-provider", but no provider with that id exists',
+      },
+    ]);
   });
 });

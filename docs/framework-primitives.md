@@ -36,6 +36,7 @@ aiSdrProviderDefinitionSchema
 aiSdrSkillDefinitionSchema
 aiSdrKnowledgeDefinitionSchema
 defineAiSdr
+validateAiSdrConfigReferences
 ```
 
 That matters because future CLI commands and coding agents need a runtime-verifiable shape, not only TypeScript hints.

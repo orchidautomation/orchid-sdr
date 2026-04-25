@@ -6,6 +6,7 @@ import {
   collectConfigEnv,
   collectKnowledgePaths,
   collectSkillPaths,
+  validateAiSdrConfigReferences,
   type AiSdrEnvVar,
 } from "../src/framework/index.js";
 
@@ -22,6 +23,7 @@ const root = process.cwd();
 const checks: Check[] = [];
 
 await checkConfigReferences();
+checkConfigComposition();
 await checkEnvExample();
 checkRuntimeEnv();
 
@@ -61,6 +63,27 @@ async function checkConfigReferences() {
       ok,
       severity: "error",
       detail: ok ? undefined : "missing SKILL.md",
+    });
+  }
+}
+
+function checkConfigComposition() {
+  const issues = validateAiSdrConfigReferences(config);
+  if (issues.length === 0) {
+    checks.push({
+      label: "AI SDR config composition",
+      ok: true,
+      severity: "info",
+    });
+    return;
+  }
+
+  for (const issue of issues) {
+    checks.push({
+      label: `AI SDR config ${issue.code}`,
+      ok: false,
+      severity: issue.severity,
+      detail: issue.message,
     });
   }
 }
