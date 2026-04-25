@@ -15,6 +15,7 @@ const SANDBOX_WORKSPACE = `${SANDBOX_HOME}/orchid-sdr`;
 const SKILL_PROFILE_NAME = "default";
 const MCP_NAME = "orchid-sdr";
 const PARALLEL_SEARCH_MCP_NAME = "parallel-search";
+const PARALLEL_TASK_MCP_NAME = "parallel-task";
 const SANDBOX_AGENT_VERSION = "0.5.0-rc.2";
 const SANDBOX_AGENT_BINARY_PATH = `${SANDBOX_HOME}/.local/bin/sandbox-agent`;
 const DEFAULT_SANDBOX_AGENTS = ["claude", "codex"];
@@ -203,7 +204,7 @@ export function buildSandboxMcpConfig(context: Pick<AppContext, "config">) {
       },
       [PARALLEL_SEARCH_MCP_NAME]: {
         type: "http",
-        url: "https://search.parallel.ai/mcp",
+        url: "https://search-mcp.parallel.ai/mcp",
         ...(context.config.PARALLEL_API_KEY
           ? {
               headers: {
@@ -212,6 +213,17 @@ export function buildSandboxMcpConfig(context: Pick<AppContext, "config">) {
             }
           : {}),
       },
+      ...(context.config.PARALLEL_API_KEY
+        ? {
+            [PARALLEL_TASK_MCP_NAME]: {
+              type: "http",
+              url: "https://task-mcp.parallel.ai/mcp",
+              headers: {
+                Authorization: "Bearer ${PARALLEL_API_KEY}",
+              },
+            },
+          }
+        : {}),
       ...(context.config.FIRECRAWL_API_KEY
         ? {
             firecrawl: {

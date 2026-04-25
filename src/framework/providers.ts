@@ -73,6 +73,45 @@ export function firecrawlProvider(): AiSdrProviderDefinition {
   });
 }
 
+export function parallelProvider(): AiSdrProviderDefinition {
+  return provider({
+    id: "parallel",
+    kind: "research",
+    displayName: "Parallel",
+    packageName: "@ai-sdr/parallel",
+    env: [
+      { name: "PARALLEL_API_KEY", description: "Parallel API key used for search, extract, enrichment, monitor, and MCP auth." },
+      { name: "PARALLEL_BASE_URL", description: "Optional Parallel API base URL for direct search." },
+    ],
+    capabilities: [
+      "research.search",
+      "research.extract",
+      "research.deepResearch",
+      "research.enrich",
+      "research.monitor",
+      "signal.discovery",
+      "sandbox.mcp.search",
+      "sandbox.mcp.fetch",
+      "sandbox.mcp.task",
+    ],
+  });
+}
+
+export function neonProvider(): AiSdrProviderDefinition {
+  return provider({
+    id: "neon",
+    kind: "database",
+    displayName: "Neon Postgres",
+    packageName: "@ai-sdr/neon",
+    env: [
+      { name: "DATABASE_URL", required: true, description: "Neon Postgres connection string." },
+      { name: "NEON_API_KEY", description: "Optional Neon API key for future database provisioning automation." },
+      { name: "NEON_PROJECT_ID", description: "Optional Neon project ID for future provisioning automation." },
+    ],
+    capabilities: ["database.postgres", "database.branching", "database.provisioning"],
+  });
+}
+
 export function vercelAiGatewayProvider(): AiSdrProviderDefinition {
   return provider({
     id: "vercel-ai-gateway",

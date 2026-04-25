@@ -22,7 +22,7 @@ Use one of these modes first:
 Required:
 
 - Node.js 22 or Docker
-- Postgres 15+
+- Postgres 15+; Neon is the recommended hosted Postgres provider for production pilots
 - a public HTTPS URL for production
 - a long random `ORCHID_SDR_SANDBOX_TOKEN`
 - a long random `ORCHID_SDR_MCP_TOKEN`
@@ -34,6 +34,7 @@ Usually required for the full agent lane:
 - Vercel Sandbox credentials
 - Apify token and a LinkedIn public-post task or actor
 - Firecrawl key
+- Parallel API key for authenticated research MCP and Task MCP
 
 Optional:
 
@@ -41,7 +42,7 @@ Optional:
 - Attio for CRM sync
 - Slack for handoff
 - Prospeo for email enrichment
-- Parallel API key for higher search limits
+- Neon API key for future provisioning automation; `DATABASE_URL` is enough to run the app
 
 ## 1. Clone And Configure
 
@@ -72,6 +73,7 @@ Important:
 
 - `APP_URL` must be reachable from Vercel Sandboxes.
 - `APP_URL` must be reachable from Apify and AgentMail if those webhooks are enabled.
+- For Neon, use the pooled or direct connection string they provide as `DATABASE_URL`.
 - Keep `NO_SENDS_MODE=true` until the customer has approved real sends.
 
 ## 2. Customize The Knowledge Pack

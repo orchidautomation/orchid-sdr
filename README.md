@@ -132,11 +132,11 @@ npm run dev
 http://localhost:3000/dashboard
 ```
 
-If you want the full runtime, add provider keys such as Apify, Firecrawl, Vercel AI Gateway, AgentMail, and Attio. When Attio is configured, the first outbound can auto-create or update the company and contact, and classified replies can automatically promote the Attio stage.
+If you want the full runtime, add provider keys such as Neon, Apify, Parallel, Firecrawl, Vercel AI Gateway, AgentMail, and Attio. When Attio is configured, the first outbound can auto-create or update the company and contact, and classified replies can automatically promote the Attio stage.
 
 Campaign quiet hours are evaluated in the campaign's local timezone. New campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE` and you can update a live campaign later through the remote MCP tool `control.setCampaignTimezone`.
 
-Parallel Search MCP is mounted into sandbox turns by default using the free `https://search.parallel.ai/mcp` endpoint. If you set `PARALLEL_API_KEY`, the sandbox uses the same MCP with a bearer token for higher rate limits.
+Parallel Search MCP is mounted into sandbox turns by default using `https://search-mcp.parallel.ai/mcp`. If you set `PARALLEL_API_KEY`, the sandbox adds bearer auth and also mounts Parallel Task MCP at `https://task-mcp.parallel.ai/mcp` for async deep research and enrichment.
 
 By default, discovery runs once per hour on weekdays only, and LinkedIn discovery will fetch up to 50 posts per run.
 

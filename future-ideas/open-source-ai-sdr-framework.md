@@ -62,11 +62,13 @@ npm run dev
 Add providers and capabilities:
 
 ```bash
-npx ai-sdr add hubspot
-npx ai-sdr add attio
-npx ai-sdr add agentmail
-npx ai-sdr add apify-linkedin
-npx ai-sdr add firecrawl
+npx ai-sdr add source hubspot
+npx ai-sdr add crm attio
+npx ai-sdr add email agentmail
+npx ai-sdr add source apify
+npx ai-sdr add research parallel
+npx ai-sdr add research firecrawl
+npx ai-sdr add database neon
 npx ai-sdr add skill product-routing
 npx ai-sdr doctor
 ```
@@ -80,7 +82,7 @@ npx ai-sdr deploy
 The exact CLI name can change, but the shape should stay simple:
 
 - `create-ai-sdr` creates a complete deployable app
-- `ai-sdr add <adapter>` adds integrations, env vars, tools, docs, and tests
+- `ai-sdr add <capability> <provider>` adds integrations, env vars, tools, docs, and tests
 - `ai-sdr doctor` verifies database, env, MCP, webhooks, provider auth, and send safety
 - `ai-sdr deploy` helps ship to the chosen target
 
@@ -117,8 +119,10 @@ ai-sdr
 @ai-sdr/salesforce
 @ai-sdr/twenty
 @ai-sdr/agentmail
+@ai-sdr/parallel
 @ai-sdr/apify
 @ai-sdr/firecrawl
+@ai-sdr/neon
 @ai-sdr/vercel-sandbox
 ```
 
@@ -188,8 +192,9 @@ Swappable integrations:
 
 - CRM: Attio, HubSpot, Salesforce, Twenty
 - email: AgentMail, Gmail, Outlook, custom SMTP/API
+- database: Neon Postgres, Supabase Postgres, RDS Postgres, self-hosted Postgres
 - discovery: Apify, custom webhooks, job boards, RSS, Clay, first-party data
-- research: Firecrawl, search APIs, browser/sandbox tools
+- research: Parallel, Firecrawl, search APIs, browser/sandbox tools
 - LLM: Vercel AI Gateway, OpenAI, Anthropic, local models, OpenRouter
 - execution: local runtime, Vercel Sandbox, other cloud code harnesses
 
@@ -252,14 +257,14 @@ defineHandoffPolicy();
 defineMcpTool();
 ```
 
-## What `ai-sdr add attio` Should Do
+## What `ai-sdr add crm attio` Should Do
 
 Adding an adapter should be more than installing a dependency.
 
 For example:
 
 ```bash
-npx ai-sdr add attio
+npx ai-sdr add crm attio
 ```
 
 Should:
@@ -273,7 +278,7 @@ Should:
 - add a smoke test
 - update `ai-sdr doctor` checks
 
-The same pattern should apply to HubSpot, AgentMail, Twenty, Salesforce, Apify, Firecrawl, and other providers.
+The same pattern should apply to HubSpot, AgentMail, Twenty, Salesforce, Apify, Parallel, Firecrawl, Neon, and other providers.
 
 ## Current Orchid Assets
 
@@ -445,9 +450,11 @@ Build:
 
 - local `ai-sdr` CLI package
 - `ai-sdr doctor`
-- `ai-sdr add attio`
-- `ai-sdr add agentmail`
-- `ai-sdr add hubspot`
+- `ai-sdr add crm attio`
+- `ai-sdr add email agentmail`
+- `ai-sdr add source hubspot`
+- `ai-sdr add research parallel`
+- `ai-sdr add database neon`
 - `ai-sdr mcp-config`
 
 This can start as internal scripts before publishing.

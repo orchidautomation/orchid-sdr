@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildSandboxAgentBootstrapScript, buildSandboxMcpConfig } from "../src/orchestration/sandbox-broker.js";
 
 describe("buildSandboxMcpConfig", () => {
-  it("includes the free Parallel Search MCP by default", () => {
+  it("includes the hosted Parallel Search MCP by default", () => {
     const config = buildSandboxMcpConfig({
       config: {
         PARALLEL_API_KEY: undefined,
@@ -22,7 +22,7 @@ describe("buildSandboxMcpConfig", () => {
         },
         "parallel-search": {
           type: "http",
-          url: "https://search.parallel.ai/mcp",
+          url: "https://search-mcp.parallel.ai/mcp",
         },
       },
     });
@@ -47,7 +47,14 @@ describe("buildSandboxMcpConfig", () => {
 
     expect(config.mcpServers["parallel-search"]).toEqual({
       type: "http",
-      url: "https://search.parallel.ai/mcp",
+      url: "https://search-mcp.parallel.ai/mcp",
+      headers: {
+        Authorization: "Bearer ${PARALLEL_API_KEY}",
+      },
+    });
+    expect(config.mcpServers["parallel-task"]).toEqual({
+      type: "http",
+      url: "https://task-mcp.parallel.ai/mcp",
       headers: {
         Authorization: "Bearer ${PARALLEL_API_KEY}",
       },

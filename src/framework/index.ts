@@ -3,12 +3,28 @@ import { z } from "zod";
 export const aiSdrProviderKindSchema = z.enum([
   "crm",
   "email",
+  "database",
   "signal-source",
   "research",
   "model",
   "runtime",
   "mcp",
   "handoff",
+]);
+
+export const aiSdrCapabilityIdSchema = z.enum([
+  "source",
+  "crm",
+  "email",
+  "database",
+  "research",
+  "enrichment",
+  "model",
+  "runtime",
+  "mcp",
+  "handoff",
+  "observability",
+  "compliance",
 ]);
 
 export const aiSdrEnvVarSchema = z.object({
@@ -67,8 +83,12 @@ export const aiSdrContractIdSchema = z.enum([
   "crm.stageUpdate.v1",
   "email.outbound.v1",
   "email.inbound.v1",
+  "database.postgres.v1",
   "research.search.v1",
   "research.extract.v1",
+  "research.enrich.v1",
+  "research.deepResearch.v1",
+  "research.monitor.v1",
   "model.gateway.v1",
   "runtime.sandbox.v1",
   "mcp.tools.v1",
@@ -80,6 +100,8 @@ export const aiSdrModuleDefinitionSchema = z.object({
   displayName: z.string().min(1),
   packageName: z.string().optional(),
   description: z.string().optional(),
+  providerKey: z.string().min(1).optional(),
+  capabilityIds: z.array(aiSdrCapabilityIdSchema).optional(),
   contracts: z.array(aiSdrContractIdSchema).optional(),
   providers: z.array(aiSdrProviderDefinitionSchema).optional(),
   skills: z.array(aiSdrSkillDefinitionSchema).optional(),
@@ -101,6 +123,7 @@ export const aiSdrConfigSchema = z.object({
 
 export type AiSdrProviderKind =
   z.infer<typeof aiSdrProviderKindSchema>;
+export type AiSdrCapabilityId = z.infer<typeof aiSdrCapabilityIdSchema>;
 export type AiSdrEnvVar = z.infer<typeof aiSdrEnvVarSchema>;
 export type AiSdrProviderDefinition = z.infer<typeof aiSdrProviderDefinitionSchema>;
 export type AiSdrSkillDefinition = z.infer<typeof aiSdrSkillDefinitionSchema>;

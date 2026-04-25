@@ -2,10 +2,11 @@ import config from "../ai-sdr.config.js";
 import {
   buildModuleInstallPlan,
   defaultOrchidModules,
+  findModuleForAddCommand,
   type AiSdrModuleDefinition,
 } from "../src/framework/index.js";
 
-const [command, arg] = process.argv.slice(2);
+const [command, arg, providerArg] = process.argv.slice(2);
 
 switch (command) {
   case undefined:
@@ -29,6 +30,15 @@ function printHelp() {
 
   npm run ai-sdr -- modules
   npm run ai-sdr -- add <module-id>
+  npm run ai-sdr -- add <capability> <provider>
+
+Examples:
+
+  npm run ai-sdr -- add crm attio
+  npm run ai-sdr -- add email agentmail
+  npm run ai-sdr -- add research parallel
+  npm run ai-sdr -- add research firecrawl
+  npm run ai-sdr -- add database neon
 
 This is a local prototype for the future framework CLI. The add command prints an install plan; it does not mutate files yet.`);
 }
@@ -44,14 +54,18 @@ function listModules() {
 
 function printAddPlan(moduleId: string | undefined) {
   if (!moduleId) {
-    console.error("Missing module id. Example: npm run ai-sdr -- add attio");
+    console.error("Missing module or capability. Example: npm run ai-sdr -- add research parallel");
     process.exitCode = 1;
     return;
   }
 
-  const module = defaultOrchidModules().find((item) => item.id === moduleId);
+  const module = findModuleForAddCommand(defaultOrchidModules(), {
+    capabilityOrModule: moduleId,
+    provider: providerArg,
+  });
   if (!module) {
-    console.error(`Unknown module: ${moduleId}`);
+    const requested = providerArg ? `${moduleId} ${providerArg}` : moduleId;
+    console.error(`Unknown module or provider capability: ${requested}`);
     process.exitCode = 1;
     return;
   }
@@ -67,6 +81,8 @@ function printPlan(module: AiSdrModuleDefinition) {
   console.log(`Module: ${plan.displayName} (${plan.moduleId})`);
   console.log(`Package: ${plan.packageName ?? "not assigned"}`);
   console.log(`Status: ${plan.alreadyInstalled ? "installed" : "available"}`);
+  console.log(`Provider: ${plan.providerKey ?? "not assigned"}`);
+  printList("Capabilities", plan.capabilityIds);
   printList("Contracts", plan.contracts);
   printList("Providers", plan.providers);
   printList("Env", plan.envVars);

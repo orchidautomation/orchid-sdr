@@ -517,8 +517,8 @@ async function buildResearchBrief(
   const turn = await deps.runSandboxTurn(
     buildTurnRequest(snapshot, "build_research_brief", [
       "Use the `research-brief` and `research-checks` skills.",
-      "Use the orchid-sdr MCP tools, Parallel Search MCP tools, Firecrawl MCP tools, and local knowledge files when useful.",
-      "Use the Parallel Search MCP for broad web search and current external context.",
+      "Use the orchid-sdr MCP tools, Parallel MCP tools, Firecrawl MCP tools, and local knowledge files when useful.",
+      "Use Parallel Search MCP for broad web search and URL fetching; use Parallel Task MCP for deeper enrichment when it is available.",
       "Use Firecrawl MCP tools for company-news search and page extraction when you need page-level detail.",
       "Research the prospect and return strict JSON only.",
       'Schema: {"summary":"string","confidence":0.0,"copyGuidance":{"primaryAngle":"string","bestOpeningHook":"string","whyNow":"string","avoidMentioning":["string"],"ctaSuggestion":"string"},"evidence":[{"title":"string","url":"string","note":"string"}]}',
@@ -1008,7 +1008,7 @@ async function qualifyProspect(
       "This lead already passed shallow signal triage, so use the richer post, profile, and company evidence to confirm or reject.",
       "Follow a generic ICP methodology: identity, source provenance, person fit, company fit, pain or trigger fit, and negative signals.",
       "Evaluate whether the person is qualified, whether the company is qualified, and whether the observed signal shows relevant pain, timing, or buying intent.",
-      "Use the Parallel Search MCP for broad current web context when you need it.",
+      "Use Parallel Search MCP for broad current web context when you need it; use Parallel Task MCP for deeper enrichment when it is available.",
       "If timing context is unclear, you may use the Firecrawl MCP search tool `firecrawl_search` for recent company news.",
       "Do not qualify someone on topical adjacency alone.",
       "Return strict JSON only.",

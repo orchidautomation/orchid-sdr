@@ -45,13 +45,15 @@ That matters because future CLI commands and coding agents need a runtime-verifi
 Current provider modules are defined in [src/framework/builtin-modules.ts](../src/framework/builtin-modules.ts). Each module can bundle:
 
 - provider definitions
+- provider keys
+- broad capability IDs
 - normalized framework contracts
 - env vars
 - docs
 - future smoke checks
 - package names for future extraction
 
-That is the beginning of the `ai-sdr add <module>` shape.
+That is the beginning of the `ai-sdr add <capability> <provider>` shape.
 
 Contract examples:
 
@@ -60,7 +62,9 @@ signal.normalized.v1
 crm.prospectSync.v1
 crm.stageUpdate.v1
 email.outbound.v1
+database.postgres.v1
 research.extract.v1
+research.monitor.v1
 runtime.sandbox.v1
 ```
 
@@ -101,7 +105,8 @@ Examples:
 
 - CRM: Attio, HubSpot, Salesforce, Twenty
 - Email: AgentMail, Gmail, Outlook, custom SMTP/API
-- Research: Firecrawl, search APIs, browser/sandbox tools
+- Database: Neon Postgres, Supabase Postgres, RDS Postgres, self-hosted Postgres
+- Research: Parallel, Firecrawl, search APIs, browser/sandbox tools
 - Discovery: Apify, first-party sources, custom webhooks
 - Runtime: local, Vercel Sandbox, another cloud code harness
 - Model: Vercel AI Gateway, OpenAI, Anthropic, OpenRouter, local models
@@ -129,10 +134,18 @@ Existing adapters are starting to implement these contracts directly. That creat
 @ai-sdr/attio
 @ai-sdr/hubspot
 @ai-sdr/agentmail
+@ai-sdr/parallel
 @ai-sdr/firecrawl
+@ai-sdr/neon
 @ai-sdr/apify-linkedin
 @ai-sdr/twenty
 ```
+
+The MVP keeps the user-facing capability broad. `research` can map to Parallel or Firecrawl, while contracts describe the lower-level surfaces:
+
+- Parallel maps to `research` and can satisfy search, URL extraction, async enrichment/deep research, monitoring, and lead discovery surfaces.
+- Firecrawl maps to `research` and is strongest for search plus clean page scraping, crawling, and structured extraction.
+- Neon maps to `database` and satisfies the current Postgres state contract through `DATABASE_URL`.
 
 ## Skills
 
@@ -196,9 +209,12 @@ Future ideal:
 ```bash
 npx create-ai-sdr@latest profound-sdr
 cd profound-sdr
-npx ai-sdr add hubspot
-npx ai-sdr add attio
-npx ai-sdr add agentmail
+npx ai-sdr add source hubspot
+npx ai-sdr add crm attio
+npx ai-sdr add email agentmail
+npx ai-sdr add research parallel
+npx ai-sdr add research firecrawl
+npx ai-sdr add database neon
 npx ai-sdr add skill product-routing
 npx ai-sdr doctor
 ```
@@ -207,7 +223,9 @@ The current repo has a local prototype for this CLI shape:
 
 ```bash
 npm run ai-sdr -- modules
-npm run ai-sdr -- add attio
+npm run ai-sdr -- add crm attio
+npm run ai-sdr -- add research parallel
+npm run ai-sdr -- add database neon
 ```
 
 For now, `add` prints an install plan rather than mutating files.

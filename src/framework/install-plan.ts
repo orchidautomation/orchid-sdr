@@ -1,10 +1,12 @@
-import type { AiSdrModuleDefinition } from "./index.js";
+import type { AiSdrCapabilityId, AiSdrModuleDefinition } from "./index.js";
 
 export type AiSdrModuleInstallPlan = {
   moduleId: string;
   displayName: string;
   packageName: string | null;
   alreadyInstalled: boolean;
+  providerKey: string | null;
+  capabilityIds: string[];
   contracts: string[];
   providers: string[];
   envVars: string[];
@@ -31,6 +33,8 @@ export function buildModuleInstallPlan(
     displayName: module.displayName,
     packageName: module.packageName ?? null,
     alreadyInstalled,
+    providerKey: module.providerKey ?? null,
+    capabilityIds: module.capabilityIds ?? [],
     contracts: module.contracts ?? [],
     providers: (module.providers ?? []).map((provider) => provider.id),
     envVars: [...new Set(envVars)].sort(),
@@ -40,6 +44,35 @@ export function buildModuleInstallPlan(
     ),
     nextSteps: buildNextSteps(module, alreadyInstalled),
   };
+}
+
+export function findModuleForAddCommand(
+  modules: AiSdrModuleDefinition[],
+  input: {
+    capabilityOrModule: string;
+    provider?: string;
+  },
+): AiSdrModuleDefinition | undefined {
+  const capabilityOrModule = normalizeAddToken(input.capabilityOrModule);
+  const provider = input.provider ? normalizeAddToken(input.provider) : undefined;
+
+  if (!provider) {
+    return modules.find((module) => normalizeAddToken(module.id) === capabilityOrModule);
+  }
+
+  const capability = normalizeCapability(capabilityOrModule);
+  return modules.find((module) => {
+    const moduleProviderKeys = new Set([
+      module.id,
+      module.providerKey,
+      ...(module.providers ?? []).map((item) => item.id),
+    ].filter((value): value is string => Boolean(value)).map(normalizeAddToken));
+
+    return (
+      module.capabilityIds?.includes(capability)
+      && moduleProviderKeys.has(provider)
+    );
+  });
 }
 
 function buildNextSteps(module: AiSdrModuleDefinition, alreadyInstalled: boolean) {
@@ -59,4 +92,36 @@ function buildNextSteps(module: AiSdrModuleDefinition, alreadyInstalled: boolean
     "Run npm run doctor.",
     "Run the module smoke checks before enabling sends.",
   ];
+}
+
+function normalizeCapability(value: string): AiSdrCapabilityId {
+  switch (normalizeAddToken(value)) {
+    case "search":
+    case "extract":
+    case "extraction":
+    case "enrich":
+    case "enrichment":
+    case "deep-research":
+    case "deepresearch":
+    case "monitor":
+    case "monitoring":
+      return "research";
+    case "postgres":
+    case "storage":
+    case "db":
+      return "database";
+    case "discovery":
+    case "signal":
+    case "signals":
+      return "source";
+    case "mail":
+    case "outreach":
+      return "email";
+    default:
+      return normalizeAddToken(value) as AiSdrCapabilityId;
+  }
+}
+
+function normalizeAddToken(value: string) {
+  return value.trim().toLowerCase();
 }
