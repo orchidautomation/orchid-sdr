@@ -48,10 +48,34 @@ export const aiSdrCampaignDefinitionSchema = z.object({
   sources: z.array(z.string().min(1)).optional(),
 });
 
+export const aiSdrModuleDocSchema = z.object({
+  label: z.string().min(1),
+  path: z.string().min(1),
+});
+
+export const aiSdrModuleSmokeCheckSchema = z.object({
+  id: z.string().min(1),
+  description: z.string().optional(),
+  command: z.string().optional(),
+});
+
+export const aiSdrModuleDefinitionSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+  packageName: z.string().optional(),
+  description: z.string().optional(),
+  providers: z.array(aiSdrProviderDefinitionSchema).optional(),
+  skills: z.array(aiSdrSkillDefinitionSchema).optional(),
+  requiredEnv: z.array(aiSdrEnvVarSchema).optional(),
+  docs: z.array(aiSdrModuleDocSchema).optional(),
+  smokeChecks: z.array(aiSdrModuleSmokeCheckSchema).optional(),
+});
+
 export const aiSdrConfigSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   knowledge: aiSdrKnowledgeDefinitionSchema,
+  modules: z.array(aiSdrModuleDefinitionSchema).optional(),
   skills: z.array(aiSdrSkillDefinitionSchema).optional(),
   providers: z.array(aiSdrProviderDefinitionSchema).optional(),
   campaigns: z.array(aiSdrCampaignDefinitionSchema).optional(),
@@ -65,6 +89,9 @@ export type AiSdrProviderDefinition = z.infer<typeof aiSdrProviderDefinitionSche
 export type AiSdrSkillDefinition = z.infer<typeof aiSdrSkillDefinitionSchema>;
 export type AiSdrKnowledgeDefinition = z.infer<typeof aiSdrKnowledgeDefinitionSchema>;
 export type AiSdrCampaignDefinition = z.infer<typeof aiSdrCampaignDefinitionSchema>;
+export type AiSdrModuleDoc = z.infer<typeof aiSdrModuleDocSchema>;
+export type AiSdrModuleSmokeCheck = z.infer<typeof aiSdrModuleSmokeCheckSchema>;
+export type AiSdrModuleDefinition = z.infer<typeof aiSdrModuleDefinitionSchema>;
 export type AiSdrConfig = z.infer<typeof aiSdrConfigSchema>;
 
 export function defineAiSdr(config: AiSdrConfig): AiSdrConfig {
@@ -74,7 +101,7 @@ export function defineAiSdr(config: AiSdrConfig): AiSdrConfig {
 export function collectConfigEnv(config: AiSdrConfig): AiSdrEnvVar[] {
   const seen = new Map<string, AiSdrEnvVar>();
 
-  for (const envVar of [...(config.requiredEnv ?? []), ...collectProviderEnv(config)]) {
+  for (const envVar of [...(config.requiredEnv ?? []), ...collectModuleEnv(config), ...collectProviderEnv(config)]) {
     const existing = seen.get(envVar.name);
     if (!existing) {
       seen.set(envVar.name, envVar);
@@ -96,6 +123,17 @@ export function collectProviderEnv(config: AiSdrConfig): AiSdrEnvVar[] {
   return (config.providers ?? []).flatMap((provider) => provider.env ?? []);
 }
 
+export function collectModuleEnv(config: AiSdrConfig): AiSdrEnvVar[] {
+  return (config.modules ?? []).flatMap((module) => [
+    ...(module.requiredEnv ?? []),
+    ...(module.providers ?? []).flatMap((provider) => provider.env ?? []),
+  ]);
+}
+
+export function collectModuleDocs(config: AiSdrConfig): AiSdrModuleDoc[] {
+  return (config.modules ?? []).flatMap((module) => module.docs ?? []);
+}
+
 export function collectKnowledgePaths(config: AiSdrConfig): string[] {
   return Object.values(config.knowledge).filter((value): value is string => Boolean(value));
 }
@@ -110,6 +148,18 @@ export function provider(
   return definition;
 }
 
+export function module(
+  definition: AiSdrModuleDefinition,
+): AiSdrModuleDefinition {
+  return aiSdrModuleDefinitionSchema.parse(definition);
+}
+
+export function providersFromModules(modules: AiSdrModuleDefinition[]): AiSdrProviderDefinition[] {
+  return modules.flatMap((item) => item.providers ?? []);
+}
+
 export * from "./signals.js";
 export * from "./provider-contracts.js";
 export * from "./validation.js";
+export * from "./builtin-modules.js";
+export * from "./install-plan.js";

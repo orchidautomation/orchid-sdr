@@ -32,6 +32,7 @@ The config surface is schema-backed in [src/framework/index.ts](../src/framework
 
 ```ts
 aiSdrConfigSchema
+aiSdrModuleDefinitionSchema
 aiSdrProviderDefinitionSchema
 aiSdrSkillDefinitionSchema
 aiSdrKnowledgeDefinitionSchema
@@ -40,6 +41,16 @@ validateAiSdrConfigReferences
 ```
 
 That matters because future CLI commands and coding agents need a runtime-verifiable shape, not only TypeScript hints.
+
+Current provider modules are defined in [src/framework/builtin-modules.ts](../src/framework/builtin-modules.ts). Each module can bundle:
+
+- provider definitions
+- env vars
+- docs
+- future smoke checks
+- package names for future extraction
+
+That is the beginning of the `ai-sdr add <module>` shape.
 
 ## Signals
 
@@ -175,6 +186,15 @@ npx ai-sdr add agentmail
 npx ai-sdr add skill product-routing
 npx ai-sdr doctor
 ```
+
+The current repo has a local prototype for this CLI shape:
+
+```bash
+npm run ai-sdr -- modules
+npm run ai-sdr -- add attio
+```
+
+For now, `add` prints an install plan rather than mutating files.
 
 ## Current Boundary Between App And Framework
 

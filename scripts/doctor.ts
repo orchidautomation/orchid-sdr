@@ -5,6 +5,7 @@ import config from "../ai-sdr.config.js";
 import {
   collectConfigEnv,
   collectKnowledgePaths,
+  collectModuleDocs,
   collectSkillPaths,
   validateAiSdrConfigReferences,
   type AiSdrEnvVar,
@@ -24,6 +25,7 @@ const checks: Check[] = [];
 
 await checkConfigReferences();
 checkConfigComposition();
+await checkModuleDocs();
 await checkEnvExample();
 checkRuntimeEnv();
 
@@ -84,6 +86,19 @@ function checkConfigComposition() {
       ok: false,
       severity: issue.severity,
       detail: issue.message,
+    });
+  }
+}
+
+async function checkModuleDocs() {
+  for (const doc of collectModuleDocs(config)) {
+    const filePath = doc.path.split("#")[0] ?? doc.path;
+    const ok = await pathExists(filePath);
+    checks.push({
+      label: `module doc ${doc.label}`,
+      ok,
+      severity: "warning",
+      detail: ok ? doc.path : `missing referenced doc ${doc.path}`,
     });
   }
 }

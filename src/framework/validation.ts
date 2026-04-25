@@ -8,10 +8,16 @@ export type AiSdrConfigIssue = {
 
 export function validateAiSdrConfigReferences(config: AiSdrConfig): AiSdrConfigIssue[] {
   return [
+    ...findDuplicateIds("module", (config.modules ?? []).map((module) => module.id)),
     ...findDuplicateIds("provider", (config.providers ?? []).map((provider) => provider.id)),
+    ...findDuplicateIds(
+      "module_provider",
+      (config.modules ?? []).flatMap((module) => module.providers ?? []).map((provider) => provider.id),
+    ),
     ...findDuplicateIds("skill", (config.skills ?? []).map((skill) => skill.id)),
     ...findDuplicateIds("campaign", (config.campaigns ?? []).map((campaign) => campaign.id)),
     ...findUnknownCampaignSources(config),
+    ...findProvidersMissingFromConfig(config),
   ];
 }
 
@@ -57,6 +63,25 @@ function findUnknownCampaignSources(config: AiSdrConfig): AiSdrConfigIssue[] {
           severity: "error",
           code: "unknown_campaign_source",
           message: `Campaign "${campaign.id}" references source provider "${source}", but no provider with that id exists`,
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
+function findProvidersMissingFromConfig(config: AiSdrConfig): AiSdrConfigIssue[] {
+  const configuredProviders = buildProviderMap(config);
+  const issues: AiSdrConfigIssue[] = [];
+
+  for (const module of config.modules ?? []) {
+    for (const provider of module.providers ?? []) {
+      if (!configuredProviders.has(provider.id)) {
+        issues.push({
+          severity: "warning",
+          code: "module_provider_not_registered",
+          message: `Module "${module.id}" defines provider "${provider.id}", but config.providers does not include it`,
         });
       }
     }

@@ -1,15 +1,7 @@
 import { defineAiSdr } from "./src/framework/index.js";
-import {
-  agentMailProvider,
-  apifyLinkedInProvider,
-  attioProvider,
-  firecrawlProvider,
-  normalizedWebhookProvider,
-  orchidMcpProvider,
-  slackHandoffProvider,
-  vercelAiGatewayProvider,
-  vercelSandboxProvider,
-} from "./src/framework/providers.js";
+import { defaultOrchidModules, providersFromModules } from "./src/framework/index.js";
+
+const modules = defaultOrchidModules();
 
 export default defineAiSdr({
   name: "orchid-sdr",
@@ -54,17 +46,8 @@ export default defineAiSdr({
       description: "Decide when to route a lead to a human.",
     },
   ],
-  providers: [
-    normalizedWebhookProvider(),
-    apifyLinkedInProvider(),
-    firecrawlProvider(),
-    vercelAiGatewayProvider(),
-    vercelSandboxProvider(),
-    orchidMcpProvider(),
-    agentMailProvider(),
-    attioProvider(),
-    slackHandoffProvider(),
-  ],
+  modules,
+  providers: providersFromModules(modules),
   campaigns: [
     {
       id: "cmp_default",

@@ -5,8 +5,11 @@ import {
   buildProviderMap,
   collectConfigEnv,
   collectKnowledgePaths,
+  collectModuleDocs,
   collectSkillPaths,
+  defaultOrchidModules,
   defineAiSdr,
+  providersFromModules,
   validateAiSdrConfigReferences,
 } from "../src/framework/index.js";
 
@@ -129,5 +132,24 @@ describe("AI SDR framework config helpers", () => {
         message: 'Campaign "default" references source provider "missing-provider", but no provider with that id exists',
       },
     ]);
+  });
+
+  it("builds provider config from modules", () => {
+    const modules = defaultOrchidModules();
+    const config = defineAiSdr({
+      name: "module-backed-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      modules,
+      providers: providersFromModules(modules),
+    });
+
+    expect(config.modules?.some((item) => item.id === "attio")).toBe(true);
+    expect(config.providers?.some((item) => item.id === "attio")).toBe(true);
+    expect(collectConfigEnv(config).some((envVar) => envVar.name === "ATTIO_API_KEY")).toBe(true);
+    expect(collectModuleDocs(config).some((doc) => doc.path === "docs/self-hosting.md")).toBe(true);
+    expect(validateAiSdrConfigReferences(config)).toEqual([]);
   });
 });
