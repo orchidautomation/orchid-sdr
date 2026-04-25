@@ -182,11 +182,10 @@ export function createApp() {
           const pauseResult = await coordinator.pauseAutomation({
             campaignId: campaign.id,
             source,
-            reason: "campaign paused by operator",
           });
           return {
             source,
-            abortedRuns: Array.isArray(pauseResult.abortedRuns) ? pauseResult.abortedRuns : [],
+            sourcePaused: pauseResult.ok === true,
           };
         }),
       )
@@ -213,7 +212,6 @@ export function createApp() {
       campaignId: campaign.id,
       ...result,
       discovery: paused ? pausedDiscoveryResults : resumedDiscoveryResults,
-      abortedRunCount: pausedDiscoveryResults.reduce((total, entry) => total + entry.abortedRuns.length, 0),
       flags: await context.repository.getControlFlags(),
     });
   });

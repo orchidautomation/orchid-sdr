@@ -178,40 +178,6 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
     };
   }
 
-  async abortRun(actorRunId: string): Promise<DiscoveryRunSnapshot> {
-    if (!this.config.APIFY_TOKEN) {
-      throw new Error("APIFY_TOKEN is not configured");
-    }
-
-    const response = await fetch(
-      `${this.config.APIFY_BASE_URL}/actor-runs/${encodeURIComponent(actorRunId)}/abort`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.config.APIFY_TOKEN}`,
-        },
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error(`Apify run abort failed with ${response.status}`);
-    }
-
-    const json = (await response.json()) as Record<string, unknown>;
-    const data = coerceRecord(json.data);
-    const runId = pickString(data, ["id", "actorRunId"]) ?? actorRunId;
-    const status = pickString(data, ["status"]) ?? "UNKNOWN";
-
-    return {
-      actorRunId: runId,
-      status,
-      defaultDatasetId:
-        pickString(data, ["defaultDatasetId", "defaultDataset_id"]) ??
-        pickString(json, ["defaultDatasetId", "defaultDataset_id"]) ??
-        null,
-    };
-  }
-
   normalizeSignals(source: DiscoverySource, items: Record<string, unknown>[]): ProviderSignal[] {
     return source === "x_public_post"
       ? this.normalizeXSignals(items)

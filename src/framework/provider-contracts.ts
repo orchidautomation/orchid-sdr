@@ -34,7 +34,6 @@ export interface DiscoverySignalSourceAdapter<Source extends string = string> {
   fetchDatasetItems(datasetId: string, source: Source): Promise<Record<string, unknown>[]>;
   startDiscoveryRun(input: DiscoveryRunInput<Source>): Promise<DiscoveryRunHandle>;
   getRun(actorRunId: string): Promise<DiscoveryRunSnapshot>;
-  abortRun?(actorRunId: string): Promise<DiscoveryRunSnapshot>;
   normalizeSignals(source: Source, items: Record<string, unknown>[]): ProviderSignal[];
 }
 

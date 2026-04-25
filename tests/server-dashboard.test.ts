@@ -53,7 +53,6 @@ describe("dashboard bootstrap bypass", () => {
         getOrCreate: vi.fn(() => ({
           pauseAutomation: vi.fn(async () => ({
             ok: true,
-            abortedRuns: [{ actorRunId: "run_1", status: "aborted" }],
           })),
           initialize: vi.fn(async () => ({
             ok: true,
@@ -107,7 +106,7 @@ describe("dashboard bootstrap bypass", () => {
     expect(ensureRuntimeBootstrapped).not.toHaveBeenCalled();
   });
 
-  it("pauses discovery automation and reports aborted runs", async () => {
+  it("pauses discovery automation without aborting in-flight runs", async () => {
     ensureRuntimeBootstrapped.mockResolvedValue(undefined);
     const { createApp } = await import("../src/server.js");
     const app = createApp();
@@ -130,7 +129,12 @@ describe("dashboard bootstrap bypass", () => {
     expect(json).toMatchObject({
       paused: true,
       campaignId: "cmp_default",
-      abortedRunCount: 1,
+      discovery: [
+        {
+          source: "linkedin_public_post",
+          sourcePaused: true,
+        },
+      ],
     });
     expect(mockClient.discoveryCoordinator.getOrCreate).toHaveBeenCalledWith([
       "cmp_default",

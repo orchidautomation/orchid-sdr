@@ -1595,12 +1595,12 @@ export function renderDashboardPage() {
         const nextPaused = !isCampaignPaused(latestState);
         button.disabled = true;
         try {
-          const result = await postJson("/api/dashboard/automation-pause", {
+          await postJson("/api/dashboard/automation-pause", {
             paused: nextPaused,
           });
           showToast(
             nextPaused
-              ? \`Automation paused\${result.abortedRunCount ? \` · aborted \${result.abortedRunCount} Apify run\${result.abortedRunCount === 1 ? "" : "s"}\` : ""}\`
+              ? "Automation paused · in-flight work will finish"
               : "Automation resumed",
           );
           await refresh();

@@ -297,7 +297,6 @@ export const discoveryCoordinator = actor({
       input?: {
         campaignId?: string;
         source?: DiscoverySource;
-        reason?: string;
       },
     ) => {
       if (input?.campaignId) {
@@ -307,7 +306,6 @@ export const discoveryCoordinator = actor({
         c.state.source = input.source;
       }
 
-      const abortedRuns = await abortActiveDiscoveryRuns(c, input?.reason ?? "campaign paused by operator");
       c.state.nextTickAt = 0;
       c.state.lastStatus = "paused";
 
@@ -315,7 +313,6 @@ export const discoveryCoordinator = actor({
         ok: true,
         source: c.state.source,
         campaignId: c.state.campaignId,
-        abortedRuns,
       };
     },
     getSnapshot: async (c) => {
@@ -365,64 +362,6 @@ export const discoveryCoordinator = actor({
     },
   },
 });
-
-async function abortActiveDiscoveryRuns(
-  c: {
-    state: DiscoveryActorState;
-    db: {
-      execute: <TRow extends Record<string, unknown> = Record<string, unknown>>(
-        query: string,
-        ...args: unknown[]
-      ) => Promise<TRow[]>;
-    };
-  },
-  reason: string,
-) {
-  const context = getAppContext();
-  const runningRuns = await c.db.execute<{
-    actor_run_id: string;
-  }>(
-    `
-    select actor_run_id
-    from discovery_runs
-    where status = 'running'
-    order by created_at desc
-    `,
-  );
-
-  const abortedRuns: Array<{
-    actorRunId: string;
-    status: string;
-  }> = [];
-
-  for (const run of runningRuns) {
-    const snapshot = await context.apify.abortRun?.(run.actor_run_id).catch(() => null);
-    const status = String(snapshot?.status ?? "").toUpperCase();
-    if (status !== "ABORTED" && status !== "ABORTING") {
-      continue;
-    }
-
-    await c.db.execute(
-      `
-      update discovery_runs
-      set status = 'aborted',
-          completed_at = ?,
-          error = ?
-      where actor_run_id = ?
-      `,
-      Date.now(),
-      reason,
-      run.actor_run_id,
-    );
-
-    abortedRuns.push({
-      actorRunId: run.actor_run_id,
-      status: "aborted",
-    });
-  }
-
-  return abortedRuns;
-}
 
 async function handleCompletedDiscoveryRun(
   c: {
