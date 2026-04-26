@@ -186,6 +186,7 @@ Important:
     - `@ai-sdr/agentmail`
     - `@ai-sdr/slack`
     - `@ai-sdr/mcp`
+    - `@ai-sdr/neon`
     - `@ai-sdr/cli`
 - [x] decide on the workspace/package manager shape
   - current answer: **npm workspaces**

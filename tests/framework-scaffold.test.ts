@@ -8,7 +8,7 @@ import {
   renderScaffoldEnvExample,
   renderScaffoldSetupChecklist,
   resolveInitModuleIds,
-} from "../src/framework/scaffold.js";
+} from "@ai-sdr/framework/scaffold";
 
 describe("framework scaffold profiles", () => {
   it("builds a demo scaffold for manual signal workflows", () => {

@@ -17,7 +17,7 @@ import type {
   HandoffProvider,
   OutboundEmailProvider,
   WebExtractProvider,
-} from "../framework/index.js";
+} from "@ai-sdr/framework";
 import { ConvexRepository } from "../repository-convex.js";
 import { OrchidRepository, type OrchidRepositoryPort } from "../repository.js";
 import { AiStructuredService } from "./ai-service.js";
@@ -31,7 +31,7 @@ import {
   verifyHandoffSignature,
   verifySharedSecretHeader,
 } from "./webhook-security.js";
-import type { StatePlaneProvider } from "../framework/state.js";
+import type { StatePlaneProvider } from "@ai-sdr/framework/state";
 
 export interface ActiveSearchProvider {
   providerId: string;

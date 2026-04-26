@@ -4,7 +4,7 @@ import {
   convexStateTableBlueprint,
   stateSignalRecordInputSchema,
   stateWorkflowCheckpointInputSchema,
-} from "../src/framework/index.js";
+} from "@ai-sdr/framework";
 import {
   ConvexStatePlaneProvider,
   DisabledStatePlaneProvider,

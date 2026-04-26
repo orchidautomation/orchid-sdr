@@ -5,7 +5,7 @@ import {
   buildModuleInstallPlan,
   defaultOrchidModules,
   findModuleForAddCommand,
-} from "../src/framework/index.js";
+} from "@ai-sdr/framework";
 
 describe("framework module install plans", () => {
   it("summarizes how a module would be added", () => {

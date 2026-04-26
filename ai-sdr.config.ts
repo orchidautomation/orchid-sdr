@@ -1,5 +1,4 @@
-import { defineAiSdr } from "./src/framework/index.js";
-import { defaultOrchidModules, providersFromModules } from "./src/framework/index.js";
+import { defineAiSdr, defaultOrchidModules, providersFromModules } from "@ai-sdr/framework";
 
 const modules = defaultOrchidModules().filter((module) => module.id !== "neon");
 

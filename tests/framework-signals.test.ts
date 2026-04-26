@@ -4,7 +4,7 @@ import {
   normalizeSignalWebhookPayload,
   normalizedSignalSchema,
   signalWebhookPayloadSchema,
-} from "../src/framework/signals.js";
+} from "@ai-sdr/framework/signals";
 
 describe("framework signal contracts", () => {
   it("normalizes webhook signals with stable source refs and timestamps", () => {

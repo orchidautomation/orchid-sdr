@@ -9,12 +9,12 @@ import type {
   StateSignalRecordResult,
   StateWorkflowCheckpointInput,
   StateWorkflowCheckpointResult,
-} from "../framework/state.js";
+} from "@ai-sdr/framework/state";
 import {
   stateAuditEventInputSchema,
   stateSignalRecordInputSchema,
   stateWorkflowCheckpointInputSchema,
-} from "../framework/state.js";
+} from "@ai-sdr/framework/state";
 
 const DISABLED_PROVIDER_ID = "disabled";
 const CONVEX_PROVIDER_ID = "convex";

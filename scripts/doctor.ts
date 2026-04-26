@@ -12,7 +12,7 @@ import {
   validateAiSdrConfigReferences,
   type AiSdrCompositionProfileId,
   type AiSdrEnvVar,
-} from "../src/framework/index.js";
+} from "@ai-sdr/framework";
 
 type Check = {
   label: string;

@@ -6,7 +6,7 @@ import {
   type AiSdrConfig,
   type AiSdrPackageBoundary,
   type AiSdrProviderDefinition,
-} from "../framework/index.js";
+} from "@ai-sdr/framework";
 
 export type FrameworkProviderSelection = {
   providerId: string | null;

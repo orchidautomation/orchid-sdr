@@ -6,7 +6,7 @@ import {
   evaluateModuleComposition,
   normalizedWebhookModule,
   parallelModule,
-} from "../src/framework/index.js";
+} from "@ai-sdr/framework";
 
 describe("AI SDR module composition", () => {
   it("recognizes the default stack as production parity", () => {

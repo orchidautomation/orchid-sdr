@@ -12,7 +12,7 @@ import type {
   OutboundEmailProvider,
   ProviderSignal,
   WebExtractProvider,
-} from "./framework/index.js";
+} from "@ai-sdr/framework";
 
 interface ParallelSearchResult {
   title: string;

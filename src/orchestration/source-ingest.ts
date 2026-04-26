@@ -4,7 +4,7 @@ import {
   normalizeSignalWebhookPayload,
   type NormalizedSignal,
   type SignalWebhookPayload as FrameworkSignalWebhookPayload,
-} from "../framework/signals.js";
+} from "@ai-sdr/framework/signals";
 import type { WorkflowDependencies } from "./types.js";
 import { executeProspectWorkflow } from "./prospect-workflow.js";
 

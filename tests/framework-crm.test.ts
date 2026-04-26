@@ -5,7 +5,7 @@ import {
   crmProspectSyncResultSchema,
   normalizedCrmCompanySchema,
   normalizedCrmContactSchema,
-} from "../src/framework/index.js";
+} from "@ai-sdr/framework";
 
 describe("framework CRM normalization schemas", () => {
   it("accepts a normalized CRM prospect sync request", () => {

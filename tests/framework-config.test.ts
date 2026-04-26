@@ -14,7 +14,7 @@ import {
   providersFromModules,
   resolveProviderForCapability,
   validateAiSdrConfigReferences,
-} from "../src/framework/index.js";
+} from "@ai-sdr/framework";
 
 describe("AI SDR framework config helpers", () => {
   it("collects knowledge and skill paths", () => {
