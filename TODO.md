@@ -115,7 +115,6 @@ Important:
 - [x] validate config references and unsupported bindings
 - [x] expose a prototype `npm run ai-sdr` CLI
 - [x] add a first-pass `npm run ai-sdr -- init` scaffold flow with:
-  - `demo`
   - `core`
   - `starter`
   - `production` profiles
@@ -201,14 +200,14 @@ Important:
 - [ ] publish the scaffold flow as a real `npx ai-sdr init` experience
 - [x] generate a new project from a template instead of expecting repo surgery
 - [x] support at least three profiles:
-  - `demo`
-  - `starter`
-  - `production`
-- [x] support current local profiles:
-  - `demo`
   - `core`
   - `starter`
   - `production`
+- [x] support current local profiles:
+  - `core`
+  - `starter`
+  - `production`
+- [x] keep `demo` as a backward-compatible alias to `core` while removing it from the public UX
 - [ ] add a stricter zero-vendor mock profile if we want a pure no-accounts demo later
 - [ ] wizard should collect:
   - project/preset name

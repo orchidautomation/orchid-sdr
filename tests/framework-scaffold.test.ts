@@ -11,14 +11,14 @@ import {
 } from "@ai-sdr/framework/scaffold";
 
 describe("framework scaffold profiles", () => {
-  it("builds a demo scaffold for manual signal workflows", () => {
+  it("builds a core scaffold for manual signal workflows", () => {
     const spec = buildScaffoldSpec(baseConfig, {
-      name: "trellis-demo",
-      profile: "demo",
+      name: "trellis-core",
+      profile: "core",
     });
 
-    expect(spec.profile.id).toBe("demo");
-    expect(spec.profile.defaultDirectoryName).toBe("trellis-demo");
+    expect(spec.profile.id).toBe("core");
+    expect(spec.profile.defaultDirectoryName).toBe("trellis-core");
     expect(spec.config.compositionTargets).toEqual(["minimum"]);
     expect(spec.config.campaigns?.[0]?.sources).toEqual(["normalized-webhook"]);
     expect(spec.selectedModules.map((module) => module.id)).toEqual([
@@ -32,13 +32,14 @@ describe("framework scaffold profiles", () => {
     ]);
   });
 
-  it("builds a core scaffold without optional providers", () => {
+  it("treats the legacy demo profile as a core alias", () => {
     const spec = buildScaffoldSpec(baseConfig, {
-      name: "trellis-core",
-      profile: "core",
+      name: "trellis-demo",
+      profile: "demo",
     });
 
     expect(spec.profile.id).toBe("core");
+    expect(spec.profile.defaultDirectoryName).toBe("trellis-core");
     expect(spec.config.compositionTargets).toEqual(["minimum"]);
     expect(spec.selectedModules.map((module) => module.id)).toEqual([
       "normalized-webhook",
@@ -68,13 +69,13 @@ describe("framework scaffold profiles", () => {
     expect(spec.config.campaigns?.[0]?.sources).toEqual(["normalized-webhook", "apify-linkedin"]);
   });
 
-  it("can extend a demo scaffold with optional module choices", () => {
-    const moduleIds = resolveInitModuleIds("demo", {
+  it("can extend a core scaffold with optional module choices", () => {
+    const moduleIds = resolveInitModuleIds("core", {
       include: ["discovery", "deep-research"],
     });
     const spec = buildScaffoldSpec(baseConfig, {
-      name: "trellis-demo-plus",
-      profile: "demo",
+      name: "trellis-core-plus",
+      profile: "core",
       moduleIds,
     });
 
@@ -121,6 +122,9 @@ describe("framework scaffold profiles", () => {
     expect(envExample).toContain("ORCHID_SDR_SANDBOX_TOKEN=change-me");
     expect(setupChecklist).toContain("# Trellis Setup Checklist");
     expect(setupChecklist).toContain(spec.profile.description);
+    expect(setupChecklist).toContain("External Accounts You Actually Need");
+    expect(setupChecklist).toContain("Vercel OAuth is **not** part of the default Trellis auth story right now.");
+    expect(setupChecklist).toContain("Deployed MCP endpoint");
     expect(setupChecklist).toContain("`CONVEX_URL`");
     expect(setupChecklist).not.toContain("`DATABASE_URL`");
   });

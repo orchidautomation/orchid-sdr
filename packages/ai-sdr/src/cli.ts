@@ -90,7 +90,7 @@ function printHelp() {
   npm run ai-sdr -- check
   npm run ai-sdr -- add <module-id>
   npm run ai-sdr -- add <capability> <provider>
-  npm run ai-sdr -- init [target-dir] [--profile demo|core|starter|production] [--name my-app]
+  npm run ai-sdr -- init [target-dir] [--profile core|starter|production] [--name my-app]
 
 Examples:
 
@@ -109,7 +109,7 @@ Examples:
   npm run ai-sdr -- add handoff slack
   npm run ai-sdr -- init
   npm run ai-sdr -- init ../trellis-starter --profile starter --name trellis-starter
-  npm run ai-sdr -- init ../trellis-demo --profile demo --with-discovery --with-deep-research
+  npm run ai-sdr -- init ../trellis-core-plus --profile core --with-discovery --with-deep-research
 
 Simple labels stay short in the CLI: search, extract, deep-research, monitor, enrichment.
 The alias "research" resolves to the full research contract family.
@@ -485,6 +485,14 @@ Then open:
 \`\`\`text
 http://localhost:3000/dashboard
 \`\`\`
+
+## Auth And URLs
+
+- dashboard login uses \`DASHBOARD_PASSWORD\`, or falls back to \`ORCHID_SDR_SANDBOX_TOKEN\`
+- remote MCP auth uses bearer token \`ORCHID_SDR_MCP_TOKEN\`, or falls back to \`ORCHID_SDR_SANDBOX_TOKEN\`
+- local MCP URL is \`http://localhost:3000/mcp/orchid-sdr\`
+- deployed MCP URL is \`\${APP_URL}/mcp/orchid-sdr\`
+- if you deploy on Vercel and leave \`APP_URL\` unset, the app falls back to \`https://$VERCEL_URL\`
 
 ## Notes
 

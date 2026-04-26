@@ -117,6 +117,12 @@ The generated project includes:
 - a workspace-backed `package.json` so the generated app installs and runs as its own local Trellis workspace
 - optional module prompts for discovery, deep research, enrichment, CRM, outbound email, and handoff when you use the wizard path
 
+Current profile intent:
+
+- `core` - minimum honest runtime: manual signals, dashboard, MCP, and the full base control plane
+- `starter` - `core` plus discovery, deep research, and enrichment
+- `production` - current production-parity AI SDR stack
+
 If you already know which profile you want, the explicit path still works:
 
 ```bash
@@ -153,6 +159,29 @@ http://localhost:3000/dashboard
 ```
 
 If you want the full runtime, add provider keys such as Convex, Apify, Parallel, Firecrawl, Vercel AI Gateway, AgentMail, and Attio. Neon remains available only as an optional SQL compatibility module, not part of the default boot path. When Attio is configured, the first outbound can auto-create or update the company and contact, and classified replies can automatically promote the Attio stage.
+
+The shortest honest vendor path to see value is:
+
+- `core`
+  - `Convex`
+  - `Vercel` for Sandbox and AI Gateway
+  - `Firecrawl`
+  - `Rivet`
+- `starter`
+  - add `Apify`
+  - add `Parallel`
+  - add `Prospeo`
+- `production`
+  - add `AgentMail`
+  - add `Attio`
+  - optionally add `Slack`
+
+The current auth model is token/password based, not Vercel OAuth:
+
+- dashboard login uses `DASHBOARD_PASSWORD`, or falls back to `ORCHID_SDR_SANDBOX_TOKEN`
+- remote MCP uses bearer token `ORCHID_SDR_MCP_TOKEN`, or falls back to `ORCHID_SDR_SANDBOX_TOKEN`
+- deployed MCP URL is `${APP_URL}/mcp/orchid-sdr`
+- if `APP_URL` is unset on Vercel, the app falls back to `https://$VERCEL_URL`
 
 Campaign quiet hours are evaluated in the campaign's local timezone. New campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE` and you can update a live campaign later through the remote MCP tool `control.setCampaignTimezone`.
 

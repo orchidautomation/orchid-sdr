@@ -10,8 +10,7 @@ npm run ai-sdr -- init
 
 Profiles:
 
-- `demo` - manual signals, dashboard, MCP, and local runtime verification with no live discovery or outbound providers
-- `core` - minimum runtime
+- `core` - manual signals, dashboard, MCP, and the minimum honest runtime
 - `starter` - core plus discovery, deep research, and enrichment
 - `production` - current production-parity reference stack
 
@@ -33,7 +32,7 @@ npm run ai-sdr -- init ../trellis-starter --profile starter --name trellis-start
 You can also override optional modules directly:
 
 ```bash
-npm run ai-sdr -- init ../trellis-demo-plus --profile demo --with-discovery --with-deep-research
+npm run ai-sdr -- init ../trellis-core-plus --profile core --with-discovery --with-deep-research
 ```
 
 ## 2. Install
@@ -56,6 +55,30 @@ At minimum:
 
 If the selected profile includes additional providers, fill those after the core env is working.
 
+## 3.5. Which accounts do you really need?
+
+To simply boot the app safely, the required env block is enough.
+
+To actually feel the product as a new user:
+
+- `core`
+  - `Convex`
+  - `Vercel` for Sandbox and AI Gateway
+  - `Firecrawl`
+  - `Rivet`
+- `starter`
+  - everything in `core`
+  - `Apify`
+  - `Parallel`
+  - `Prospeo`
+- `production`
+  - everything in `starter`
+  - `AgentMail`
+  - `Attio`
+  - `Slack` if you want handoff
+
+That is the current happy path. Vercel OAuth is not required for the scaffolded app.
+
 ## 4. Verify
 
 ```bash
@@ -70,6 +93,25 @@ npm run dev
 ```text
 http://localhost:3000/dashboard
 ```
+
+## 5.5. How auth and URLs work
+
+- dashboard login:
+  - uses `DASHBOARD_PASSWORD`
+  - if unset, falls back to `ORCHID_SDR_SANDBOX_TOKEN`
+- remote MCP:
+  - endpoint: `${APP_URL}/mcp/orchid-sdr`
+  - bearer token: `ORCHID_SDR_MCP_TOKEN`
+  - fallback token: `ORCHID_SDR_SANDBOX_TOKEN`
+- local MCP URL:
+  - `http://localhost:3000/mcp/orchid-sdr`
+- deployed app origin:
+  - `APP_URL`
+  - on Vercel, if `APP_URL` is unset, the app falls back to `https://$VERCEL_URL`
+- webhook URLs:
+  - `${APP_URL}/webhooks/apify`
+  - `${APP_URL}/webhooks/signals`
+  - `${APP_URL}/webhooks/agentmail`
 
 ## 6. Use the generated checklist
 

@@ -27,26 +27,10 @@ export type AiSdrInitModuleChoice = {
 };
 
 export const aiSdrInitProfiles = {
-  demo: {
-    id: "demo",
-    displayName: "Demo workspace",
-    description: "Smallest honest Trellis workspace for local boot, dashboard verification, MCP inspection, and manual signal ingest. No live discovery, CRM sync, or outbound providers.",
-    defaultDirectoryName: "trellis-demo",
-    compositionTargets: ["minimum"],
-    moduleIds: [
-      "normalized-webhook",
-      "firecrawl",
-      "convex",
-      "rivet",
-      "vercel-sandbox",
-      "vercel-ai-gateway",
-      "orchid-mcp",
-    ],
-  },
   core: {
     id: "core",
     displayName: "Core runtime",
-    description: "Smallest self-hostable Trellis runtime that can ingest normalized signals, research the web, run actors, persist state, and expose MCP tools.",
+    description: "Smallest honest Trellis runtime that can ingest normalized signals, research the web, run actors, persist state, and expose MCP tools. No live discovery, CRM sync, or outbound providers by default.",
     defaultDirectoryName: "trellis-core",
     compositionTargets: ["minimum"],
     moduleIds: [
@@ -104,6 +88,10 @@ export const aiSdrInitProfiles = {
 
 export type AiSdrInitProfileId = keyof typeof aiSdrInitProfiles;
 
+const legacyInitProfileAliases = {
+  demo: "core",
+} as const satisfies Record<string, AiSdrInitProfileId>;
+
 export const aiSdrInitModuleChoices = [
   {
     id: "discovery",
@@ -151,7 +139,10 @@ export type AiSdrScaffoldSpec = {
 };
 
 export function resolveInitProfile(profile: string | undefined): AiSdrInitProfile {
-  return aiSdrInitProfiles[(profile ?? "starter") as AiSdrInitProfileId] ?? aiSdrInitProfiles.starter;
+  const normalizedProfile = profile && profile in legacyInitProfileAliases
+    ? legacyInitProfileAliases[profile as keyof typeof legacyInitProfileAliases]
+    : profile;
+  return aiSdrInitProfiles[(normalizedProfile ?? "starter") as AiSdrInitProfileId] ?? aiSdrInitProfiles.starter;
 }
 
 export function buildScaffoldSpec(
@@ -334,6 +325,34 @@ ${requiredEnvLines.join("\n")}
 
 ${optionalEnvLines.length > 0 ? optionalEnvLines.join("\n") : "- none"}
 
+## External Accounts You Actually Need
+
+You can boot the app with the required env block above, but to actually feel the selected profile you usually want these vendors connected:
+
+${renderValueAccountLines(spec)}
+
+Vercel OAuth is **not** part of the default Trellis auth story right now. The current happy path uses tokens and provider keys so the scaffold stays self-hostable and works outside a Vercel-only environment.
+
+## Login And Auth Model
+
+- Dashboard login:
+  - route: \`/dashboard\`
+  - password source: \`DASHBOARD_PASSWORD\`
+  - fallback if unset: \`ORCHID_SDR_SANDBOX_TOKEN\`
+- Remote MCP auth:
+  - route: \`/mcp/orchid-sdr\`
+  - bearer token: \`ORCHID_SDR_MCP_TOKEN\`
+  - fallback if unset: \`ORCHID_SDR_SANDBOX_TOKEN\`
+
+## URL Derivation
+
+- Local operator surface: \`http://localhost:3000/dashboard\`
+- Local MCP endpoint: \`http://localhost:3000/mcp/orchid-sdr\`
+- Deployed app origin: \`APP_URL\`
+- If \`APP_URL\` is unset on Vercel, the app falls back to \`https://$VERCEL_URL\`
+- Deployed MCP endpoint: \`\${APP_URL}/mcp/orchid-sdr\`
+- Webhook endpoints: \`\${APP_URL}/webhooks/<provider>\`
+
 5. Verify locally
 
 \`\`\`bash
@@ -377,6 +396,37 @@ npm run sandbox:probe
 - Provider API keys present in config intent but absent in \`.env\`
 - Running discovery or probe before the dashboard and health check are healthy
 `;
+}
+
+function renderValueAccountLines(spec: AiSdrScaffoldSpec) {
+  const selectedModuleIds = new Set(spec.selectedModules.map((module) => module.id));
+  const lines = [
+    "- `Convex` - live state, dashboard data, workflow persistence, and the default system of record.",
+    "- `Vercel` - sandbox execution and AI Gateway model routing in the default happy path.",
+    "- `Firecrawl` - the default web search and extraction provider.",
+    "- `Rivet` - actor orchestration, scheduling, and runtime control plane.",
+  ];
+
+  if (selectedModuleIds.has("apify-linkedin")) {
+    lines.push("- `Apify` - scheduled LinkedIn public-post discovery.");
+  }
+  if (selectedModuleIds.has("parallel")) {
+    lines.push("- `Parallel` - deep research and monitoring workflows.");
+  }
+  if (selectedModuleIds.has("prospeo")) {
+    lines.push("- `Prospeo` - contact enrichment and email discovery.");
+  }
+  if (selectedModuleIds.has("attio")) {
+    lines.push("- `Attio` - CRM writeback and stage sync.");
+  }
+  if (selectedModuleIds.has("agentmail")) {
+    lines.push("- `AgentMail` - outbound sending, inboxes, and reply handling.");
+  }
+  if (selectedModuleIds.has("slack-handoff")) {
+    lines.push("- `Slack` - handoff and human escalation routing.");
+  }
+
+  return lines.join("\n");
 }
 
 function filterCapabilityBindings(
