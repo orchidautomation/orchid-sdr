@@ -112,9 +112,10 @@ describe("framework scaffold profiles", () => {
     const setupChecklist = renderScaffoldSetupChecklist(spec);
 
     expect(configModule).toContain('from "@ai-sdr/framework"');
+    expect(configModule).toContain('const scaffoldName = "trellis-starter"');
     expect(configModule).toContain('const selectedModuleIds =');
     expect(configModule).toContain('"compositionTargets": [');
-    expect(configModule).toContain('"name": "trellis-starter"');
+    expect(configModule).toContain('"name": scaffoldName');
     expect(configModule).not.toContain('./src/framework/index.js');
     expect(envExample).toContain("CONVEX_URL=https://your-deployment.convex.cloud");
     expect(envExample).toContain("FIRECRAWL_API_KEY=");
@@ -125,6 +126,8 @@ describe("framework scaffold profiles", () => {
     expect(setupChecklist).toContain("External Accounts You Actually Need");
     expect(setupChecklist).toContain("Vercel OAuth is **not** part of the default Trellis auth story right now.");
     expect(setupChecklist).toContain("Deployed MCP endpoint");
+    expect(setupChecklist).toContain("Configured Webhooks");
+    expect(configModule).toContain('"webhooks": [');
     expect(setupChecklist).toContain("`CONVEX_URL`");
     expect(setupChecklist).not.toContain("`DATABASE_URL`");
   });

@@ -67,6 +67,27 @@ export const aiSdrCampaignDefinitionSchema = z.object({
   sources: z.array(z.string().min(1)).optional(),
 });
 
+export const aiSdrWebhookAuthModeSchema = z.enum([
+  "none",
+  "shared-secret-query-or-header",
+  "svix-signature",
+  "hmac-header",
+]);
+
+export const aiSdrWebhookDefinitionSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  method: z.enum(["POST"]).default("POST"),
+  path: z.string().min(1),
+  providerId: z.string().min(1).optional(),
+  secretEnv: z.string().min(1).optional(),
+  fallbackSecretEnv: z.string().min(1).optional(),
+  auth: aiSdrWebhookAuthModeSchema.default("none"),
+  authKey: z.string().min(1).optional(),
+  eventTypes: z.array(z.string().min(1)).optional(),
+});
+
 export const aiSdrModuleDocSchema = z.object({
   label: z.string().min(1),
   path: z.string().min(1),
@@ -183,6 +204,7 @@ export const aiSdrConfigSchema = z.object({
   capabilityBindings: z.array(aiSdrCapabilityBindingSchema).optional(),
   packageBoundaries: z.array(aiSdrPackageBoundarySchema).optional(),
   campaigns: z.array(aiSdrCampaignDefinitionSchema).optional(),
+  webhooks: z.array(aiSdrWebhookDefinitionSchema).optional(),
   requiredEnv: z.array(aiSdrEnvVarSchema).optional(),
 });
 
@@ -194,6 +216,8 @@ export type AiSdrProviderDefinition = z.infer<typeof aiSdrProviderDefinitionSche
 export type AiSdrSkillDefinition = z.infer<typeof aiSdrSkillDefinitionSchema>;
 export type AiSdrKnowledgeDefinition = z.infer<typeof aiSdrKnowledgeDefinitionSchema>;
 export type AiSdrCampaignDefinition = z.infer<typeof aiSdrCampaignDefinitionSchema>;
+export type AiSdrWebhookAuthMode = z.infer<typeof aiSdrWebhookAuthModeSchema>;
+export type AiSdrWebhookDefinition = z.infer<typeof aiSdrWebhookDefinitionSchema>;
 export type AiSdrModuleDoc = z.infer<typeof aiSdrModuleDocSchema>;
 export type AiSdrModuleSmokeCheck = z.infer<typeof aiSdrModuleSmokeCheckSchema>;
 export type AiSdrCapabilityBinding = z.infer<typeof aiSdrCapabilityBindingSchema>;
@@ -260,6 +284,10 @@ export function collectSkillPaths(config: AiSdrConfig): string[] {
 
 export function collectPackageBoundaries(config: AiSdrConfig): AiSdrPackageBoundary[] {
   return config.packageBoundaries ?? [];
+}
+
+export function collectWebhookDefinitions(config: AiSdrConfig): AiSdrWebhookDefinition[] {
+  return config.webhooks ?? [];
 }
 
 export function buildCapabilityBindingMap(config: AiSdrConfig) {

@@ -37,6 +37,8 @@ Important runtime notes:
 
 - `APP_URL` must be reachable from Vercel Sandboxes because the sandbox connects back to the repo MCP endpoint.
 - `APP_URL` must also be reachable from Apify and AgentMail because they post webhooks into the app.
+- webhook paths, auth modes, and secret env mappings are declared in `ai-sdr.config.ts` under `webhooks`
+- the server routes are still explicit in code; the config is the declarative source of truth for docs, validation, and scaffold generation
 
 ## Commands
 
@@ -98,6 +100,8 @@ Current tracked skills:
 - `skills/reply-policy`
 - `skills/handoff-policy`
 - `skills/setup-and-verify`
+- `skills/convex-setup`
+- `skills/vercel-setup`
 
 How skills are loaded:
 

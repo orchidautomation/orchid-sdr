@@ -1,3 +1,4 @@
+import { readFileSync, writeFileSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -15,10 +16,8 @@ import {
   type AiSdrModuleDefinition,
 } from "../../framework/src/index.js";
 import {
-  aiSdrInitProfiles,
   aiSdrInitModuleChoices,
   buildScaffoldSpec,
-  isInitModuleEnabled,
   renderScaffoldConfigModule,
   renderScaffoldEnvExample,
   renderScaffoldSetupChecklist,
@@ -90,12 +89,14 @@ function printHelp() {
   npm run ai-sdr -- check
   npm run ai-sdr -- add <module-id>
   npm run ai-sdr -- add <capability> <provider>
-  npm run ai-sdr -- init [target-dir] [--profile core|starter|production] [--name my-app]
+  npm run ai-sdr -- init [target-dir] [--name my-app]
 
 Examples:
 
   npm run ai-sdr -- add crm attio
+  npm run ai-sdr -- add crm attio --apply
   npm run ai-sdr -- add email agentmail
+  npm run ai-sdr -- add source apify --apply
   npm run ai-sdr -- add search firecrawl
   npm run ai-sdr -- add extract firecrawl
   npm run ai-sdr -- add deep-research parallel
@@ -108,13 +109,14 @@ Examples:
   npm run ai-sdr -- add runtime vercel-sandbox
   npm run ai-sdr -- add handoff slack
   npm run ai-sdr -- init
-  npm run ai-sdr -- init ../trellis-starter --profile starter --name trellis-starter
   npm run ai-sdr -- init ../trellis-core-plus --profile core --with-discovery --with-deep-research
 
 Simple labels stay short in the CLI: search, extract, deep-research, monitor, enrichment.
 The alias "research" resolves to the full research contract family.
 
-Init can now launch an interactive wizard if you omit the target directory.`);
+Init now scaffolds the bare minimum core runtime by default.
+Use add ... --apply to layer in new providers and sources after boot.
+Apply mode works on scaffold-generated workspaces.`);
 }
 
 function listModules() {
@@ -158,6 +160,11 @@ function printAddPlan(moduleId: string | undefined) {
     const requested = providerArg ? `${moduleId} ${providerArg}` : moduleId;
     console.error(`Unknown module or provider capability: ${requested}`);
     process.exitCode = 1;
+    return;
+  }
+
+  if (cliFlags.apply === true || cliFlags.write === true) {
+    applyModuleToScaffold(module);
     return;
   }
 
@@ -229,7 +236,7 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
 async function resolveInitInput(targetArg: string | undefined, flags: Record<string, string | boolean>) {
   const shouldPrompt = !targetArg || flags.interactive === true || flags.wizard === true;
   if (!shouldPrompt) {
-    const profile = String(flags.profile ?? "starter");
+    const profile = String(flags.profile ?? "core");
     const resolvedTargetArg = targetArg;
     const appName = String(flags.name ?? path.basename(path.resolve(process.cwd(), resolvedTargetArg)));
     return {
@@ -242,7 +249,7 @@ async function resolveInitInput(targetArg: string | undefined, flags: Record<str
 
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     throw new Error(
-      "Interactive init requires a TTY. Re-run with a target directory, for example: npm run ai-sdr -- init ../trellis-starter --profile starter",
+      "Interactive init requires a TTY. Re-run with a target directory, for example: npm run ai-sdr -- init ../trellis-core",
     );
   }
 
@@ -261,8 +268,7 @@ async function promptForInit(input: {
   include?: string[];
   exclude?: string[];
 }) {
-  const profiles = Object.values(aiSdrInitProfiles);
-  const defaultProfile = resolveInitProfile(input.profile ?? "starter");
+  const defaultProfile = resolveInitProfile(input.profile ?? "core");
   const readline = createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -271,46 +277,21 @@ async function promptForInit(input: {
   try {
     console.log("Trellis init wizard");
     console.log("");
-    console.log("Choose a scaffold profile:");
-    for (const [index, profile] of profiles.entries()) {
-      const defaultLabel = profile.id === defaultProfile.id ? " (default)" : "";
-      console.log(`  ${index + 1}. ${profile.displayName}${defaultLabel}`);
-      console.log(`     ${profile.description}`);
-    }
+    console.log(`Scaffolding the bare minimum Trellis runtime: ${defaultProfile.displayName}`);
+    console.log(defaultProfile.description);
     console.log("");
 
-    const profileAnswer = await readline.question(`Profile [1-${profiles.length}] (${defaultProfile.id}): `);
-    const selectedProfile = resolveWizardProfile(profileAnswer, profiles, defaultProfile.id);
+    const selectedProfile = defaultProfile;
     const selectedModules = new Set(resolveInitModuleIds(selectedProfile.id, {
       include: input.include,
       exclude: input.exclude,
     }));
-    const lockedChoices = new Set([...(input.include ?? []), ...(input.exclude ?? [])]);
     const defaultTarget = input.targetArg ?? `../${selectedProfile.defaultDirectoryName}`;
     const targetAnswer = await readline.question(`Target directory (${defaultTarget}): `);
     const resolvedTargetArg = (targetAnswer.trim() || defaultTarget).trim();
     const defaultName = input.name ?? path.basename(path.resolve(process.cwd(), resolvedTargetArg));
     const nameAnswer = await readline.question(`Project name (${defaultName}): `);
     const appName = (nameAnswer.trim() || defaultName).trim();
-
-    console.log("");
-    console.log("Optional modules:");
-    for (const choice of aiSdrInitModuleChoices) {
-      if (lockedChoices.has(choice.id) || lockedChoices.has(choice.moduleId)) {
-        continue;
-      }
-
-      const defaultEnabled = selectedModules.has(choice.moduleId) || isInitModuleEnabled(selectedProfile, choice);
-      const answer = await readline.question(
-        `${choice.displayName} (${defaultEnabled ? "Y/n" : "y/N"}): `,
-      );
-      const enabled = parseYesNoAnswer(answer, defaultEnabled);
-      if (enabled) {
-        selectedModules.add(choice.moduleId);
-      } else {
-        selectedModules.delete(choice.moduleId);
-      }
-    }
 
     console.log("");
     console.log(`Scaffold: ${selectedProfile.displayName}`);
@@ -329,20 +310,6 @@ async function promptForInit(input: {
   }
 }
 
-function resolveWizardProfile(answer: string, profiles: (typeof aiSdrInitProfiles)[keyof typeof aiSdrInitProfiles][], fallbackProfileId: string) {
-  const trimmed = answer.trim();
-  if (!trimmed) {
-    return resolveInitProfile(fallbackProfileId);
-  }
-
-  const numericIndex = Number.parseInt(trimmed, 10);
-  if (Number.isFinite(numericIndex) && numericIndex >= 1 && numericIndex <= profiles.length) {
-    return profiles[numericIndex - 1] ?? resolveInitProfile(fallbackProfileId);
-  }
-
-  return resolveInitProfile(trimmed);
-}
-
 function resolveModuleChoiceFlags(flags: Record<string, string | boolean>) {
   const include: string[] = [];
   const exclude: string[] = [];
@@ -357,20 +324,6 @@ function resolveModuleChoiceFlags(flags: Record<string, string | boolean>) {
   }
 
   return { include, exclude };
-}
-
-function parseYesNoAnswer(answer: string, fallback: boolean) {
-  const normalized = answer.trim().toLowerCase();
-  if (!normalized) {
-    return fallback;
-  }
-  if (["y", "yes"].includes(normalized)) {
-    return true;
-  }
-  if (["n", "no"].includes(normalized)) {
-    return false;
-  }
-  return fallback;
 }
 
 function printPlan(module: AiSdrModuleDefinition) {
@@ -391,6 +344,88 @@ function printPlan(module: AiSdrModuleDefinition) {
   printList("Docs", plan.docs);
   printList("Smoke checks", plan.smokeChecks);
   printList("Next steps", plan.nextSteps);
+}
+
+function applyModuleToScaffold(module: AiSdrModuleDefinition) {
+  const scaffoldConfigPath = path.join(process.cwd(), "ai-sdr.config.ts");
+  const scaffoldConfigSource = readFileSyncSafe(scaffoldConfigPath);
+  const metadata = parseScaffoldConfigMetadata(scaffoldConfigSource);
+  if (!metadata) {
+    throw new Error(
+      `Cannot apply module "${module.id}" automatically. This works only for scaffold-generated ai-sdr.config.ts files.`,
+    );
+  }
+
+  const selectedModuleIds = new Set(metadata.selectedModuleIds);
+  selectedModuleIds.add(module.id);
+
+  const spec = buildScaffoldSpec(config, {
+    name: metadata.scaffoldName,
+    description: metadata.scaffoldDescription,
+    profile: metadata.selectedProfileId,
+    moduleIds: [...selectedModuleIds],
+  });
+
+  writeFileSyncSafe(scaffoldConfigPath, renderScaffoldConfigModule(spec));
+  writeFileSyncSafe(path.join(process.cwd(), ".env.example"), renderScaffoldEnvExample(spec));
+  writeFileSyncSafe(path.join(process.cwd(), "TRELLIS_SETUP.md"), renderScaffoldSetupChecklist(spec));
+  writeFileSyncSafe(path.join(process.cwd(), "README.md"), renderScaffoldReadme(metadata.scaffoldName, process.cwd(), spec.profile));
+
+  console.log(`Applied module "${module.id}" to ${scaffoldConfigPath}`);
+  console.log("Updated:");
+  console.log("  - ai-sdr.config.ts");
+  console.log("  - .env.example");
+  console.log("  - TRELLIS_SETUP.md");
+  console.log("  - README.md");
+  console.log("");
+  console.log("Next steps:");
+  console.log("  1. Fill any new env vars from .env.example");
+  console.log("  2. npm run ai-sdr -- check");
+  console.log("  3. npm run doctor");
+}
+
+function parseScaffoldConfigMetadata(source: string) {
+  const scaffoldName = parseQuotedConst(source, "scaffoldName");
+  const scaffoldDescription = parseQuotedConst(source, "scaffoldDescription");
+  const selectedProfileId = parseQuotedConst(source, "selectedProfileId");
+  const selectedModuleIds = parseJsonConst<string[]>(source, "selectedModuleIds");
+
+  if (!scaffoldName || !scaffoldDescription || !selectedProfileId || !selectedModuleIds) {
+    return null;
+  }
+
+  return {
+    scaffoldName,
+    scaffoldDescription,
+    selectedProfileId,
+    selectedModuleIds,
+  };
+}
+
+function parseQuotedConst(source: string, constantName: string) {
+  const match = source.match(new RegExp(`const ${constantName} = (["'\`])([\\s\\S]*?)\\1;`));
+  return match?.[2] ?? null;
+}
+
+function parseJsonConst<T>(source: string, constantName: string) {
+  const match = source.match(new RegExp(`const ${constantName} = ([\\s\\S]*?);\\n`));
+  if (!match?.[1]) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(match[1]) as T;
+  } catch {
+    return null;
+  }
+}
+
+function readFileSyncSafe(filePath: string) {
+  return readFileSync(filePath, "utf8");
+}
+
+function writeFileSyncSafe(filePath: string, contents: string) {
+  writeFileSync(filePath, contents);
 }
 
 function printList(label: string, values: string[]) {
@@ -493,6 +528,16 @@ http://localhost:3000/dashboard
 - local MCP URL is \`http://localhost:3000/mcp/orchid-sdr\`
 - deployed MCP URL is \`\${APP_URL}/mcp/orchid-sdr\`
 - if you deploy on Vercel and leave \`APP_URL\` unset, the app falls back to \`https://$VERCEL_URL\`
+
+## Add Providers Later
+
+Examples:
+
+\`\`\`bash
+npm run ai-sdr -- add source apify --apply
+npm run ai-sdr -- add deep-research parallel --apply
+npm run ai-sdr -- add enrichment prospeo --apply
+\`\`\`
 
 ## Notes
 

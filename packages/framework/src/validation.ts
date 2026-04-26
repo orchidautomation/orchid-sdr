@@ -16,8 +16,10 @@ export function validateAiSdrConfigReferences(config: AiSdrConfig): AiSdrConfigI
     ),
     ...findDuplicateIds("skill", (config.skills ?? []).map((skill) => skill.id)),
     ...findDuplicateIds("campaign", (config.campaigns ?? []).map((campaign) => campaign.id)),
+    ...findDuplicateIds("webhook", (config.webhooks ?? []).map((webhook) => webhook.id)),
     ...findDuplicateIds("package_boundary", (config.packageBoundaries ?? []).map((boundary) => boundary.id)),
     ...findUnknownCampaignSources(config),
+    ...findUnknownWebhookProviders(config),
     ...findProvidersMissingFromConfig(config),
     ...findModulesWithoutContracts(config),
     ...findUnknownCapabilityBindingProviders(config),
@@ -94,6 +96,18 @@ function findProvidersMissingFromConfig(config: AiSdrConfig): AiSdrConfigIssue[]
   }
 
   return issues;
+}
+
+function findUnknownWebhookProviders(config: AiSdrConfig): AiSdrConfigIssue[] {
+  const providerMap = buildProviderMap(config);
+
+  return (config.webhooks ?? [])
+    .filter((webhook) => webhook.providerId && !providerMap.has(webhook.providerId))
+    .map((webhook) => ({
+      severity: "error" as const,
+      code: "unknown_webhook_provider",
+      message: `Webhook "${webhook.id}" references provider "${webhook.providerId}", but no provider with that id exists`,
+    }));
 }
 
 function findModulesWithoutContracts(config: AiSdrConfig): AiSdrConfigIssue[] {

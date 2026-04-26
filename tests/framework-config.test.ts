@@ -5,6 +5,7 @@ import {
   buildProviderMap,
   collectConfigEnv,
   collectKnowledgePaths,
+  collectWebhookDefinitions,
   collectPackageBoundaries,
   collectModuleDocs,
   collectModuleMcpServers,
@@ -125,6 +126,16 @@ describe("AI SDR framework config helpers", () => {
           sources: ["hubspot", "missing-provider"],
         },
       ],
+      webhooks: [
+        {
+          id: "missing",
+          displayName: "Missing provider webhook",
+          method: "POST",
+          path: "/webhooks/missing",
+          providerId: "missing-provider",
+          auth: "none",
+        },
+      ],
     });
 
     expect(buildProviderMap(config).has("hubspot")).toBe(true);
@@ -133,6 +144,11 @@ describe("AI SDR framework config helpers", () => {
         severity: "error",
         code: "unknown_campaign_source",
         message: 'Campaign "default" references source provider "missing-provider", but no provider with that id exists',
+      },
+      {
+        severity: "error",
+        code: "unknown_webhook_provider",
+        message: 'Webhook "missing" references provider "missing-provider", but no provider with that id exists',
       },
     ]);
   });
@@ -188,6 +204,7 @@ describe("AI SDR framework config helpers", () => {
     expect(collectModuleDocs(config).some((doc) => doc.path === "docs/self-hosting.md")).toBe(true);
     expect(collectModuleMcpServers(config).some((server) => server.id === "parallel-search")).toBe(true);
     expect(collectModuleMcpServers(config).some((server) => server.id === "firecrawl")).toBe(true);
+    expect(collectWebhookDefinitions(config)).toEqual([]);
     expect(config.modules?.flatMap((item) => item.contracts ?? [])).toContain("crm.prospectSync.v1");
     expect(validateAiSdrConfigReferences(config)).toEqual([]);
   });

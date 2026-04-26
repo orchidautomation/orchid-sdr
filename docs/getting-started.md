@@ -8,20 +8,21 @@ This is the shortest path to a working Trellis reference app.
 npm run ai-sdr -- init
 ```
 
-Profiles:
+That command now scaffolds the bare minimum `core` runtime by default.
+
+After boot, add capabilities incrementally:
+
+```bash
+npm run ai-sdr -- add source apify --apply
+npm run ai-sdr -- add deep-research parallel --apply
+npm run ai-sdr -- add enrichment prospeo --apply
+```
+
+Shortcut presets still exist, but they are optional:
 
 - `core` - manual signals, dashboard, MCP, and the minimum honest runtime
 - `starter` - core plus discovery, deep research, and enrichment
 - `production` - current production-parity reference stack
-
-The wizard also lets you keep or remove optional modules such as:
-
-- live discovery
-- deep research
-- enrichment
-- CRM sync
-- outbound email
-- Slack handoff
 
 If you already know what you want, the flag path still works:
 

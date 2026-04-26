@@ -1,5 +1,6 @@
 import {
   collectConfigEnv,
+  collectWebhookDefinitions,
   defineAiSdr,
   providersFromModules,
   type AiSdrCapabilityBinding,
@@ -7,6 +8,7 @@ import {
   type AiSdrEnvVar,
   type AiSdrModuleDefinition,
   type AiSdrPackageBoundary,
+  type AiSdrWebhookDefinition,
 } from "./index.js";
 import { evaluateModuleComposition, type AiSdrCompositionProfileId } from "./composition.js";
 
@@ -174,6 +176,10 @@ export function buildScaffoldSpec(
     ...campaign,
     sources: (campaign.sources ?? []).filter((source) => selectedProviderIdSet.has(source)),
   }));
+  const webhooks = filterWebhookDefinitions(
+    collectWebhookDefinitions(baseConfig),
+    selectedProviderIdSet,
+  );
 
   const config = defineAiSdr({
     ...baseConfig,
@@ -185,6 +191,7 @@ export function buildScaffoldSpec(
     capabilityBindings,
     packageBoundaries,
     campaigns,
+    webhooks,
   });
 
   return {
@@ -225,9 +232,12 @@ export function isInitModuleEnabled(profile: AiSdrInitProfile, choice: AiSdrInit
 
 export function renderScaffoldConfigModule(spec: AiSdrScaffoldSpec) {
   const selectedModuleIds = spec.selectedModules.map((module) => module.id);
+  const scaffoldName = spec.config.name;
+  const scaffoldDescription = spec.config.description ?? `${spec.config.name} generated from the Trellis reference app scaffold.`;
+  const selectedProfileId = spec.profile.id;
   const configBody = {
-    name: spec.config.name,
-    description: spec.config.description,
+    name: "scaffoldName",
+    description: "scaffoldDescription",
     compositionTargets: spec.config.compositionTargets,
     knowledge: spec.config.knowledge,
     skills: spec.config.skills,
@@ -236,16 +246,22 @@ export function renderScaffoldConfigModule(spec: AiSdrScaffoldSpec) {
     capabilityBindings: spec.config.capabilityBindings,
     packageBoundaries: spec.config.packageBoundaries,
     campaigns: spec.config.campaigns,
+    webhooks: spec.config.webhooks,
     requiredEnv: spec.config.requiredEnv,
   };
 
   const serialized = JSON.stringify(configBody, null, 2)
+    .replace('"name": "scaffoldName"', '"name": scaffoldName')
+    .replace('"description": "scaffoldDescription"', '"description": scaffoldDescription')
     .replace('"modules": "modules"', '"modules": modules')
     .replace('"providers": "providersFromModules(modules)"', '"providers": providersFromModules(modules)');
 
   return [
     'import { defineAiSdr, defaultOrchidModules, providersFromModules } from "@ai-sdr/framework";',
     "",
+    `const scaffoldName = ${JSON.stringify(scaffoldName)};`,
+    `const scaffoldDescription = ${JSON.stringify(scaffoldDescription)};`,
+    `const selectedProfileId = ${JSON.stringify(selectedProfileId)};`,
     `const selectedModuleIds = ${JSON.stringify(selectedModuleIds, null, 2)};`,
     "const modules = defaultOrchidModules().filter((module) => selectedModuleIds.includes(module.id));",
     "",
@@ -291,6 +307,9 @@ export function renderScaffoldSetupChecklist(spec: AiSdrScaffoldSpec) {
   );
   const optionalEnvLines = optionalEnv.map((envVar) =>
     `- \`${envVar.name}\`${envVar.description ? ` - ${envVar.description}` : ""}`,
+  );
+  const webhookLines = (spec.config.webhooks ?? []).map((webhook) =>
+    `- \`${webhook.method} ${webhook.path}\` - ${webhook.displayName}${webhook.secretEnv ? ` (secret: \`${webhook.secretEnv}\`)` : ""}`,
   );
 
   return `# Trellis Setup Checklist
@@ -352,6 +371,10 @@ Vercel OAuth is **not** part of the default Trellis auth story right now. The cu
 - If \`APP_URL\` is unset on Vercel, the app falls back to \`https://$VERCEL_URL\`
 - Deployed MCP endpoint: \`\${APP_URL}/mcp/orchid-sdr\`
 - Webhook endpoints: \`\${APP_URL}/webhooks/<provider>\`
+
+## Configured Webhooks
+
+${webhookLines.join("\n")}
 
 5. Verify locally
 
@@ -434,6 +457,13 @@ function filterCapabilityBindings(
   selectedProviderIds: Set<string>,
 ) {
   return capabilityBindings.filter((binding) => selectedProviderIds.has(binding.providerId));
+}
+
+function filterWebhookDefinitions(
+  webhooks: AiSdrWebhookDefinition[],
+  selectedProviderIds: Set<string>,
+) {
+  return webhooks.filter((webhook) => !webhook.providerId || selectedProviderIds.has(webhook.providerId));
 }
 
 function resolveScaffoldCompositionTargets(profile: AiSdrInitProfile, selectedModules: AiSdrModuleDefinition[]) {

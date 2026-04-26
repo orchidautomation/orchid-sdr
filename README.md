@@ -110,6 +110,16 @@ If you want a new working reference app scaffold from this repo:
 npm run ai-sdr -- init
 ```
 
+That now gives you the bare minimum `core` runtime by default.
+
+Then add providers and sources incrementally:
+
+```bash
+npm run ai-sdr -- add source apify --apply
+npm run ai-sdr -- add deep-research parallel --apply
+npm run ai-sdr -- add enrichment prospeo --apply
+```
+
 The generated project includes:
 
 - `TRELLIS_SETUP.md` with the exact first-boot checklist for that selected profile
@@ -117,7 +127,7 @@ The generated project includes:
 - a workspace-backed `package.json` so the generated app installs and runs as its own local Trellis workspace
 - optional module prompts for discovery, deep research, enrichment, CRM, outbound email, and handoff when you use the wizard path
 
-Current profile intent:
+Current shortcut bundles:
 
 - `core` - minimum honest runtime: manual signals, dashboard, MCP, and the full base control plane
 - `starter` - `core` plus discovery, deep research, and enrichment

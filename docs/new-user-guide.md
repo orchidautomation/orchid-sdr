@@ -68,6 +68,12 @@ The profile split is there to answer:
 
 That is all.
 
+If you do not like the preset framing, ignore it operationally:
+
+- `init` scaffolds `core`
+- then you add what you need
+- `starter` and `production` remain shortcut bundles, not the required mental model
+
 ### `core`
 
 `core` is the smallest honest Trellis runtime.
@@ -138,17 +144,24 @@ This is the heaviest profile and has the most external accounts.
 If you are brand new, the simplest framing is:
 
 - if you want to **prove the platform works**, start with `core`
-- if you want to **feel the SDR value quickly**, start with `starter`
+- if you want to **feel the SDR value quickly**, start with `core` and then add discovery/research/enrichment
 - if you want **full parity with the current app**, use `production`
 
 My recommendation for a first-time technical evaluator is:
 
-1. scaffold `starter`
+1. scaffold `core`
 2. keep `NO_SENDS_MODE=true`
 3. get the dashboard healthy
-4. run probe / discovery
-5. inspect the pipeline and MCP surface
-6. only after that, add CRM and email
+4. add discovery, deep research, and enrichment
+5. run probe / discovery
+6. inspect the pipeline and MCP surface
+7. only after that, add CRM and email
+
+If you are using Codex or another skill-aware coding agent, the repo now also includes setup skills for:
+
+- `skills/setup-and-verify`
+- `skills/convex-setup`
+- `skills/vercel-setup`
 
 ## What You Need To Bring
 
@@ -405,16 +418,22 @@ Keep this safe on first boot:
 
 If I were onboarding a new technical evaluator to Trellis, I would tell them to do this:
 
-1. scaffold `starter`
-2. connect Convex, Vercel, Firecrawl, Rivet, Apify, Parallel, and Prospeo
+1. scaffold `core`
+2. connect Convex, Vercel, Firecrawl, and Rivet
 3. keep `NO_SENDS_MODE=true`
 4. run `npm run doctor`
 5. open the dashboard
-6. run a sandbox probe
-7. run a discovery tick
-8. inspect leads in the pipeline
-9. use the MCP tools to inspect the system
-10. only then add Attio and AgentMail
+6. verify the dashboard and MCP surface are healthy
+7. add discovery, deep research, and enrichment with:
+   - `npm run ai-sdr -- add source apify --apply`
+   - `npm run ai-sdr -- add deep-research parallel --apply`
+   - `npm run ai-sdr -- add enrichment prospeo --apply`
+8. fill the newly added env vars
+9. run another `npm run doctor`
+10. run a sandbox probe
+11. run a discovery tick
+12. inspect leads in the pipeline
+13. only then add Attio and AgentMail
 
 That path gets you to the real value quickly without taking on the highest-risk integrations first.
 
@@ -424,7 +443,15 @@ There are three main extension surfaces.
 
 ### 1. Add Optional Providers
 
-You can extend the stack by editing:
+You can extend the stack by CLI first:
+
+```bash
+npm run ai-sdr -- add source apify --apply
+npm run ai-sdr -- add deep-research parallel --apply
+npm run ai-sdr -- add enrichment prospeo --apply
+```
+
+Under the hood this updates:
 
 - `ai-sdr.config.ts`
 - `.env`
@@ -508,7 +535,11 @@ It **is**:
 
 If you are brand new:
 
-- start with `starter`
+- start with `core`
+- then add:
+  - `source apify`
+  - `deep-research parallel`
+  - `enrichment prospeo`
 - bring:
   - Convex
   - Vercel

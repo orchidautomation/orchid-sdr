@@ -11,7 +11,7 @@ Take a new Trellis project from scaffolded files to a verified local boot with t
 1. Read `TRELLIS_SETUP.md` first.
 2. Read `.env.example` and identify the required env values.
 3. Confirm the selected profile in `ai-sdr.config.ts`.
-4. Use `README.md` to understand whether this scaffold is `demo`, `core`, `starter`, or `production`.
+4. Use `README.md` to understand whether this scaffold is `core`, `starter`, or `production`.
 5. Fill only the minimum required env values first.
 6. Run:
    - `npm install`
@@ -24,6 +24,11 @@ Take a new Trellis project from scaffolded files to a verified local boot with t
    - `GET /dashboard`
    - dashboard flags resolve
 9. Keep `NO_SENDS_MODE=true` until the runtime is healthy.
+
+If setup work becomes provider-specific, switch to:
+
+- `skills/convex-setup`
+- `skills/vercel-setup`
 
 ## What To Check First
 
