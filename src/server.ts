@@ -24,11 +24,15 @@ import { getAutomationPauseReason } from "./orchestration/workflow-control.js";
 
 const DASHBOARD_CACHE_STALE_AFTER_MS = 8_000;
 const DASHBOARD_CACHE_MAX_AGE_MS = 5 * 60_000;
+const DASHBOARD_RUNTIME_CACHE_STALE_AFTER_MS = 15_000;
 const DASHBOARD_RUNTIME_TIMEOUT_MS = 1_200;
 
-let cachedDashboardState: Awaited<ReturnType<typeof buildDashboardState>> | null = null;
-let cachedDashboardStateAt = 0;
-let dashboardStateRefreshPromise: Promise<Awaited<ReturnType<typeof buildDashboardState>>> | null = null;
+let cachedDashboardCoreState: Awaited<ReturnType<typeof buildDashboardCoreState>> | null = null;
+let cachedDashboardCoreStateAt = 0;
+let dashboardCoreStateRefreshPromise: Promise<Awaited<ReturnType<typeof buildDashboardCoreState>>> | null = null;
+let cachedDashboardRuntimeState: Awaited<ReturnType<typeof buildDashboardRuntimeState>> | null = null;
+let cachedDashboardRuntimeStateAt = 0;
+let dashboardRuntimeStateRefreshPromise: Promise<Awaited<ReturnType<typeof buildDashboardRuntimeState>>> | null = null;
 
 export function createApp() {
   const app = new Hono();
@@ -102,6 +106,26 @@ export function createApp() {
     }
 
     return c.json(await getDashboardState(context, {
+      forceFresh: c.req.query("fresh") === "1",
+    }));
+  });
+
+  app.get("/api/dashboard/core-state", async (c) => {
+    if (!isDashboardAuthenticated(c.req.raw, dashboardCookieName, getDashboardPassword(context))) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+
+    return c.json(await getDashboardCoreState(context, {
+      forceFresh: c.req.query("fresh") === "1",
+    }));
+  });
+
+  app.get("/api/dashboard/runtime-state", async (c) => {
+    if (!isDashboardAuthenticated(c.req.raw, dashboardCookieName, getDashboardPassword(context))) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+
+    return c.json(await getDashboardRuntimeState(context, {
       forceFresh: c.req.query("fresh") === "1",
     }));
   });
@@ -496,10 +520,8 @@ function isDashboardAuthenticated(request: Request, cookieName: string, password
   return cookieValue === hashDashboardPassword(password);
 }
 
-async function buildDashboardState(context: ReturnType<typeof getAppContext>) {
+async function buildDashboardCoreState(context: ReturnType<typeof getAppContext>) {
   const campaign = await context.repository.ensureDefaultCampaign();
-  const client = getActorClient();
-  const sandboxActor = client.sandboxBroker.getOrCreate();
 
   const [
     summary,
@@ -509,12 +531,7 @@ async function buildDashboardState(context: ReturnType<typeof getAppContext>) {
     activeThreads,
     providerRuns,
     auditEvents,
-    sandboxJobs,
-    sourceIngest,
-    campaignOps,
-    sandboxBroker,
-    linkedinDiscovery,
-    xDiscovery,
+    controls,
   ] = await Promise.all([
     context.repository.getDashboardSummary(),
     context.repository.listRecentSignals(12),
@@ -523,6 +540,36 @@ async function buildDashboardState(context: ReturnType<typeof getAppContext>) {
     context.repository.listActiveThreads(12),
     context.repository.listRecentProviderRuns(12),
     context.repository.listRecentAuditEvents(16),
+    context.repository.getControlFlags(),
+  ]);
+
+  return {
+    campaignId: campaign.id,
+    generatedAt: new Date().toISOString(),
+    summary,
+    controls,
+    providerRuns,
+    qualifiedLeads,
+    activeThreads,
+    recentProspects,
+    recentSignals,
+    auditEvents,
+  };
+}
+
+async function buildDashboardRuntimeState(context: ReturnType<typeof getAppContext>) {
+  const campaign = await context.repository.ensureDefaultCampaign();
+  const client = getActorClient();
+  const sandboxActor = client.sandboxBroker.getOrCreate();
+
+  const [
+    sandboxJobs,
+    sourceIngest,
+    campaignOps,
+    sandboxBroker,
+    linkedinDiscovery,
+    xDiscovery,
+  ] = await Promise.all([
     withFallback(sandboxActor.listJobs({ limit: 12 }), [], DASHBOARD_RUNTIME_TIMEOUT_MS),
     withFallback(client.sourceIngest.getOrCreate().getSnapshot(), null, DASHBOARD_RUNTIME_TIMEOUT_MS),
     withFallback(client.campaignOps.getOrCreate().getSnapshot(), null, DASHBOARD_RUNTIME_TIMEOUT_MS),
@@ -546,7 +593,6 @@ async function buildDashboardState(context: ReturnType<typeof getAppContext>) {
   return {
     campaignId: campaign.id,
     generatedAt: new Date().toISOString(),
-    summary,
     actors: {
       sourceIngest,
       campaignOps,
@@ -560,12 +606,6 @@ async function buildDashboardState(context: ReturnType<typeof getAppContext>) {
       ...job,
       durationMs: calculateDurationMs(job.startedAt, job.completedAt),
     })),
-    providerRuns,
-    qualifiedLeads,
-    activeThreads,
-    recentProspects,
-    recentSignals,
-    auditEvents,
   };
 }
 
@@ -575,16 +615,39 @@ async function getDashboardState(
     forceFresh?: boolean;
   },
 ) {
+  const [coreState, runtimeState] = await Promise.all([
+    getDashboardCoreState(context, options),
+    getDashboardRuntimeState(context, options),
+  ]);
+
+  return {
+    ...coreState,
+    ...runtimeState,
+    cache: {
+      core: coreState.cache,
+      runtime: runtimeState.cache,
+      servedFromCache: coreState.cache.servedFromCache && runtimeState.cache.servedFromCache,
+      refreshing: coreState.cache.refreshing || runtimeState.cache.refreshing,
+    },
+  };
+}
+
+async function getDashboardCoreState(
+  context: ReturnType<typeof getAppContext>,
+  options?: {
+    forceFresh?: boolean;
+  },
+) {
   const now = Date.now();
   const forceFresh = options?.forceFresh === true;
-  const cacheAgeMs = cachedDashboardState ? now - cachedDashboardStateAt : null;
-  const cacheIsUsable = cachedDashboardState !== null
+  const cacheAgeMs = cachedDashboardCoreState ? now - cachedDashboardCoreStateAt : null;
+  const cacheIsUsable = cachedDashboardCoreState !== null
     && cacheAgeMs !== null
     && cacheAgeMs <= DASHBOARD_CACHE_MAX_AGE_MS;
   const cacheIsFresh = cacheIsUsable && cacheAgeMs <= DASHBOARD_CACHE_STALE_AFTER_MS;
 
   if (forceFresh || !cacheIsUsable) {
-    const freshState = await refreshDashboardState(context);
+    const freshState = await refreshDashboardCoreState(context);
     return {
       ...freshState,
       cache: {
@@ -597,7 +660,7 @@ async function getDashboardState(
 
   if (cacheIsFresh) {
     return {
-      ...cachedDashboardState,
+      ...cachedDashboardCoreState,
       cache: {
         servedFromCache: true,
         ageMs: cacheAgeMs,
@@ -606,10 +669,10 @@ async function getDashboardState(
     };
   }
 
-  void refreshDashboardState(context).catch(() => {});
+  void refreshDashboardCoreState(context).catch(() => {});
 
   return {
-    ...cachedDashboardState,
+    ...cachedDashboardCoreState,
     cache: {
       servedFromCache: true,
       ageMs: cacheAgeMs,
@@ -618,22 +681,89 @@ async function getDashboardState(
   };
 }
 
-function refreshDashboardState(context: ReturnType<typeof getAppContext>) {
-  if (dashboardStateRefreshPromise) {
-    return dashboardStateRefreshPromise;
+async function getDashboardRuntimeState(
+  context: ReturnType<typeof getAppContext>,
+  options?: {
+    forceFresh?: boolean;
+  },
+) {
+  const now = Date.now();
+  const forceFresh = options?.forceFresh === true;
+  const cacheAgeMs = cachedDashboardRuntimeState ? now - cachedDashboardRuntimeStateAt : null;
+  const cacheIsUsable = cachedDashboardRuntimeState !== null
+    && cacheAgeMs !== null
+    && cacheAgeMs <= DASHBOARD_CACHE_MAX_AGE_MS;
+  const cacheIsFresh = cacheIsUsable && cacheAgeMs <= DASHBOARD_RUNTIME_CACHE_STALE_AFTER_MS;
+
+  if (forceFresh || !cacheIsUsable) {
+    const freshState = await refreshDashboardRuntimeState(context);
+    return {
+      ...freshState,
+      cache: {
+        servedFromCache: false,
+        ageMs: 0,
+        refreshing: false,
+      },
+    };
   }
 
-  dashboardStateRefreshPromise = buildDashboardState(context)
+  if (cacheIsFresh) {
+    return {
+      ...cachedDashboardRuntimeState,
+      cache: {
+        servedFromCache: true,
+        ageMs: cacheAgeMs,
+        refreshing: false,
+      },
+    };
+  }
+
+  void refreshDashboardRuntimeState(context).catch(() => {});
+
+  return {
+    ...cachedDashboardRuntimeState,
+    cache: {
+      servedFromCache: true,
+      ageMs: cacheAgeMs,
+      refreshing: true,
+    },
+  };
+}
+
+function refreshDashboardCoreState(context: ReturnType<typeof getAppContext>) {
+  if (dashboardCoreStateRefreshPromise) {
+    return dashboardCoreStateRefreshPromise;
+  }
+
+  dashboardCoreStateRefreshPromise = buildDashboardCoreState(context)
     .then((state) => {
-      cachedDashboardState = state;
-      cachedDashboardStateAt = Date.now();
+      cachedDashboardCoreState = state;
+      cachedDashboardCoreStateAt = Date.now();
       return state;
     })
     .finally(() => {
-      dashboardStateRefreshPromise = null;
+      dashboardCoreStateRefreshPromise = null;
     });
 
-  return dashboardStateRefreshPromise;
+  return dashboardCoreStateRefreshPromise;
+}
+
+function refreshDashboardRuntimeState(context: ReturnType<typeof getAppContext>) {
+  if (dashboardRuntimeStateRefreshPromise) {
+    return dashboardRuntimeStateRefreshPromise;
+  }
+
+  dashboardRuntimeStateRefreshPromise = buildDashboardRuntimeState(context)
+    .then((state) => {
+      cachedDashboardRuntimeState = state;
+      cachedDashboardRuntimeStateAt = Date.now();
+      return state;
+    })
+    .finally(() => {
+      dashboardRuntimeStateRefreshPromise = null;
+    });
+
+  return dashboardRuntimeStateRefreshPromise;
 }
 
 async function withFallback<T>(input: T | PromiseLike<T>, fallback: Awaited<T>, timeoutMs: number) {

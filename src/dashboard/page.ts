@@ -1118,9 +1118,11 @@ export function renderDashboardPage() {
       const byId = (id) => document.getElementById(id);
       const tabs = Array.from(document.querySelectorAll("[data-tab]"));
       const panels = Array.from(document.querySelectorAll("[data-panel]"));
-      const DASHBOARD_STATE_CACHE_KEY = "orchid-dashboard-state-v1";
+      const DASHBOARD_CORE_STATE_CACHE_KEY = "orchid-dashboard-core-state-v1";
+      const DASHBOARD_RUNTIME_STATE_CACHE_KEY = "orchid-dashboard-runtime-state-v1";
       let latestState = null;
-      let refreshPromise = null;
+      let coreRefreshPromise = null;
+      let runtimeRefreshPromise = null;
       const tabMeta = {
         overview: {
           title: "Overview",
@@ -1154,9 +1156,9 @@ export function renderDashboardPage() {
         } catch {}
       }
 
-      function readStoredState() {
+      function readStoredState(key) {
         try {
-          const raw = sessionStorage.getItem(DASHBOARD_STATE_CACHE_KEY);
+          const raw = sessionStorage.getItem(key);
           if (!raw) return null;
           const parsed = JSON.parse(raw);
           if (!parsed || typeof parsed !== "object" || !parsed.state || typeof parsed.state !== "object") {
@@ -1168,9 +1170,9 @@ export function renderDashboardPage() {
         }
       }
 
-      function writeStoredState(state) {
+      function writeStoredState(key, state) {
         try {
-          sessionStorage.setItem(DASHBOARD_STATE_CACHE_KEY, JSON.stringify({
+          sessionStorage.setItem(key, JSON.stringify({
             storedAt: Date.now(),
             state,
           }));
@@ -1191,6 +1193,9 @@ export function renderDashboardPage() {
         const meta = tabMeta[next] || tabMeta.overview;
         byId("panel-title").textContent = meta.title;
         byId("panel-description").textContent = meta.description;
+        if (next === "runtime") {
+          void refreshRuntime().catch(() => {});
+        }
       }
 
       setActiveTab(readStoredTab() || "overview");
@@ -1405,32 +1410,43 @@ export function renderDashboardPage() {
         return \`<a class="inline-link" href="\${escapeHtml(url)}" target="_blank" rel="noreferrer">Open profile</a>\`;
       }
 
+      function mergeLatestState(state) {
+        latestState = {
+          ...(latestState || {}),
+          ...state,
+        };
+        return latestState;
+      }
+
       function isCampaignPaused(state) {
         const campaignId = state?.campaignId || "cmp_default";
-        const pausedCampaignIds = Array.isArray(state?.actors?.campaignOps?.flags?.pausedCampaignIds)
-          ? state.actors.campaignOps.flags.pausedCampaignIds
+        const pausedCampaignIds = Array.isArray(state?.controls?.pausedCampaignIds)
+          ? state.controls.pausedCampaignIds
+          : Array.isArray(state?.actors?.campaignOps?.flags?.pausedCampaignIds)
+            ? state.actors.campaignOps.flags.pausedCampaignIds
           : [];
         return pausedCampaignIds.includes(campaignId);
       }
 
       function updateTopline(state) {
         const summary = state.summary;
+        const controls = state.controls || {};
         const campaignPaused = isCampaignPaused(state);
-        const killSwitchOn = Boolean(state?.actors?.campaignOps?.flags?.globalKillSwitch ?? summary.globalKillSwitch);
+        const killSwitchOn = Boolean(controls.globalKillSwitch ?? summary.globalKillSwitch);
         const automationPaused = campaignPaused || killSwitchOn;
         const pauseButton = byId("toggle-pause");
 
         byId("service-status").textContent = "Dashboard online";
-        byId("sends-status").textContent = summary.noSendsMode ? "No sends mode ON" : "Sending enabled";
-        byId("kill-status").textContent = summary.globalKillSwitch ? "Kill switch ON" : "Kill switch OFF";
+        byId("sends-status").textContent = (controls.noSendsMode ?? summary.noSendsMode) ? "No sends mode ON" : "Sending enabled";
+        byId("kill-status").textContent = killSwitchOn ? "Kill switch ON" : "Kill switch OFF";
         byId("pause-status").textContent = killSwitchOn
           ? "Blocked by kill switch"
           : campaignPaused
             ? "AI pause ON"
             : "AI active";
         byId("service-dot").className = "status-dot success";
-        byId("sends-dot").className = \`status-dot \${summary.noSendsMode ? "warn" : "success"}\`.trim();
-        byId("kill-dot").className = \`status-dot \${summary.globalKillSwitch ? "danger" : "success"}\`.trim();
+        byId("sends-dot").className = \`status-dot \${(controls.noSendsMode ?? summary.noSendsMode) ? "warn" : "success"}\`.trim();
+        byId("kill-dot").className = \`status-dot \${killSwitchOn ? "danger" : "success"}\`.trim();
         byId("pause-dot").className = \`status-dot \${killSwitchOn ? "danger" : campaignPaused ? "warn" : "success"}\`.trim();
 
         pauseButton.textContent = campaignPaused ? "Resume Automation" : "Pause Automation";
@@ -1456,24 +1472,13 @@ export function renderDashboardPage() {
         ].join(" · ");
       }
 
-      function renderState(state, options) {
-        latestState = state;
+      function renderCoreState(state, options) {
+        const mergedState = mergeLatestState(state);
         renderStats(state.summary);
-        renderActors(state.actors, state.discovery);
         renderFeed(state.auditEvents);
         renderQualificationOverview(state.recentProspects);
-        updateTopline(state);
+        updateTopline(mergedState);
         setGeneratedAtLabel(state, options);
-
-        renderRows("sandbox-jobs", state.sandboxJobs, (job) => \`
-          <tr>
-            <td><code>\${escapeHtml(job.id)}</code></td>
-            <td>\${escapeHtml(job.stage)}</td>
-            <td>\${badge(job.status)}</td>
-            <td>\${escapeHtml(currencyDuration(job.durationMs))}</td>
-            <td>\${escapeHtml(truncateText(job.error || job.outputText || "—", 160))}</td>
-          </tr>
-        \`, 5);
 
         renderRows("active-threads", state.activeThreads, (thread) => \`
           <tr>
@@ -1591,6 +1596,38 @@ export function renderDashboardPage() {
         \`, 4);
       }
 
+      function renderRuntimeLoadingState() {
+        if (!latestState?.actors) {
+          byId("actors").innerHTML = '<p class="empty">Runtime loading...</p>';
+        }
+        if (!latestState?.sandboxJobs) {
+          byId("sandbox-jobs").innerHTML = '<tr><td class="empty" colspan="5">Runtime loading...</td></tr>';
+        }
+      }
+
+      function renderRuntimeUnavailable(message) {
+        if (!latestState?.actors) {
+          byId("actors").innerHTML = \`<p class="empty">\${escapeHtml(message || "Runtime unavailable.")}</p>\`;
+        }
+        if (!latestState?.sandboxJobs) {
+          byId("sandbox-jobs").innerHTML = \`<tr><td class="empty" colspan="5">\${escapeHtml(message || "Runtime unavailable.")}</td></tr>\`;
+        }
+      }
+
+      function renderRuntimeState(state) {
+        mergeLatestState(state);
+        renderActors(state.actors, state.discovery);
+        renderRows("sandbox-jobs", state.sandboxJobs, (job) => \`
+          <tr>
+            <td><code>\${escapeHtml(job.id)}</code></td>
+            <td>\${escapeHtml(job.stage)}</td>
+            <td>\${badge(job.status)}</td>
+            <td>\${escapeHtml(currencyDuration(job.durationMs))}</td>
+            <td>\${escapeHtml(truncateText(job.error || job.outputText || "—", 160))}</td>
+          </tr>
+        \`, 5);
+      }
+
       function showToast(message) {
         const toast = byId("toast");
         toast.textContent = message;
@@ -1618,18 +1655,18 @@ export function renderDashboardPage() {
         return await response.json();
       }
 
-      async function refresh(options) {
+      async function refreshCore(options) {
         const force = Boolean(options?.force);
-        if (refreshPromise && !force) {
-          return await refreshPromise;
+        if (coreRefreshPromise && !force) {
+          return await coreRefreshPromise;
         }
 
-        if (refreshPromise && force) {
-          await refreshPromise.catch(() => {});
+        if (coreRefreshPromise && force) {
+          await coreRefreshPromise.catch(() => {});
         }
 
-        const requestPath = force ? "/api/dashboard/state?fresh=1" : "/api/dashboard/state";
-        refreshPromise = (async () => {
+        const requestPath = force ? "/api/dashboard/core-state?fresh=1" : "/api/dashboard/core-state";
+        coreRefreshPromise = (async () => {
           const response = await fetch(requestPath);
           if (response.status === 401) {
             window.location.href = "/dashboard";
@@ -1641,15 +1678,50 @@ export function renderDashboardPage() {
           }
 
           const state = await response.json();
-          writeStoredState(state);
-          renderState(state);
+          writeStoredState(DASHBOARD_CORE_STATE_CACHE_KEY, state);
+          renderCoreState(state);
           return state;
         })();
 
         try {
-          return await refreshPromise;
+          return await coreRefreshPromise;
         } finally {
-          refreshPromise = null;
+          coreRefreshPromise = null;
+        }
+      }
+
+      async function refreshRuntime(options) {
+        const force = Boolean(options?.force);
+        if (runtimeRefreshPromise && !force) {
+          return await runtimeRefreshPromise;
+        }
+
+        if (runtimeRefreshPromise && force) {
+          await runtimeRefreshPromise.catch(() => {});
+        }
+
+        const requestPath = force ? "/api/dashboard/runtime-state?fresh=1" : "/api/dashboard/runtime-state";
+        runtimeRefreshPromise = (async () => {
+          const response = await fetch(requestPath);
+          if (response.status === 401) {
+            window.location.href = "/dashboard";
+            return null;
+          }
+
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          const state = await response.json();
+          writeStoredState(DASHBOARD_RUNTIME_STATE_CACHE_KEY, state);
+          renderRuntimeState(state);
+          return state;
+        })();
+
+        try {
+          return await runtimeRefreshPromise;
+        } finally {
+          runtimeRefreshPromise = null;
         }
       }
 
@@ -1666,7 +1738,8 @@ export function renderDashboardPage() {
               ? "Automation paused · in-flight work will finish"
               : "Automation resumed",
           );
-          await refresh({ force: true });
+          await refreshCore({ force: true });
+          void refreshRuntime({ force: true }).catch(() => {});
         } catch (error) {
           showToast(\`Pause update failed: \${error.message || error}\`);
         } finally {
@@ -1678,7 +1751,8 @@ export function renderDashboardPage() {
         try {
           const result = await postJson("/api/dashboard/discovery-tick", {});
           showToast(\`Discovery queued for \${result.source}\`);
-          await refresh({ force: true });
+          await refreshCore({ force: true });
+          void refreshRuntime({ force: true }).catch(() => {});
         } catch (error) {
           showToast(\`Discovery trigger failed: \${error.message || error}\`);
         }
@@ -1688,22 +1762,32 @@ export function renderDashboardPage() {
         try {
           const result = await postJson("/api/dashboard/sandbox-probe", {});
           showToast(\`Firecrawl probe queued: \${result.jobId}\`);
-          await refresh({ force: true });
+          await refreshCore({ force: true });
+          void refreshRuntime({ force: true }).catch(() => {});
         } catch (error) {
           showToast(\`Probe failed: \${error.message || error}\`);
         }
       });
 
-      const storedState = readStoredState();
-      if (storedState) {
-        renderState(storedState, {
+      const storedCoreState = readStoredState(DASHBOARD_CORE_STATE_CACHE_KEY);
+      if (storedCoreState) {
+        renderCoreState(storedCoreState, {
           cached: true,
           refreshing: true,
         });
       }
 
-      refresh().catch((error) => showToast(\`Initial load failed: \${error.message || error}\`));
-      setInterval(() => refresh().catch(() => {}), 10000);
+      const storedRuntimeState = readStoredState(DASHBOARD_RUNTIME_STATE_CACHE_KEY);
+      if (storedRuntimeState) {
+        renderRuntimeState(storedRuntimeState);
+      } else {
+        renderRuntimeLoadingState();
+      }
+
+      refreshCore().catch((error) => showToast(\`Initial load failed: \${error.message || error}\`));
+      refreshRuntime().catch(() => renderRuntimeUnavailable("Runtime unavailable."));
+      setInterval(() => refreshCore().catch(() => {}), 10000);
+      setInterval(() => refreshRuntime().catch(() => {}), 20000);
     </script>
   </body>
 </html>`;
