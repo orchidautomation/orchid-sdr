@@ -234,6 +234,7 @@ Separate deploys are safer when the underlying product or knowledge pack is diff
 
 ## Read Next
 
+- [New User Guide](docs/new-user-guide.md)
 - [Reference](docs/reference.md)
 - [Getting Started](docs/getting-started.md)
 - [Framework Primitives](docs/framework-primitives.md)
