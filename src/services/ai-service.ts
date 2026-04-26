@@ -1,10 +1,12 @@
-import { gateway, createGatewayProvider } from "@ai-sdk/gateway";
+import { createGatewayProvider } from "@ai-sdk/gateway";
 import { generateObject } from "ai";
 import { z } from "zod";
 
 import { getConfig } from "../config.js";
 import type { QualificationAssessment } from "../domain/types.js";
 import { replyClasses } from "../domain/types.js";
+import { getFrameworkRuntimeConfig } from "./framework-stack.js";
+import { resolveStructuredModel } from "./model-routing.js";
 import {
   type QualificationInput,
   heuristicIcpQualification,
@@ -40,6 +42,7 @@ const qualificationSchema = z.object({
 
 export class AiStructuredService {
   private readonly config = getConfig();
+  private readonly frameworkConfig = getFrameworkRuntimeConfig().config;
   private readonly provider = createGatewayProvider({
     apiKey: this.config.gatewayApiKey,
   });
@@ -57,7 +60,7 @@ export class AiStructuredService {
 
     try {
       const result = await generateObject({
-        model: this.provider("moonshotai/kimi-k2.6"),
+        model: this.provider(resolveStructuredModel(this.frameworkConfig, "classifyReply")),
         schema: z.object({
           classification: replyClassEnum,
           rationale: z.string(),
@@ -86,7 +89,7 @@ export class AiStructuredService {
     try {
       const result = await promiseWithTimeout(
         generateObject({
-          model: gateway("moonshotai/kimi-k2.6"),
+          model: this.provider(resolveStructuredModel(this.frameworkConfig, "policyCheck")),
           schema: z.object({
             allow: z.boolean(),
             reasons: z.array(z.string()),
@@ -118,7 +121,7 @@ export class AiStructuredService {
 
     try {
       const result = await generateObject({
-        model: this.provider("moonshotai/kimi-k2.6"),
+        model: this.provider(resolveStructuredModel(this.frameworkConfig, "qualifyProspect")),
         schema: qualificationSchema,
         prompt: [
           "You are qualifying a prospect against the current ICP document.",

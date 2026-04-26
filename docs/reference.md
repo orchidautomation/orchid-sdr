@@ -31,6 +31,8 @@ For the full sandbox lane:
 - provider keys such as `APIFY_TOKEN`, `FIRECRAWL_API_KEY`, `AGENTMAIL_API_KEY`, `ATTIO_API_KEY`
 - discovery config such as `APIFY_LINKEDIN_TASK_ID` or `APIFY_LINKEDIN_ACTOR_ID`
 - optional LinkedIn profile/company research config such as `APIFY_LINKEDIN_PROFILE_TASK_ID` or `APIFY_LINKEDIN_PROFILE_ACTOR_ID`
+- a separate "profile posts scraper" lane is a valid future Apify extension, but it is not part of the current AI SDR happy path and is not wired as a first-class runtime step yet
+- `modelRouting` in `ai-sdr.config.ts` can scope different gateway models by sandbox stage and by structured service operation
 - `DISCOVERY_WEEKDAYS_ONLY=true` if you want discovery to skip weekends (enabled by default)
 - `SIGNAL_WEBHOOK_SECRET` if you want to post normalized signals from arbitrary sources
 

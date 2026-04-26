@@ -116,7 +116,7 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
   }
 
   async scrapeLinkedinProfile(profileUrl: string): Promise<ApifyLinkedinProfileResearch | null> {
-    const item = await this.runLinkedinResearchQuery(profileUrl);
+    const [item] = await this.runLinkedinResearchQueries([profileUrl]);
     if (!item) {
       return null;
     }
@@ -125,12 +125,48 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
   }
 
   async scrapeLinkedinCompany(companyUrl: string): Promise<ApifyLinkedinCompanyResearch | null> {
-    const item = await this.runLinkedinResearchQuery(companyUrl);
+    const [item] = await this.runLinkedinResearchQueries([companyUrl]);
     if (!item) {
       return null;
     }
 
     return this.normalizeLinkedinCompanyResearch(item);
+  }
+
+  async scrapeLinkedinTargets(input: {
+    profileUrl?: string | null;
+    companyUrl?: string | null;
+  }): Promise<{
+    profile: ApifyLinkedinProfileResearch | null;
+    company: ApifyLinkedinCompanyResearch | null;
+  }> {
+    const profileUrl = canonicalizeLinkedinUrl(input.profileUrl ?? null);
+    const companyUrl = canonicalizeLinkedinUrl(input.companyUrl ?? null);
+    const queries = unique([profileUrl, companyUrl].filter((value): value is string => Boolean(value)));
+
+    if (queries.length === 0) {
+      return {
+        profile: null,
+        company: null,
+      };
+    }
+
+    const items = await this.runLinkedinResearchQueries(queries);
+    const itemByUrl = new Map<string, Record<string, unknown>>();
+    for (const item of items) {
+      const linkedinUrl = canonicalizeLinkedinUrl(pickString(item, ["linkedinUrl"]));
+      if (linkedinUrl) {
+        itemByUrl.set(linkedinUrl, item);
+      }
+    }
+
+    const profileItem = profileUrl ? itemByUrl.get(profileUrl) ?? null : null;
+    const companyItem = companyUrl ? itemByUrl.get(companyUrl) ?? null : null;
+
+    return {
+      profile: profileItem ? this.normalizeLinkedinProfileResearch(profileItem) : null,
+      company: companyItem ? this.normalizeLinkedinCompanyResearch(companyItem) : null,
+    };
   }
 
   async startDiscoveryRun(input: DiscoveryRunInput<DiscoverySource>) {
@@ -370,12 +406,13 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
     };
   }
 
-  private buildLinkedinResearchInput(query: string) {
+  private buildLinkedinResearchInput(queries: string[]) {
     const template = this.config.APIFY_LINKEDIN_PROFILE_INPUT_TEMPLATE;
 
     if (template) {
       const rendered = interpolateTemplate(template, {
-        query,
+        query: queries[0] ?? "",
+        queries: JSON.stringify(queries),
       });
 
       try {
@@ -389,31 +426,30 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
 
     return {
       profileScraperMode: "Profile details no email ($4 per 1k)",
-      queries: [query],
+      queries,
     };
   }
 
-  private async runLinkedinResearchQuery(query: string) {
+  private async runLinkedinResearchQueries(queries: string[]) {
     if (!this.config.APIFY_TOKEN) {
-      return null;
+      return [];
     }
 
     const target = this.resolveLinkedinResearchTarget();
     if (!target) {
-      return null;
+      return [];
     }
 
-    const handle = await this.startActorRun(target.path, this.buildLinkedinResearchInput(query), {
+    const handle = await this.startActorRun(target.path, this.buildLinkedinResearchInput(queries), {
       errorContext: "Apify LinkedIn research run failed",
     });
     const run = await this.waitForRun(handle.actorRunId, handle.defaultDatasetId ?? null);
     const datasetId = run.defaultDatasetId ?? handle.defaultDatasetId;
     if (!datasetId) {
-      return null;
+      return [];
     }
 
-    const [item] = await this.fetchDatasetItemsById(datasetId, 1);
-    return item ?? null;
+    return this.fetchDatasetItemsById(datasetId, queries.length);
   }
 
   private async fetchDatasetItemsById(datasetId: string, limit = 1) {
@@ -1420,6 +1456,10 @@ function pickStringArray(value: unknown) {
         .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
         .map((entry) => entry.trim())
     : [];
+}
+
+function unique(values: string[]) {
+  return Array.from(new Set(values));
 }
 
 function inferCompanyFromHeadline(value: string | null) {

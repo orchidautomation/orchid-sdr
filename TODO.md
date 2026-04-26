@@ -312,6 +312,7 @@ Example target behavior:
 - [ ] run a full discovery -> qualification -> research -> database/state append loop on a fresh signal source and verify all artifacts
 - [ ] test generic `/webhooks/signals` with at least one non-Apify source payload
 - [ ] validate Apify failure and retry paths
+- [ ] add a separate Apify "profile posts scraper" lane as an optional post-discovery research step without making it part of the default AI SDR flow
 - [ ] re-score or refresh older prospects after major qualification logic changes
 - [ ] test real reply classifications beyond the positive path:
   - objection

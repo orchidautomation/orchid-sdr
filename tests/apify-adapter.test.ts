@@ -71,4 +71,23 @@ describe("ApifySourceAdapter", () => {
     expect(signal.metadata.currentCompanyUniversalName).toBe("the-kiln-agency");
     expect(signal.metadata.featuredSummary).toContain("3391 followers");
   });
+
+  it("builds one LinkedIn research payload for multiple queries", () => {
+    const adapter = new ApifySourceAdapter() as unknown as {
+      buildLinkedinResearchInput: (queries: string[]) => Record<string, unknown>;
+    };
+
+    expect(
+      adapter.buildLinkedinResearchInput([
+        "https://www.linkedin.com/company/the-kiln-agency/",
+        "https://www.linkedin.com/in/bmguerrero/",
+      ]),
+    ).toEqual({
+      profileScraperMode: "Profile details no email ($4 per 1k)",
+      queries: [
+        "https://www.linkedin.com/company/the-kiln-agency/",
+        "https://www.linkedin.com/in/bmguerrero/",
+      ],
+    });
+  });
 });

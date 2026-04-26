@@ -123,6 +123,27 @@ It still leaves out:
 
 Use `starter` when you want to see actual AI SDR value without immediately taking on outbound/CRM complexity.
 
+### Model Routing
+
+The reference app can route different LLMs to different jobs from `ai-sdr.config.ts`.
+
+- `modelRouting.defaultModel` sets the global fallback
+- `modelRouting.sandbox.defaultModel` sets the default model for sandbox-run agent turns
+- `modelRouting.sandbox.stages` can override models for:
+  - `discovery`
+  - `qualify`
+  - `build_research_brief`
+  - `first_outbound`
+  - `await_reply`
+  - `classify_reply`
+  - `respond_or_handoff`
+- `modelRouting.structured` can override:
+  - `classifyReply`
+  - `policyCheck`
+  - `qualifyProspect`
+
+That lets you keep one cheaper model for drafting or monitoring and a stronger model for qualification or research if you want to.
+
 This is the best profile for most first-time technical users.
 
 ### `production`
@@ -266,6 +287,7 @@ Recommended:
   - `APIFY_WEBHOOK_SECRET`
   - optional richer LinkedIn profile/company research:
     - `APIFY_LINKEDIN_PROFILE_TASK_ID` or `APIFY_LINKEDIN_PROFILE_ACTOR_ID`
+  - note: scraping recent posts from a specific LinkedIn profile is an optional future lane, not part of the current AI SDR happy path
 
 - `Parallel`
   - deep research

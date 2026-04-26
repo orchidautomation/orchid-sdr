@@ -221,6 +221,10 @@ The default input shape Trellis uses is:
 }
 ```
 
+If both a person URL and a company URL are available, Trellis will send them in the same `queries` array so one Apify run can return both records.
+
+This is the current post-discovery Apify lane used by AI SDR. A separate "scrape recent posts for one LinkedIn profile" actor is a reasonable future extension, but it is not wired into the default AI SDR flow today.
+
 For generic warm leads or custom sources, post normalized signals to:
 
 ```text

@@ -9,6 +9,7 @@ import { loadTextFiles, pathExists } from "../lib/filesystem.js";
 import { claudeSkillsRoot, knowledgeRoot, skillsRoot } from "../lib/project-paths.js";
 import { collectTextFragments } from "../lib/text.js";
 import type { AppContext } from "../services/runtime-context.js";
+import { resolveDefaultModel, resolveSandboxStageModel } from "../services/model-routing.js";
 
 const SANDBOX_HOME = "/home/vercel-sandbox";
 const SANDBOX_WORKSPACE = `${SANDBOX_HOME}/orchid-sdr`;
@@ -19,8 +20,6 @@ const PARALLEL_TASK_MCP_NAME = "parallel-task";
 const SANDBOX_AGENT_VERSION = "0.5.0-rc.2";
 const SANDBOX_AGENT_BINARY_PATH = `${SANDBOX_HOME}/.local/bin/sandbox-agent`;
 const DEFAULT_SANDBOX_AGENTS = ["claude", "codex"];
-const CLAUDE_GATEWAY_MODEL = "moonshotai/kimi-k2.6";
-
 interface RunSandboxTurnOptions {
   timeoutMs?: number;
 }
@@ -46,7 +45,7 @@ export async function runSandboxTurn(
         id: request.turnId,
         agent: "claude",
         cwd: SANDBOX_WORKSPACE,
-        model: CLAUDE_GATEWAY_MODEL,
+        model: resolveSandboxStageModel(context.framework.config, request.stage),
         mode: "bypassPermissions",
       });
 
@@ -367,6 +366,7 @@ console.log(\`installed sandbox-agent from \${url}\`);
 
 function createVercelSandboxProvider(context: AppContext) {
   const agentPort = 3000;
+  const defaultModel = resolveDefaultModel(context.framework.config);
 
   return {
     name: "vercel",
@@ -381,11 +381,11 @@ function createVercelSandboxProvider(context: AppContext) {
           ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
           ANTHROPIC_AUTH_TOKEN: context.config.gatewayApiKey ?? "",
           ANTHROPIC_API_KEY: "",
-          ANTHROPIC_MODEL: CLAUDE_GATEWAY_MODEL,
-          ANTHROPIC_DEFAULT_SONNET_MODEL: CLAUDE_GATEWAY_MODEL,
-          ANTHROPIC_DEFAULT_OPUS_MODEL: CLAUDE_GATEWAY_MODEL,
-          ANTHROPIC_DEFAULT_HAIKU_MODEL: CLAUDE_GATEWAY_MODEL,
-          CLAUDE_CODE_SUBAGENT_MODEL: CLAUDE_GATEWAY_MODEL,
+          ANTHROPIC_MODEL: defaultModel,
+          ANTHROPIC_DEFAULT_SONNET_MODEL: defaultModel,
+          ANTHROPIC_DEFAULT_OPUS_MODEL: defaultModel,
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: defaultModel,
+          CLAUDE_CODE_SUBAGENT_MODEL: defaultModel,
           FIRECRAWL_API_KEY: context.config.FIRECRAWL_API_KEY ?? "",
           ORCHID_SDR_MCP_URL: `${context.config.APP_URL}/mcp/orchid-sdr`,
           ORCHID_SDR_SANDBOX_TOKEN: context.config.ORCHID_SDR_SANDBOX_TOKEN,

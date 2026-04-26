@@ -151,10 +151,9 @@ export function extractCompanyLinkedinUrl(metadata: Record<string, unknown> | nu
   const author = coerceRecord(meta.author);
 
   return canonicalizeLinkedinUrl(
-    pickString(meta, ["companyLinkedinUrl", "linkedinUrl", "currentCompanyLinkedinUrl"])
-      ?? pickString(author, ["companyLinkedinUrl", "linkedinUrl"])
-      ?? collectCurrentPositionCompanyLinkedinUrl(meta)
-      ?? collectContentAttributeCompanyUrl(meta),
+    pickString(meta, ["companyLinkedinUrl", "currentCompanyLinkedinUrl"])
+      ?? pickString(author, ["companyLinkedinUrl"])
+      ?? collectCurrentPositionCompanyLinkedinUrl(meta),
   );
 }
 

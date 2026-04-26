@@ -537,17 +537,40 @@ async function buildResearchBrief(
     ),
   ]);
   const profileUrl = extractLinkedinProfileUrl(sourceSignal?.metadata, snapshot.prospect.linkedinUrl);
-  const companyLinkedinUrl =
+  const explicitCompanyLinkedinUrl =
     extractCompanyLinkedinUrl(sourceSignal?.metadata)
     ?? (sourceSignal?.url?.includes("linkedin.com/company/") ? sourceSignal.url : null);
-  const [linkedinProfileResearch, linkedinCompanyResearch] = await Promise.all([
-    profileUrl && deps.context.apify.hasLinkedinResearchTarget()
-      ? deps.context.apify.scrapeLinkedinProfile(profileUrl).catch(() => null)
-      : Promise.resolve(null),
-    companyLinkedinUrl && deps.context.apify.hasLinkedinResearchTarget()
-      ? deps.context.apify.scrapeLinkedinCompany(companyLinkedinUrl).catch(() => null)
-      : Promise.resolve(null),
-  ]);
+  let linkedinProfileResearch = null;
+  let linkedinCompanyResearch = null;
+
+  if (deps.context.apify.hasLinkedinResearchTarget()) {
+    if (profileUrl && explicitCompanyLinkedinUrl) {
+      const batched = await deps.context.apify.scrapeLinkedinTargets({
+        profileUrl,
+        companyUrl: explicitCompanyLinkedinUrl,
+      }).catch(() => ({ profile: null, company: null }));
+      linkedinProfileResearch = batched.profile;
+      linkedinCompanyResearch = batched.company;
+    } else if (profileUrl) {
+      const batched = await deps.context.apify.scrapeLinkedinTargets({
+        profileUrl,
+      }).catch(() => ({ profile: null, company: null }));
+      linkedinProfileResearch = batched.profile;
+    } else if (explicitCompanyLinkedinUrl) {
+      const batched = await deps.context.apify.scrapeLinkedinTargets({
+        companyUrl: explicitCompanyLinkedinUrl,
+      }).catch(() => ({ profile: null, company: null }));
+      linkedinCompanyResearch = batched.company;
+    }
+
+    const employerCompanyLinkedinUrl =
+      linkedinProfileResearch?.currentCompanyLinkedinUrl
+      ?? explicitCompanyLinkedinUrl;
+
+    if (!linkedinCompanyResearch && employerCompanyLinkedinUrl) {
+      linkedinCompanyResearch = await deps.context.apify.scrapeLinkedinCompany(employerCompanyLinkedinUrl).catch(() => null);
+    }
+  }
 
   const turn = await deps.runSandboxTurn(
     buildTurnRequest(snapshot, "build_research_brief", [

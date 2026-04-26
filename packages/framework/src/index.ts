@@ -177,6 +177,29 @@ export const aiSdrMcpServerDefinitionSchema = z.object({
   tools: z.array(aiSdrMcpToolCapabilitySchema).optional(),
 });
 
+export const aiSdrSandboxStageModelRoutingSchema = z.object({
+  discovery: z.string().min(1).optional(),
+  qualify: z.string().min(1).optional(),
+  build_research_brief: z.string().min(1).optional(),
+  first_outbound: z.string().min(1).optional(),
+  await_reply: z.string().min(1).optional(),
+  classify_reply: z.string().min(1).optional(),
+  respond_or_handoff: z.string().min(1).optional(),
+}).partial();
+
+export const aiSdrModelRoutingSchema = z.object({
+  defaultModel: z.string().min(1).optional(),
+  sandbox: z.object({
+    defaultModel: z.string().min(1).optional(),
+    stages: aiSdrSandboxStageModelRoutingSchema.optional(),
+  }).optional(),
+  structured: z.object({
+    classifyReply: z.string().min(1).optional(),
+    policyCheck: z.string().min(1).optional(),
+    qualifyProspect: z.string().min(1).optional(),
+  }).optional(),
+});
+
 export const aiSdrModuleDefinitionSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
@@ -197,6 +220,7 @@ export const aiSdrConfigSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   knowledge: aiSdrKnowledgeDefinitionSchema,
+  modelRouting: aiSdrModelRoutingSchema.optional(),
   compositionTargets: z.array(z.string().min(1)).optional(),
   modules: z.array(aiSdrModuleDefinitionSchema).optional(),
   skills: z.array(aiSdrSkillDefinitionSchema).optional(),
@@ -227,6 +251,8 @@ export type AiSdrContractId = z.infer<typeof aiSdrContractIdSchema>;
 export type AiSdrMcpAuthMode = z.infer<typeof aiSdrMcpAuthModeSchema>;
 export type AiSdrMcpToolCapability = z.infer<typeof aiSdrMcpToolCapabilitySchema>;
 export type AiSdrMcpServerDefinition = z.infer<typeof aiSdrMcpServerDefinitionSchema>;
+export type AiSdrSandboxStageModelRouting = z.infer<typeof aiSdrSandboxStageModelRoutingSchema>;
+export type AiSdrModelRouting = z.infer<typeof aiSdrModelRoutingSchema>;
 export type AiSdrModuleDefinition = z.infer<typeof aiSdrModuleDefinitionSchema>;
 export type AiSdrConfig = z.infer<typeof aiSdrConfigSchema>;
 

@@ -6,6 +6,26 @@ export default defineAiSdr({
   name: "orchid-sdr",
   description: "Reference implementation for a self-hostable, composable AI SDR control plane.",
   compositionTargets: ["minimum", "productionParity"],
+  modelRouting: {
+    defaultModel: "moonshotai/kimi-k2.6",
+    sandbox: {
+      defaultModel: "moonshotai/kimi-k2.6",
+      stages: {
+        discovery: "moonshotai/kimi-k2.6",
+        qualify: "moonshotai/kimi-k2.6",
+        build_research_brief: "moonshotai/kimi-k2.6",
+        first_outbound: "moonshotai/kimi-k2.6",
+        await_reply: "moonshotai/kimi-k2.6",
+        classify_reply: "moonshotai/kimi-k2.6",
+        respond_or_handoff: "moonshotai/kimi-k2.6",
+      },
+    },
+    structured: {
+      classifyReply: "moonshotai/kimi-k2.6",
+      policyCheck: "moonshotai/kimi-k2.6",
+      qualifyProspect: "moonshotai/kimi-k2.6",
+    },
+  },
   knowledge: {
     product: "knowledge/product.md",
     icp: "knowledge/icp.md",

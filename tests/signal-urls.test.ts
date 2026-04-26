@@ -55,6 +55,28 @@ describe("signal url helpers", () => {
     );
   });
 
+  it("does not mistake post or author profile urls for the employer company linkedin url", () => {
+    const metadata = {
+      linkedinUrl: "https://www.linkedin.com/posts/bmguerrero_example",
+      author: {
+        linkedinUrl: "https://www.linkedin.com/in/bmguerrero/",
+      },
+      contentAttributes: [
+        {
+          type: "COMPANY_NAME",
+          company: {
+            linkedinUrl: "https://www.linkedin.com/company/twenty/",
+          },
+        },
+      ],
+    };
+
+    expect(extractCompanyLinkedinUrl(metadata)).toBeNull();
+    expect(extractCompanyResearchUrl({ metadata, companyDomain: null })).toBe(
+      "https://www.linkedin.com/company/twenty/",
+    );
+  });
+
   it("prefers explicit company websites from harvest company metadata", () => {
     const url = extractCompanyResearchUrl({
       metadata: {
