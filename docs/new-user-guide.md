@@ -264,6 +264,8 @@ Recommended:
   - `APIFY_TOKEN`
   - `APIFY_LINKEDIN_TASK_ID` or `APIFY_LINKEDIN_ACTOR_ID`
   - `APIFY_WEBHOOK_SECRET`
+  - optional richer LinkedIn profile/company research:
+    - `APIFY_LINKEDIN_PROFILE_TASK_ID` or `APIFY_LINKEDIN_PROFILE_ACTOR_ID`
 
 - `Parallel`
   - deep research

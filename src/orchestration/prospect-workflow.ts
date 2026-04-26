@@ -1,6 +1,6 @@
 import type { MessageInsertInput, ProspectSnapshot } from "../repository.js";
 import { extractJsonObject } from "../lib/json.js";
-import { extractCompanyResearchUrl, extractLinkedinProfileUrl } from "../lib/signal-urls.js";
+import { extractCompanyLinkedinUrl, extractCompanyResearchUrl, extractLinkedinProfileUrl } from "../lib/signal-urls.js";
 import type { QualificationAssessment, ReplyClass, ResearchBrief, SandboxTurnRequest } from "../domain/types.js";
 import {
   buildQualificationInput,
@@ -536,6 +536,18 @@ async function buildResearchBrief(
       4,
     ),
   ]);
+  const profileUrl = extractLinkedinProfileUrl(sourceSignal?.metadata, snapshot.prospect.linkedinUrl);
+  const companyLinkedinUrl =
+    extractCompanyLinkedinUrl(sourceSignal?.metadata)
+    ?? (sourceSignal?.url?.includes("linkedin.com/company/") ? sourceSignal.url : null);
+  const [linkedinProfileResearch, linkedinCompanyResearch] = await Promise.all([
+    profileUrl && deps.context.apify.hasLinkedinResearchTarget()
+      ? deps.context.apify.scrapeLinkedinProfile(profileUrl).catch(() => null)
+      : Promise.resolve(null),
+    companyLinkedinUrl && deps.context.apify.hasLinkedinResearchTarget()
+      ? deps.context.apify.scrapeLinkedinCompany(companyLinkedinUrl).catch(() => null)
+      : Promise.resolve(null),
+  ]);
 
   const turn = await deps.runSandboxTurn(
     buildTurnRequest(snapshot, "build_research_brief", [
@@ -574,6 +586,12 @@ async function buildResearchBrief(
       "",
       "Source page extract:",
       sourceExtract?.markdown?.slice(0, 6000) || "No extract available.",
+      "",
+      "LinkedIn profile research:",
+      JSON.stringify(linkedinProfileResearch, null, 2),
+      "",
+      "LinkedIn company research:",
+      JSON.stringify(linkedinCompanyResearch, null, 2),
       "",
       "Knowledge context:",
       knowledgeContext || "No knowledge matches.",
@@ -614,6 +632,17 @@ async function buildResearchBrief(
 
   return {
     summary:
+      [
+        linkedinProfileResearch?.headline
+          ? `${linkedinProfileResearch.fullName ?? "Prospect"}: ${linkedinProfileResearch.headline}`
+          : null,
+        linkedinCompanyResearch?.description
+          ? `${linkedinCompanyResearch.name ?? "Company"}: ${linkedinCompanyResearch.description}`
+          : null,
+      ]
+        .filter((value): value is string => Boolean(value))
+        .join("\n")
+      || 
       searchResults
         .slice(0, 3)
         .map((result) => `${result.title}: ${result.excerpt}`)
@@ -649,6 +678,44 @@ async function buildResearchBrief(
         ? 0.68
         : 0.4,
     evidence: [
+      ...(linkedinProfileResearch
+        ? [
+            {
+              title: linkedinProfileResearch.fullName ?? "LinkedIn profile",
+              url: linkedinProfileResearch.linkedinUrl,
+              note: [
+                linkedinProfileResearch.headline,
+                linkedinProfileResearch.currentCompanyName
+                  ? `Current company: ${linkedinProfileResearch.currentCompanyName}`
+                  : null,
+                linkedinProfileResearch.experienceSummary[0] ?? null,
+              ]
+                .filter((value): value is string => Boolean(value))
+                .join(" | ")
+                .slice(0, 240),
+            },
+          ]
+        : []),
+      ...(linkedinCompanyResearch
+        ? [
+            {
+              title: linkedinCompanyResearch.name ?? "LinkedIn company",
+              url: linkedinCompanyResearch.linkedinUrl,
+              note: [
+                linkedinCompanyResearch.tagline,
+                linkedinCompanyResearch.employeeRange
+                  ? `Employees: ${linkedinCompanyResearch.employeeRange}`
+                  : null,
+                linkedinCompanyResearch.specialities[0]
+                  ? `Specialties: ${linkedinCompanyResearch.specialities.slice(0, 3).join(", ")}`
+                  : null,
+              ]
+                .filter((value): value is string => Boolean(value))
+                .join(" | ")
+                .slice(0, 240),
+            },
+          ]
+        : []),
       ...(sourceSignal
         ? [
             {

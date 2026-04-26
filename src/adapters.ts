@@ -27,6 +27,39 @@ interface FirecrawlSearchResult {
   source: "web" | "news";
 }
 
+export interface ApifyLinkedinProfileResearch {
+  type: "person";
+  linkedinUrl: string;
+  fullName: string | null;
+  headline: string | null;
+  about: string | null;
+  location: string | null;
+  connectionsCount: number | null;
+  followerCount: number | null;
+  skills: string[];
+  experienceSummary: string[];
+  currentCompanyName: string | null;
+  currentCompanyLinkedinUrl: string | null;
+  currentCompanyUniversalName: string | null;
+  raw: Record<string, unknown>;
+}
+
+export interface ApifyLinkedinCompanyResearch {
+  type: "company";
+  linkedinUrl: string;
+  name: string | null;
+  tagline: string | null;
+  website: string | null;
+  employeeCount: number | null;
+  employeeRange: string | null;
+  followerCount: number | null;
+  specialities: string[];
+  industries: string[];
+  description: string | null;
+  similarOrganizations: string[];
+  raw: Record<string, unknown>;
+}
+
 interface AttioRecordReference {
   recordId: string;
   webUrl: string | null;
@@ -46,6 +79,10 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
 
   hasDiscoveryTarget(source: DiscoverySource) {
     return Boolean(this.resolveDiscoveryTarget(source));
+  }
+
+  hasLinkedinResearchTarget() {
+    return Boolean(this.resolveLinkedinResearchTarget());
   }
 
   async fetchDatasetItems(datasetId: string, source: DiscoverySource = "linkedin_public_post") {
@@ -76,6 +113,24 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
     }
 
     return (await response.json()) as Record<string, unknown>[];
+  }
+
+  async scrapeLinkedinProfile(profileUrl: string): Promise<ApifyLinkedinProfileResearch | null> {
+    const item = await this.runLinkedinResearchQuery(profileUrl);
+    if (!item) {
+      return null;
+    }
+
+    return this.normalizeLinkedinProfileResearch(item);
+  }
+
+  async scrapeLinkedinCompany(companyUrl: string): Promise<ApifyLinkedinCompanyResearch | null> {
+    const item = await this.runLinkedinResearchQuery(companyUrl);
+    if (!item) {
+      return null;
+    }
+
+    return this.normalizeLinkedinCompanyResearch(item);
   }
 
   async startDiscoveryRun(input: DiscoveryRunInput<DiscoverySource>) {
@@ -115,37 +170,10 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
       "utf8",
     ).toString("base64");
 
-    const url = new URL(`${this.config.APIFY_BASE_URL}${target.path}`);
-    url.searchParams.set("webhooks", webhooks);
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.config.APIFY_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(this.buildDiscoveryInput(input)),
+    return this.startActorRun(target.path, this.buildDiscoveryInput(input), {
+      webhooks,
+      errorContext: `Apify discovery run failed for ${input.source}`,
     });
-
-    if (!response.ok) {
-      throw new Error(`Apify discovery run failed with ${response.status}`);
-    }
-
-    const json = (await response.json()) as Record<string, unknown>;
-    const data = coerceRecord(json.data);
-    const actorRunId =
-      pickString(data, ["id", "actorRunId"]) ?? pickString(json, ["id", "actorRunId"]);
-    if (!actorRunId) {
-      throw new Error(`Apify did not return an actor run id for ${input.source}`);
-    }
-
-    return {
-      actorRunId,
-      defaultDatasetId:
-        pickString(data, ["defaultDatasetId", "defaultDataset_id"]) ??
-        pickString(json, ["defaultDatasetId", "defaultDataset_id"]),
-      raw: json,
-    };
   }
 
   async getRun(actorRunId: string): Promise<DiscoveryRunSnapshot> {
@@ -190,10 +218,13 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
       const queryRecord = coerceRecord(item.query);
       const headerRecord = coerceRecord(item.header);
       const socialContentRecord = coerceRecord(item.socialContent);
+      const linkedinHints = extractLinkedinMetadataHints(item);
 
       const authorInfo =
         pickString(authorRecord, ["info", "headline", "description"])
-        ?? pickString(headerRecord, ["text"]);
+        ?? pickString(headerRecord, ["text"])
+        ?? linkedinHints.headline
+        ?? null;
       const author = pickString(item, ["authorName", "name", "fullName"])
         ?? pickString(authorRecord, ["name", "fullName"])
         ?? "Unknown";
@@ -201,17 +232,23 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
         pickString(item, ["url", "postUrl", "linkedinUrl"])
         ?? pickString(socialContentRecord, ["shareUrl"])
         ?? `https://linkedin.com/feed/update/${index}`;
-      const content = pickString(item, ["text", "content", "postText", "description"]) ?? "";
+      const content =
+        pickString(item, ["text", "content", "postText", "description"])
+        ?? linkedinHints.about
+        ?? linkedinHints.experienceSummary
+        ?? "";
       const topic =
         pickString(queryRecord, ["search", "keyword"])
         ?? pickString(item, ["topic", "query", "keyword"])
-        ?? "linkedin-monitor";
+        ?? (pickString(item, ["publicIdentifier", "universalName"]) ? "linkedin-profile" : "linkedin-monitor");
       const company =
         pickString(item, ["company", "companyName"])
+        ?? linkedinHints.currentCompanyName
         ?? inferCompanyFromHeadline(authorInfo);
       const companyDomain = normalizeDomain(
         pickString(item, ["companyDomain", "website", "domain", "companyWebsite"])
-          ?? pickString(authorRecord, ["website"]),
+          ?? pickString(authorRecord, ["website"])
+          ?? linkedinHints.companyWebsite,
       );
 
       return {
@@ -223,7 +260,10 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
         companyDomain,
         topic,
         content,
-        metadata: item,
+        metadata: {
+          ...item,
+          ...linkedinHints,
+        },
       };
     });
   }
@@ -279,6 +319,17 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
     return null;
   }
 
+  private resolveLinkedinResearchTarget() {
+    if (this.config.APIFY_LINKEDIN_PROFILE_TASK_ID) {
+      return { path: `/actor-tasks/${encodeURIComponent(this.config.APIFY_LINKEDIN_PROFILE_TASK_ID)}/runs` };
+    }
+    if (this.config.APIFY_LINKEDIN_PROFILE_ACTOR_ID) {
+      return { path: `/acts/${encodeURIComponent(this.config.APIFY_LINKEDIN_PROFILE_ACTOR_ID)}/runs` };
+    }
+
+    return null;
+  }
+
   private buildDiscoveryInput(input: DiscoveryRunInput) {
     const template =
       input.source === "x_public_post"
@@ -318,6 +369,198 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
       max_results: limit,
     };
   }
+
+  private buildLinkedinResearchInput(query: string) {
+    const template = this.config.APIFY_LINKEDIN_PROFILE_INPUT_TEMPLATE;
+
+    if (template) {
+      const rendered = interpolateTemplate(template, {
+        query,
+      });
+
+      try {
+        return JSON.parse(rendered) as Record<string, unknown>;
+      } catch (error) {
+        throw new Error(
+          `Invalid Apify LinkedIn profile input template: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return {
+      profileScraperMode: "Profile details no email ($4 per 1k)",
+      queries: [query],
+    };
+  }
+
+  private async runLinkedinResearchQuery(query: string) {
+    if (!this.config.APIFY_TOKEN) {
+      return null;
+    }
+
+    const target = this.resolveLinkedinResearchTarget();
+    if (!target) {
+      return null;
+    }
+
+    const handle = await this.startActorRun(target.path, this.buildLinkedinResearchInput(query), {
+      errorContext: "Apify LinkedIn research run failed",
+    });
+    const run = await this.waitForRun(handle.actorRunId, handle.defaultDatasetId ?? null);
+    const datasetId = run.defaultDatasetId ?? handle.defaultDatasetId;
+    if (!datasetId) {
+      return null;
+    }
+
+    const [item] = await this.fetchDatasetItemsById(datasetId, 1);
+    return item ?? null;
+  }
+
+  private async fetchDatasetItemsById(datasetId: string, limit = 1) {
+    if (!this.config.APIFY_TOKEN) {
+      throw new Error("APIFY_TOKEN is not configured");
+    }
+
+    const url = new URL(`${this.config.APIFY_BASE_URL}/datasets/${datasetId}/items`);
+    url.searchParams.set("clean", "true");
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("format", "json");
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${this.config.APIFY_TOKEN}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Apify dataset fetch failed with ${response.status}`);
+    }
+
+    return (await response.json()) as Record<string, unknown>[];
+  }
+
+  private async startActorRun(
+    path: string,
+    input: Record<string, unknown>,
+    options: {
+      webhooks?: string;
+      errorContext: string;
+    },
+  ) {
+    const url = new URL(`${this.config.APIFY_BASE_URL}${path}`);
+    if (options.webhooks) {
+      url.searchParams.set("webhooks", options.webhooks);
+    }
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.config.APIFY_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    });
+
+    if (!response.ok) {
+      throw new Error(`${options.errorContext} with ${response.status}`);
+    }
+
+    const json = (await response.json()) as Record<string, unknown>;
+    const data = coerceRecord(json.data);
+    const actorRunId = pickString(data, ["id", "actorRunId"]) ?? pickString(json, ["id", "actorRunId"]);
+    if (!actorRunId) {
+      throw new Error(`${options.errorContext}: missing actor run id`);
+    }
+
+    return {
+      actorRunId,
+      defaultDatasetId:
+        pickString(data, ["defaultDatasetId", "defaultDataset_id"]) ??
+        pickString(json, ["defaultDatasetId", "defaultDataset_id"]),
+      raw: json,
+    };
+  }
+
+  private async waitForRun(actorRunId: string, defaultDatasetId: string | null) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const run = await this.getRun(actorRunId);
+      const status = run.status.toUpperCase();
+
+      if (status === "SUCCEEDED") {
+        return run;
+      }
+      if (status === "FAILED" || status === "ABORTED" || status === "TIMED-OUT" || status === "TIMED_OUT") {
+        throw new Error(`Apify run ${actorRunId} ended with status ${run.status}`);
+      }
+
+      await sleep(1_500);
+    }
+
+    return {
+      actorRunId,
+      status: "TIMEOUT",
+      defaultDatasetId,
+    };
+  }
+
+  private normalizeLinkedinProfileResearch(item: Record<string, unknown>): ApifyLinkedinProfileResearch {
+    const currentPositions = coerceRecordArray(item.currentPosition);
+    const experiences = coerceRecordArray(item.experience);
+    const current = currentPositions[0] ?? experiences.find((entry) => pickBoolean(entry.current)) ?? {};
+    const skills = extractSkillNames(item);
+
+    return {
+      type: "person",
+      linkedinUrl: canonicalizeLinkedinUrl(pickString(item, ["linkedinUrl"])) ?? "",
+      fullName:
+        pickString(item, ["fullName"])
+        ?? ([pickString(item, ["firstName"]), pickString(item, ["lastName"])].filter(Boolean).join(" ") || null),
+      headline: pickString(item, ["headline"]),
+      about: pickString(item, ["about"]),
+      location:
+        pickString(coerceRecord(item.location), ["linkedinText"])
+        ?? pickString(coerceRecord(coerceRecord(item.location).parsed), ["text", "countryFull", "country"]),
+      connectionsCount: pickNumber(item.connectionsCount),
+      followerCount: pickNumber(item.followerCount),
+      skills,
+      experienceSummary: summarizeLinkedinExperience(currentPositions.length > 0 ? currentPositions : experiences),
+      currentCompanyName: pickString(current, ["companyName"]),
+      currentCompanyLinkedinUrl: canonicalizeLinkedinUrl(
+        pickString(current, ["companyLinkedinUrl"]),
+      ),
+      currentCompanyUniversalName: pickString(current, ["companyUniversalName"]),
+      raw: item,
+    };
+  }
+
+  private normalizeLinkedinCompanyResearch(item: Record<string, unknown>): ApifyLinkedinCompanyResearch {
+    const employeeRange = coerceRecord(item.employeeCountRange);
+    const industries = coerceRecordArray(item.industries)
+      .map((entry) => pickString(entry, ["title", "name"]))
+      .filter((value): value is string => Boolean(value));
+    const similarOrganizations = coerceRecordArray(item.similarOrganizations)
+      .map((entry) => pickString(entry, ["name"]))
+      .filter((value): value is string => Boolean(value));
+
+    return {
+      type: "company",
+      linkedinUrl: canonicalizeLinkedinUrl(pickString(item, ["linkedinUrl"])) ?? "",
+      name: pickString(item, ["name"]),
+      tagline: pickString(item, ["tagline"]),
+      website: pickString(item, ["website"]),
+      employeeCount: pickNumber(item.employeeCount),
+      employeeRange:
+        pickNumber(employeeRange.start) !== null || pickNumber(employeeRange.end) !== null
+          ? `${pickNumber(employeeRange.start) ?? "?"}-${pickNumber(employeeRange.end) ?? "?"}`
+          : null,
+      followerCount: pickNumber(item.followerCount),
+      specialities: pickStringArray(item.specialities),
+      industries,
+      description: pickString(item, ["description"]),
+      similarOrganizations,
+      raw: item,
+    };
+  }
 }
 
 export class ProspeoEmailEnricher implements EmailEnrichmentProvider<ProspectContext> {
@@ -338,6 +581,8 @@ export class ProspeoEmailEnricher implements EmailEnrichmentProvider<ProspectCon
         only_verified_email: true,
         data: {
           full_name: prospect.fullName,
+          linkedin_url: prospect.linkedinUrl,
+          company_name: prospect.company,
           company_website: prospect.companyDomain,
         },
       }),
@@ -348,14 +593,19 @@ export class ProspeoEmailEnricher implements EmailEnrichmentProvider<ProspectCon
     }
 
     const json = (await response.json()) as Record<string, unknown>;
-    const email = pickString(json, ["email", "work_email"]);
-    if (!email) {
+    const person = coerceRecord(json.person);
+    const emailRecord = coerceRecord(person.email);
+    const email = pickString(emailRecord, ["email"]) ?? pickString(json, ["email", "work_email"]);
+    const emailStatus = pickString(emailRecord, ["status"]);
+    const isRevealed = pickBoolean(emailRecord.revealed);
+
+    if (!email || (emailStatus && emailStatus !== "VERIFIED") || isRevealed === false) {
       return null;
     }
 
     return {
       address: email,
-      confidence: 0.92,
+      confidence: emailStatus === "VERIFIED" ? 0.97 : 0.92,
       source: "prospeo",
     };
   }
@@ -1143,6 +1393,35 @@ function coerceRecord(value: unknown) {
   return {};
 }
 
+function coerceRecordArray(value: unknown) {
+  return Array.isArray(value) ? value.map((entry) => coerceRecord(entry)) : [];
+}
+
+function pickNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function pickBoolean(value: unknown) {
+  return typeof value === "boolean" ? value : null;
+}
+
+function pickStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value
+        .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+        .map((entry) => entry.trim())
+    : [];
+}
+
 function inferCompanyFromHeadline(value: string | null) {
   if (!value) {
     return null;
@@ -1194,4 +1473,59 @@ function splitFullName(fullName: string) {
 
 function interpolateTemplate(template: string, values: Record<string, string>) {
   return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key: string) => values[key] ?? "");
+}
+
+function summarizeLinkedinExperience(items: Array<Record<string, unknown>>) {
+  return items
+    .map((entry) => {
+      const position = pickString(entry, ["position", "title"]);
+      const companyName = pickString(entry, ["companyName", "company_name"]);
+      const duration = pickString(entry, ["duration"]);
+      const parts = [position, companyName ? `at ${companyName}` : null, duration ? `(${duration})` : null].filter(Boolean);
+      return parts.join(" ");
+    })
+    .filter((value): value is string => value.trim().length > 0)
+    .slice(0, 6);
+}
+
+function extractSkillNames(item: Record<string, unknown>) {
+  const topSkills = pickStringArray(item.topSkills);
+  if (topSkills.length > 0) {
+    return topSkills.slice(0, 8);
+  }
+
+  return coerceRecordArray(item.skills)
+    .map((entry) => pickString(entry, ["name"]))
+    .filter((value): value is string => Boolean(value))
+    .slice(0, 8);
+}
+
+function extractLinkedinMetadataHints(item: Record<string, unknown>) {
+  const currentPositions = coerceRecordArray(item.currentPosition);
+  const experiences = coerceRecordArray(item.experience);
+  const current = currentPositions[0] ?? experiences.find((entry) => pickBoolean(entry.current) === true) ?? {};
+  const websites = pickStringArray(item.websites);
+  const skills = extractSkillNames(item);
+  const experienceSummary = summarizeLinkedinExperience(currentPositions.length > 0 ? currentPositions : experiences);
+  const featuredBits = [
+    pickNumber(item.followerCount) !== null ? `${pickNumber(item.followerCount)} followers` : null,
+    pickNumber(item.connectionsCount) !== null ? `${pickNumber(item.connectionsCount)} connections` : null,
+    skills.length > 0 ? `Skills: ${skills.slice(0, 5).join(", ")}` : null,
+    websites[0] ? `Website: ${websites[0]}` : null,
+  ].filter((value): value is string => Boolean(value));
+
+  return {
+    headline: pickString(item, ["headline"]),
+    about: pickString(item, ["about"]),
+    experienceSummary: experienceSummary.length > 0 ? experienceSummary.join(" | ") : undefined,
+    featuredSummary: featuredBits.length > 0 ? featuredBits.join(" | ") : undefined,
+    companyLinkedinUrl: pickString(current, ["companyLinkedinUrl"]) ?? pickString(item, ["companyLinkedinUrl"]),
+    companyWebsite: pickString(item, ["website"]) ?? pickString(current, ["companyWebsite", "website"]),
+    currentCompanyName: pickString(current, ["companyName"]),
+    currentCompanyUniversalName: pickString(current, ["companyUniversalName"]),
+  };
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

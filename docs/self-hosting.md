@@ -204,6 +204,23 @@ Set:
 APIFY_WEBHOOK_SECRET=<long-random-secret>
 ```
 
+If you also want richer LinkedIn profile/company research during qualification and research-brief generation, point Trellis at a Harvest-style LinkedIn profile scraper task or actor:
+
+```bash
+APIFY_LINKEDIN_PROFILE_TASK_ID=<task-id>
+# or
+APIFY_LINKEDIN_PROFILE_ACTOR_ID=<actor-id>
+```
+
+The default input shape Trellis uses is:
+
+```json
+{
+  "profileScraperMode": "Profile details no email ($4 per 1k)",
+  "queries": ["https://www.linkedin.com/in/example/"]
+}
+```
+
 For generic warm leads or custom sources, post normalized signals to:
 
 ```text

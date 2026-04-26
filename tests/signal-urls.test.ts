@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { extractCompanyResearchUrl, extractLinkedinProfileUrl, extractTwitterProfileUrl } from "../src/lib/signal-urls.js";
+import {
+  extractCompanyLinkedinUrl,
+  extractCompanyResearchUrl,
+  extractLinkedinProfileUrl,
+  extractTwitterProfileUrl,
+} from "../src/lib/signal-urls.js";
 
 describe("signal url helpers", () => {
   it("prefers the author linkedin profile url over a post url", () => {
@@ -32,6 +37,34 @@ describe("signal url helpers", () => {
     });
 
     expect(url).toBe("https://www.linkedin.com/company/athennian/");
+  });
+
+  it("derives company linkedin and research urls from harvest profile metadata", () => {
+    const metadata = {
+      currentPosition: [
+        {
+          companyName: "The Kiln",
+          companyLinkedinUrl: "https://www.linkedin.com/company/the-kiln-agency/",
+        },
+      ],
+    };
+
+    expect(extractCompanyLinkedinUrl(metadata)).toBe("https://www.linkedin.com/company/the-kiln-agency");
+    expect(extractCompanyResearchUrl({ metadata, companyDomain: null })).toBe(
+      "https://www.linkedin.com/company/the-kiln-agency/",
+    );
+  });
+
+  it("prefers explicit company websites from harvest company metadata", () => {
+    const url = extractCompanyResearchUrl({
+      metadata: {
+        linkedinUrl: "https://www.linkedin.com/company/the-kiln-agency/",
+        website: "https://thekiln.com",
+      },
+      companyDomain: null,
+    });
+
+    expect(url).toBe("https://thekiln.com");
   });
 
   it("derives a canonical twitter/x profile url from a post url fallback", () => {

@@ -42,8 +42,16 @@ export function apifyLinkedInProvider(): AiSdrProviderDefinition {
       { name: "APIFY_WEBHOOK_SECRET", description: "Shared secret for Apify webhook delivery." },
       { name: "APIFY_LINKEDIN_TASK_ID", description: "Apify task ID for LinkedIn discovery." },
       { name: "APIFY_LINKEDIN_ACTOR_ID", description: "Apify actor ID for LinkedIn discovery." },
+      {
+        name: "APIFY_LINKEDIN_PROFILE_TASK_ID",
+        description: "Optional Apify task ID for Harvest-style LinkedIn profile/company research.",
+      },
+      {
+        name: "APIFY_LINKEDIN_PROFILE_ACTOR_ID",
+        description: "Optional Apify actor ID for Harvest-style LinkedIn profile/company research.",
+      },
     ],
-    capabilities: ["discovery.linkedinPublicPosts", "webhooks.apify"],
+    capabilities: ["discovery.linkedinPublicPosts", "webhooks.apify", "research.linkedinProfile", "research.linkedinCompany"],
   });
 }
 
@@ -105,6 +113,7 @@ export function prospeoProvider(): AiSdrProviderDefinition {
     packageName: "@ai-sdr/prospeo",
     env: [
       { name: "PROSPEO_API_KEY", description: "Prospeo API key used for email enrichment." },
+      { name: "PROSPEO_BASE_URL", description: "Optional Prospeo API base URL. Default is https://api.prospeo.io." },
     ],
     capabilities: [
       "research.enrich",

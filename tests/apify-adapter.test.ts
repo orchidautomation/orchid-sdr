@@ -33,4 +33,42 @@ describe("ApifySourceAdapter", () => {
     expect(signal.url).toContain("linkedin.com/posts/cephas-princely");
     expect(signal.content).toContain("GTM tools");
   });
+
+  it("derives useful company and profile hints from harvest-style linkedin profile payloads", () => {
+    const adapter = new ApifySourceAdapter();
+    const [signal] = adapter.normalizeLinkedInSignals([
+      {
+        id: "ACoAABwGd9kBoXaQLEatmOycieqTz5eGDzr6rq4",
+        publicIdentifier: "bmguerrero",
+        linkedinUrl: "https://www.linkedin.com/in/bmguerrero/",
+        firstName: "Brandon",
+        lastName: "Guerrero",
+        fullName: "Brandon Guerrero",
+        headline: "Sr. GTM Engineer | Clay Operator | Gumloop Expert",
+        websites: ["https://cal.com/orchid/discovery"],
+        followerCount: 3391,
+        currentPosition: [
+          {
+            position: "Sr. GTM Engineer",
+            companyName: "The Kiln",
+            companyLinkedinUrl: "https://www.linkedin.com/company/the-kiln-agency/",
+            companyUniversalName: "the-kiln-agency",
+          },
+        ],
+      },
+    ]);
+
+    expect(signal).toBeDefined();
+    if (!signal) {
+      throw new Error("signal was not normalized");
+    }
+    expect(signal.authorName).toBe("Brandon Guerrero");
+    expect(signal.authorTitle).toContain("Clay Operator");
+    expect(signal.authorCompany).toBe("The Kiln");
+    expect(signal.url).toBe("https://www.linkedin.com/in/bmguerrero/");
+    expect(signal.topic).toBe("linkedin-profile");
+    expect(signal.metadata.companyLinkedinUrl).toBe("https://www.linkedin.com/company/the-kiln-agency/");
+    expect(signal.metadata.currentCompanyUniversalName).toBe("the-kiln-agency");
+    expect(signal.metadata.featuredSummary).toContain("3391 followers");
+  });
 });

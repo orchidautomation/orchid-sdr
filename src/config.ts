@@ -63,9 +63,12 @@ const envSchema = z.object({
   APIFY_X_DATASET_LIMIT: z.coerce.number().default(25),
   APIFY_LINKEDIN_TASK_ID: z.string().optional(),
   APIFY_LINKEDIN_ACTOR_ID: z.string().optional(),
+  APIFY_LINKEDIN_PROFILE_TASK_ID: z.string().optional(),
+  APIFY_LINKEDIN_PROFILE_ACTOR_ID: z.string().optional(),
   APIFY_X_TASK_ID: z.string().optional(),
   APIFY_X_ACTOR_ID: z.string().optional(),
   APIFY_LINKEDIN_INPUT_TEMPLATE: z.string().optional(),
+  APIFY_LINKEDIN_PROFILE_INPUT_TEMPLATE: z.string().optional(),
   APIFY_X_INPUT_TEMPLATE: z.string().optional(),
   APIFY_WEBHOOK_SECRET: z.string().optional(),
   SIGNAL_WEBHOOK_SECRET: z.string().optional(),
@@ -89,7 +92,7 @@ const envSchema = z.object({
   ),
 
   PROSPEO_API_KEY: z.string().optional(),
-  PROSPEO_BASE_URL: z.string().default("https://app.prospeo.io/api"),
+  PROSPEO_BASE_URL: z.string().default("https://api.prospeo.io"),
 
   PARALLEL_API_KEY: z.string().optional(),
   PARALLEL_BASE_URL: z.string().default("https://api.parallel.ai"),

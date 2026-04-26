@@ -66,6 +66,34 @@ function collectContentAttributeCompanyUrl(metadata: Record<string, unknown>) {
   return null;
 }
 
+function collectCurrentPositionCompanyLinkedinUrl(metadata: Record<string, unknown>) {
+  const currentPositions = Array.isArray(metadata.currentPosition) ? metadata.currentPosition : [];
+
+  for (const entry of currentPositions) {
+    const record = coerceRecord(entry);
+    const normalized = normalizeAbsoluteUrl(pickString(record, ["companyLinkedinUrl", "companyUrl"]));
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
+function collectCurrentPositionCompanyWebsite(metadata: Record<string, unknown>) {
+  const currentPositions = Array.isArray(metadata.currentPosition) ? metadata.currentPosition : [];
+
+  for (const entry of currentPositions) {
+    const record = coerceRecord(entry);
+    const normalized = normalizeAbsoluteUrl(pickString(record, ["companyWebsite", "website"]));
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
 export function extractLinkedinProfileUrl(
   metadata: Record<string, unknown> | null | undefined,
   fallbackUrl?: string | null,
@@ -74,9 +102,9 @@ export function extractLinkedinProfileUrl(
   const author = coerceRecord(meta.author);
   const profileUrl =
     pickString(author, ["linkedinUrl", "url"])
-    ?? pickString(meta, ["authorLinkedinUrl", "authorUrl", "profileUrl"]);
+    ?? pickString(meta, ["linkedinUrl", "authorLinkedinUrl", "authorUrl", "profileUrl"]);
 
-  return normalizeAbsoluteUrl(profileUrl)
+  return canonicalizeLinkedinUrl(profileUrl)
     ?? normalizeLinkedinUrl(fallbackUrl)
     ?? null;
 }
@@ -108,10 +136,46 @@ export function extractCompanyResearchUrl(input: {
   const author = coerceRecord(metadata.author);
 
   return normalizeDomainToUrl(input.companyDomain)
+    ?? normalizeAbsoluteUrl(
+      pickString(metadata, ["companyWebsite", "website", "domain", "currentCompanyWebsite"]),
+    )
     ?? normalizeAbsoluteUrl(pickString(author, ["website"]))
-    ?? normalizeAbsoluteUrl(pickString(metadata, ["companyWebsite", "website", "domain"]))
+    ?? collectCurrentPositionCompanyWebsite(metadata)
+    ?? collectCurrentPositionCompanyLinkedinUrl(metadata)
     ?? collectContentAttributeCompanyUrl(metadata)
     ?? null;
+}
+
+export function extractCompanyLinkedinUrl(metadata: Record<string, unknown> | null | undefined) {
+  const meta = coerceRecord(metadata);
+  const author = coerceRecord(meta.author);
+
+  return canonicalizeLinkedinUrl(
+    pickString(meta, ["companyLinkedinUrl", "linkedinUrl", "currentCompanyLinkedinUrl"])
+      ?? pickString(author, ["companyLinkedinUrl", "linkedinUrl"])
+      ?? collectCurrentPositionCompanyLinkedinUrl(meta)
+      ?? collectContentAttributeCompanyUrl(meta),
+  );
+}
+
+function canonicalizeLinkedinUrl(value: string | null | undefined) {
+  const normalized = normalizeAbsoluteUrl(value);
+  if (!normalized) {
+    return null;
+  }
+
+  try {
+    const url = new URL(normalized);
+    const host = url.hostname.replace(/^www\./, "").toLowerCase();
+    if (host !== "linkedin.com") {
+      return normalized;
+    }
+
+    const pathname = url.pathname.replace(/\/+$/, "");
+    return `${url.protocol}//www.linkedin.com${pathname}`;
+  } catch {
+    return normalized;
+  }
 }
 
 function normalizeLinkedinUrl(value: string | null | undefined) {
