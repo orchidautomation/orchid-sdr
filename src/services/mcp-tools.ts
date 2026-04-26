@@ -884,7 +884,12 @@ export class OrchidMcpToolService {
 
   private async handleEmailEnrich(prospectId: string) {
     const snapshot = await this.context.repository.getProspectSnapshot(prospectId);
-    const enriched = await this.context.providers.enrichment.enrich(snapshot.prospect);
+    const enrichmentProvider = this.context.providers.enrichment;
+    if (!enrichmentProvider) {
+      return null;
+    }
+
+    const enriched = await enrichmentProvider.enrich(snapshot.prospect);
     if (enriched) {
       await this.context.repository.upsertContactEmail(prospectId, enriched);
     }

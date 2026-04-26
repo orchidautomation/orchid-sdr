@@ -2,7 +2,7 @@
 
 `orchid-sdr` is an agent-native outbound control plane.
 
-It wakes up on a schedule, finds leads from public signals, researches the person and company, qualifies them against `knowledge/icp.md`, writes everything to Postgres, and can optionally draft, send, and track outreach.
+It wakes up on a schedule, finds leads from public signals, researches the person and company, qualifies them against `knowledge/icp.md`, writes operational state to Convex, and can optionally draft, send, and track outreach.
 
 ## What It Does
 
@@ -10,7 +10,7 @@ It wakes up on a schedule, finds leads from public signals, researches the perso
 - ingests signals from Apify or any normalized webhook source
 - researches the source post, person, company, and company news
 - qualifies leads against the repo knowledge pack
-- writes the full audit trail to Postgres
+- writes the full audit trail to Convex
 - exposes the system through a dashboard and a remote MCP server
 - enforces quiet hours in the campaign's local IANA timezone
 - can auto-sync outbound accounts into Attio and promote CRM stages on replies
@@ -66,9 +66,9 @@ It wakes up on a schedule, finds leads from public signals, researches the perso
                                         | qualification + drafting
                                         v
                            +-----------------------------+
-                           | Postgres system of record   |
-                           | signals / prospects /       |
-                           | threads / briefs / messages |
+                           | Convex state plane         |
+                           | signals / prospects /      |
+                           | threads / briefs / messages|
                            +------+----------------------+
                                   |
                 +-----------------+------------------+
@@ -104,6 +104,14 @@ It wakes up on a schedule, finds leads from public signals, researches the perso
 
 ## Quick Start
 
+If you want a new working reference app scaffold from this repo:
+
+```bash
+npm run ai-sdr -- init ../trellis-starter --profile starter --name trellis-starter
+```
+
+For the current repo itself:
+
 1. Install dependencies.
 
 ```bash
@@ -114,15 +122,14 @@ npm install
 
 At minimum you usually want:
 
-- `DATABASE_URL`
+- `CONVEX_URL`
 - `HANDOFF_WEBHOOK_SECRET`
 - `ORCHID_SDR_SANDBOX_TOKEN`
 - `NO_SENDS_MODE=true`
 
-3. Run migrations and start the app.
+3. Start the app.
 
 ```bash
-npm run db:migrate
 npm run dev
 ```
 
@@ -132,7 +139,7 @@ npm run dev
 http://localhost:3000/dashboard
 ```
 
-If you want the full runtime, add provider keys such as Convex, Neon, Apify, Parallel, Firecrawl, Vercel AI Gateway, AgentMail, and Attio. When Attio is configured, the first outbound can auto-create or update the company and contact, and classified replies can automatically promote the Attio stage.
+If you want the full runtime, add provider keys such as Convex, Apify, Parallel, Firecrawl, Vercel AI Gateway, AgentMail, and Attio. Neon remains available only as an optional SQL compatibility module, not part of the default boot path. When Attio is configured, the first outbound can auto-create or update the company and contact, and classified replies can automatically promote the Attio stage.
 
 Campaign quiet hours are evaluated in the campaign's local timezone. New campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE` and you can update a live campaign later through the remote MCP tool `control.setCampaignTimezone`.
 

@@ -6,8 +6,13 @@ let pool: Pool | null = null;
 
 export function getDb() {
   if (!pool) {
+    const databaseUrl = getConfig().DATABASE_URL;
+    if (!databaseUrl) {
+      throw new Error("DATABASE_URL is required when the SQL repository is enabled.");
+    }
+
     pool = new Pool({
-      connectionString: getConfig().DATABASE_URL,
+      connectionString: databaseUrl,
     });
   }
 

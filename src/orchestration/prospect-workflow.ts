@@ -235,6 +235,15 @@ export async function executeProspectWorkflow(
   }
 
   if (!snapshot.email) {
+    const enrichmentProvider = deps.context.providers.enrichment;
+    if (!enrichmentProvider) {
+      await deps.context.repository.pauseThread(threadId, "email enrichment provider unavailable");
+      await deps.context.repository.appendAuditEvent("thread", threadId, "ThreadPaused", {
+        reason: "email enrichment provider unavailable",
+      });
+      return paused(snapshot, "email enrichment provider unavailable");
+    }
+
     const enriched = await deps.context.mcpTools.handleTool("email.enrich", {
       prospectId,
     });
@@ -248,7 +257,7 @@ export async function executeProspectWorkflow(
     }
 
     await deps.context.repository.appendAuditEvent("prospect", prospectId, "EmailEnriched", {
-      provider: deps.context.providers.enrichment.providerId,
+      provider: enrichmentProvider.providerId,
     });
     snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
   }

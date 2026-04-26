@@ -37,16 +37,18 @@ What is true right now:
   - Vercel
   - Rivet
   - Convex
-  - Neon/Postgres still required for the current repository layer
+- Convex now backs the full operational repository path for the default reference app
+- Neon/Postgres is now an optional compatibility module, not part of the default boot path
 - the operator dashboard, pause controls, Rivet integration, and framework config-driven provider selection are live
 
 What is **not** true yet:
 
 - this is **not yet** a real multi-package npm workspace
 - `@ai-sdr/*` packages are currently **package boundaries / target packages**, not fully extracted published packages
-- `npx ai-sdr init` does **not** exist yet
+- `npm run ai-sdr -- init` now exists as a **first-pass scaffold command**
+- a published `npx ai-sdr init` experience still does **not** exist yet
 - the reference app still depends on some implicit app glue rather than being fully generated from config
-- Convex is **not yet** the full operational source of truth for all entities
+- the state-plane contract still has some compatibility-era duplication semantics that should be simplified now that the repository is also Convex-backed
 
 ## How To Run It Today
 
@@ -76,7 +78,6 @@ npm run doctor
 
 ```bash
 npm run build
-npm run db:migrate
 npm run dev
 ```
 
@@ -95,7 +96,7 @@ npm run ai-sdr -- add enrichment prospeo
 Important:
 
 - this current `ai-sdr` CLI is a **prototype helper**, not the finished onboarding/install wizard
-- it prints install/composition information; it does **not** scaffold a new project yet
+- it can now scaffold a working reference app template, but it is still not the polished published onboarding experience
 
 ## What Has Been Done
 
@@ -111,6 +112,10 @@ Important:
   - `productionParity`
 - [x] validate config references and unsupported bindings
 - [x] expose a prototype `npm run ai-sdr` CLI
+- [x] add a first-pass `npm run ai-sdr -- init` scaffold flow with:
+  - `core`
+  - `starter`
+  - `production` profiles
 
 ### Taxonomy / Provider Mapping
 
@@ -177,8 +182,8 @@ Important:
 
 ## P0: Build The Real Onboarding Flow
 
-- [ ] build `npx ai-sdr init`
-- [ ] generate a new project from a template instead of expecting repo surgery
+- [ ] publish the scaffold flow as a real `npx ai-sdr init` experience
+- [x] generate a new project from a template instead of expecting repo surgery
 - [ ] support at least three profiles:
   - `demo`
   - `starter`
@@ -198,17 +203,19 @@ Important:
 
 ## P0: Finish The State Plane Migration
 
-- [ ] move prospects into Convex-backed state plane boundaries
-- [ ] move threads into Convex-backed state plane boundaries
-- [ ] move messages into Convex-backed state plane boundaries
-- [ ] move provider runs into Convex-backed state plane boundaries
-- [ ] move dashboard reads off the old repository path where appropriate
-- [ ] reduce or remove the current hard dependency on `DATABASE_URL` for the default future architecture
+- [x] move prospects into Convex-backed state plane boundaries
+- [x] move threads into Convex-backed state plane boundaries
+- [x] move messages into Convex-backed state plane boundaries
+- [x] move provider runs into Convex-backed state plane boundaries
+- [x] move dashboard reads off the old repository path where appropriate
+- [x] remove the current hard dependency on `DATABASE_URL` for the default runtime architecture
+- [ ] decide how much of the legacy SQL repository path should remain in-tree as an optional compatibility module
 
 Important current truth:
 
 - Convex is now part of the runtime architecture
-- Neon/Postgres is still operationally required by the current reference app
+- Convex is now the default operational source of truth for the reference app
+- Neon/Postgres remains available only for optional SQL compatibility work
 
 ## P0: Finish Provider Normalization
 

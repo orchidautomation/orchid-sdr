@@ -201,13 +201,17 @@ export async function ingestApifyRun(
   },
 ) {
   const source = input.source ?? "linkedin_public_post";
+  const discoveryProvider = deps.context.providers.discovery;
+  if (!discoveryProvider) {
+    throw new Error("discovery provider is not configured");
+  }
   const rawItems = input.datasetId
-    ? await deps.context.apify.fetchDatasetItems(input.datasetId, source)
+    ? await discoveryProvider.fetchDatasetItems(input.datasetId, source)
     : [];
-  const normalized = deps.context.apify.normalizeSignals(source, rawItems);
+  const normalized = discoveryProvider.normalizeSignals(source, rawItems);
 
   return ingestNormalizedSignals(deps, {
-    provider: "apify-linkedin",
+    provider: discoveryProvider.providerId,
     kind: `${source}-source`,
     source,
     externalId: input.actorRunId,

@@ -1,13 +1,45 @@
+import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import config from "../ai-sdr.config.js";
 import {
+  aiSdrCompositionProfileIds,
   buildModuleInstallPlan,
   defaultOrchidModules,
   evaluateModuleComposition,
   findModuleForAddCommand,
+  type AiSdrCompositionProfileId,
   type AiSdrModuleDefinition,
 } from "../src/framework/index.js";
+import {
+  buildScaffoldSpec,
+  renderScaffoldConfigModule,
+  renderScaffoldEnvExample,
+} from "../src/framework/scaffold.js";
 
-const [command, arg, providerArg] = process.argv.slice(2);
+const [command, ...commandArgs] = process.argv.slice(2);
+const arg = commandArgs[0];
+const providerArg = commandArgs[1] && !commandArgs[1].startsWith("--")
+  ? commandArgs[1]
+  : undefined;
+const cliFlags = parseFlags(commandArgs.slice(providerArg ? 2 : 1));
+const scriptRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const SCAFFOLD_COPY_ENTRIES = [
+  ".dockerignore",
+  ".gitignore",
+  "Dockerfile",
+  "docker-compose.example.yml",
+  "convex",
+  "docs",
+  "knowledge",
+  "scripts",
+  "skills",
+  "src",
+  "tests",
+  "tsconfig.json",
+  "vercel.json",
+];
 
 switch (command) {
   case undefined:
@@ -23,6 +55,9 @@ switch (command) {
   case "check":
     printCompositionCheck();
     break;
+  case "init":
+    await scaffoldProject(arg, cliFlags);
+    break;
   default:
     console.error(`Unknown command: ${command}`);
     printHelp();
@@ -36,6 +71,7 @@ function printHelp() {
   npm run ai-sdr -- check
   npm run ai-sdr -- add <module-id>
   npm run ai-sdr -- add <capability> <provider>
+  npm run ai-sdr -- init <target-dir> [--profile core|starter|production] [--name my-app]
 
 Examples:
 
@@ -48,16 +84,16 @@ Examples:
   npm run ai-sdr -- add enrichment prospeo
   npm run ai-sdr -- add state convex
   npm run ai-sdr -- add runtime rivet
-  npm run ai-sdr -- add database neon
   npm run ai-sdr -- add source apify
   npm run ai-sdr -- add model vercel-ai-gateway
   npm run ai-sdr -- add runtime vercel-sandbox
   npm run ai-sdr -- add handoff slack
+  npm run ai-sdr -- init ../trellis-starter --profile starter --name trellis-starter
 
 Simple labels stay short in the CLI: search, extract, deep-research, monitor, enrichment.
 The alias "research" resolves to the full research contract family.
 
-This is a local prototype for the future framework CLI. The add command prints an install plan; it does not mutate files yet.`);
+Init currently scaffolds a working reference app from this repo template with a filtered module/config surface.`);
 }
 
 function listModules() {
@@ -70,12 +106,20 @@ function listModules() {
 }
 
 function printCompositionCheck() {
-  for (const profile of ["minimum", "productionParity"] as const) {
+  for (const profile of resolveConfiguredCompositionProfiles()) {
     const evaluation = evaluateModuleComposition(config.modules ?? [], { profile });
     console.log(`${evaluation.ok ? "ok" : "error"}: ${evaluation.profile.displayName}`);
     printList("  Missing capabilities", evaluation.missingCapabilities);
     printList("  Missing contracts", evaluation.missingContracts);
   }
+}
+
+function resolveConfiguredCompositionProfiles() {
+  const supportedProfiles = new Set(aiSdrCompositionProfileIds);
+  const configured = (config.compositionTargets ?? []).filter((profile): profile is AiSdrCompositionProfileId =>
+    supportedProfiles.has(profile as AiSdrCompositionProfileId),
+  );
+  return configured.length > 0 ? configured : (["minimum", "productionParity"] as const);
 }
 
 function printAddPlan(moduleId: string | undefined) {
@@ -97,6 +141,81 @@ function printAddPlan(moduleId: string | undefined) {
   }
 
   printPlan(module);
+}
+
+async function scaffoldProject(targetArg: string | undefined, flags: Record<string, string | boolean>) {
+  if (!targetArg) {
+    console.error("Missing target directory. Example: npm run ai-sdr -- init ../trellis-starter --profile starter");
+    process.exitCode = 1;
+    return;
+  }
+
+  const targetDir = path.resolve(process.cwd(), targetArg);
+  const profile = String(flags.profile ?? "starter");
+  const appName = String(flags.name ?? path.basename(targetDir));
+  const packageName = sanitizePackageName(appName);
+  const spec = buildScaffoldSpec(config, {
+    name: packageName,
+    description: `${appName} generated from the Trellis reference app scaffold.`,
+    profile,
+  });
+
+  await ensureEmptyDirectory(targetDir);
+  await mkdir(targetDir, { recursive: true });
+
+  for (const entry of SCAFFOLD_COPY_ENTRIES) {
+    await cp(path.join(scriptRoot, entry), path.join(targetDir, entry), {
+      recursive: true,
+    });
+  }
+
+  const rootPackage = JSON.parse(await readFile(path.join(scriptRoot, "package.json"), "utf8")) as {
+    version: string;
+    license: string;
+    type: string;
+    engines: Record<string, string>;
+    scripts: Record<string, string>;
+    dependencies: Record<string, string>;
+    devDependencies: Record<string, string>;
+  };
+
+  await writeFile(
+    path.join(targetDir, "package.json"),
+    JSON.stringify(
+      {
+        name: packageName,
+        version: rootPackage.version,
+        private: true,
+        license: rootPackage.license,
+        type: rootPackage.type,
+        engines: rootPackage.engines,
+        scripts: rootPackage.scripts,
+        dependencies: rootPackage.dependencies,
+        devDependencies: rootPackage.devDependencies,
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  await writeFile(path.join(targetDir, "ai-sdr.config.ts"), renderScaffoldConfigModule(spec));
+  await writeFile(path.join(targetDir, ".env.example"), renderScaffoldEnvExample(spec));
+  await writeFile(path.join(targetDir, "README.md"), renderScaffoldReadme(appName, targetDir, spec.profile.id));
+
+  console.log(`Initialized ${appName} in ${targetDir}`);
+  console.log(`Profile: ${spec.profile.displayName}`);
+  console.log("Modules:");
+  for (const module of spec.selectedModules) {
+    console.log(`  - ${module.id}`);
+  }
+  console.log("");
+  console.log("Next steps:");
+  console.log(`  1. cd ${targetDir}`);
+  console.log("  2. npm install");
+  console.log("  3. cp .env.example .env");
+  console.log("  4. npm run typecheck");
+  console.log("  5. npm test");
+  console.log("  6. npm run doctor");
+  console.log("  7. npm run dev");
 }
 
 function printPlan(module: AiSdrModuleDefinition) {
@@ -128,4 +247,86 @@ function printList(label: string, values: string[]) {
   for (const value of values) {
     console.log(`  - ${value}`);
   }
+}
+
+function parseFlags(values: string[]) {
+  const flags: Record<string, string | boolean> = {};
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    if (!value?.startsWith("--")) {
+      continue;
+    }
+
+    const key = value.slice(2);
+    const next = values[index + 1];
+    if (!next || next.startsWith("--")) {
+      flags[key] = true;
+      continue;
+    }
+
+    flags[key] = next;
+    index += 1;
+  }
+
+  return flags;
+}
+
+async function ensureEmptyDirectory(targetDir: string) {
+  try {
+    const details = await stat(targetDir);
+    if (!details.isDirectory()) {
+      throw new Error(`target exists and is not a directory: ${targetDir}`);
+    }
+    const entries = await readdir(targetDir);
+    if (entries.length > 0) {
+      throw new Error(`target directory is not empty: ${targetDir}`);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+}
+
+function sanitizePackageName(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    || "trellis-app";
+}
+
+function renderScaffoldReadme(appName: string, targetDir: string, profileId: string) {
+  return `# ${appName}
+
+This project was scaffolded from the Trellis reference app.
+
+- Profile: \`${profileId}\`
+- Generated in: \`${targetDir}\`
+
+## Quick Start
+
+\`\`\`bash
+npm install
+cp .env.example .env
+npm run typecheck
+npm test
+npm run doctor
+npm run dev
+\`\`\`
+
+Then open:
+
+\`\`\`text
+http://localhost:3000/dashboard
+\`\`\`
+
+## Notes
+
+- \`ai-sdr.config.ts\` controls the active modules and provider bindings
+- optional providers can be removed or added by editing the config and env
+- this scaffold preserves the current reference app behavior while the framework packages are still being extracted
+`;
 }

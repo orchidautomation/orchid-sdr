@@ -92,6 +92,10 @@ export const aiSdrCompositionProfiles = {
   },
 } as const satisfies Record<string, AiSdrCompositionProfile>;
 
+export const aiSdrCompositionProfileIds = Object.freeze(
+  Object.keys(aiSdrCompositionProfiles) as AiSdrCompositionProfileId[],
+);
+
 export function evaluateModuleComposition(
   modules: AiSdrModuleDefinition[],
   input: {

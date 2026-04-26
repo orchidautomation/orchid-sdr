@@ -6,7 +6,7 @@ This page keeps the implementation and setup detail that does not need to live o
 
 - `RivetKit` for durable actors, scheduling, and actor-local SQLite
 - `Hono` for HTTP routing
-- `Postgres` as the shared system of record
+- `Convex` as the shared operational state plane
 - `sandbox-agent` + `@vercel/sandbox` for turn-scoped agent execution
 - `@ai-sdk/gateway` for structured model calls
 - `@modelcontextprotocol/sdk` for the first-party `orchid-sdr` MCP surface
@@ -17,7 +17,7 @@ This page keeps the implementation and setup detail that does not need to live o
 
 Minimum local env:
 
-- `DATABASE_URL`
+- `CONVEX_URL`
 - `NO_SENDS_MODE=true` if you want append-only mode with outbound blocked
 - `DEFAULT_CAMPAIGN_TIMEZONE=America/New_York` if you want new campaigns to inherit a local quiet-hours timezone
 - `HANDOFF_WEBHOOK_SECRET`
@@ -42,7 +42,6 @@ Important runtime notes:
 
 ```bash
 npm install
-npm run db:migrate
 npm run dev
 ```
 

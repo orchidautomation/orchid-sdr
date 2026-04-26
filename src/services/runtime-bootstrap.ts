@@ -1,5 +1,6 @@
 import { migrateDatabase } from "../db/migrate.js";
 import { registry } from "../registry.js";
+import { OrchidRepository } from "../repository.js";
 import { getActorClient } from "./actor-client.js";
 import { getAppContext } from "./runtime-context.js";
 import { runSandboxCompatibilityProbe } from "./sandbox-probe.js";
@@ -12,9 +13,10 @@ export async function ensureRuntimeBootstrapped() {
   }
 
   bootstrapPromise = (async () => {
-    await migrateDatabase();
-
     const context = getAppContext();
+    if (context.repository instanceof OrchidRepository) {
+      await migrateDatabase();
+    }
     await context.repository.ensureDefaultCampaign();
 
     if (context.config.NO_SENDS_MODE !== undefined) {

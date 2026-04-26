@@ -1,11 +1,12 @@
 import { defineAiSdr } from "./src/framework/index.js";
 import { defaultOrchidModules, providersFromModules } from "./src/framework/index.js";
 
-const modules = defaultOrchidModules();
+const modules = defaultOrchidModules().filter((module) => module.id !== "neon");
 
 export default defineAiSdr({
   name: "orchid-sdr",
   description: "Reference implementation for a self-hostable, composable AI SDR control plane.",
+  compositionTargets: ["minimum", "productionParity"],
   knowledge: {
     product: "knowledge/product.md",
     icp: "knowledge/icp.md",
@@ -53,12 +54,6 @@ export default defineAiSdr({
       capabilityId: "state",
       providerId: "convex",
       contractId: "state.reactive.v1",
-      default: true,
-    },
-    {
-      capabilityId: "database",
-      providerId: "neon",
-      contractId: "database.postgres.v1",
       default: true,
     },
     {
@@ -167,7 +162,7 @@ export default defineAiSdr({
       packageName: "@ai-sdr/framework",
       visibility: "public",
       description: "Capability schema, contracts, config validation, composition logic, and installation planning.",
-      capabilityIds: ["source", "search", "extract", "enrichment", "runtime", "model", "crm", "email", "handoff", "state", "database", "mcp"],
+      capabilityIds: ["source", "search", "extract", "enrichment", "runtime", "model", "crm", "email", "handoff", "state", "mcp"],
     },
     {
       id: "ai-sdr-source-webhooks",
@@ -244,15 +239,6 @@ export default defineAiSdr({
       contractIds: ["state.reactive.v1", "state.workflow.v1", "state.agentThreads.v1", "state.auditLog.v1"],
     },
     {
-      id: "ai-sdr-database-neon",
-      packageName: "@ai-sdr/neon",
-      visibility: "public",
-      moduleIds: ["neon"],
-      providerIds: ["neon"],
-      capabilityIds: ["database"],
-      contractIds: ["database.postgres.v1"],
-    },
-    {
       id: "ai-sdr-runtime-rivet",
       packageName: "@ai-sdr/rivet",
       visibility: "public",
@@ -307,8 +293,8 @@ export default defineAiSdr({
     },
   ],
   requiredEnv: [
-    { name: "DATABASE_URL", required: true, description: "Postgres connection string." },
     { name: "APP_URL", required: true, description: "Public app URL used by sandboxes and webhooks." },
+    { name: "CONVEX_URL", required: true, description: "Convex deployment URL used by the runtime repository and state plane." },
     { name: "HANDOFF_WEBHOOK_SECRET", required: true, description: "Shared secret for handoff webhooks." },
   ],
 });

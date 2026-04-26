@@ -176,6 +176,7 @@ export const aiSdrConfigSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   knowledge: aiSdrKnowledgeDefinitionSchema,
+  compositionTargets: z.array(z.string().min(1)).optional(),
   modules: z.array(aiSdrModuleDefinitionSchema).optional(),
   skills: z.array(aiSdrSkillDefinitionSchema).optional(),
   providers: z.array(aiSdrProviderDefinitionSchema).optional(),

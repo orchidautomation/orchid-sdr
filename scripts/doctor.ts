@@ -3,6 +3,7 @@ import path from "node:path";
 
 import config from "../ai-sdr.config.js";
 import {
+  aiSdrCompositionProfileIds,
   collectConfigEnv,
   collectKnowledgePaths,
   collectModuleDocs,
@@ -27,8 +28,9 @@ const checks: Check[] = [];
 
 await checkConfigReferences();
 checkConfigComposition();
-checkRequiredModuleComposition("minimum");
-checkRequiredModuleComposition("productionParity");
+for (const profile of resolveConfiguredCompositionProfiles()) {
+  checkRequiredModuleComposition(profile);
+}
 await checkModuleDocs();
 await checkEnvExample();
 checkRuntimeEnv();
@@ -119,6 +121,15 @@ function checkRequiredModuleComposition(profile: AiSdrCompositionProfileId) {
         : "",
     ].filter(Boolean).join("; "),
   });
+}
+
+function resolveConfiguredCompositionProfiles(): AiSdrCompositionProfileId[] {
+  const supportedProfiles = new Set(aiSdrCompositionProfileIds);
+  const configured = (config.compositionTargets ?? []).filter((profile): profile is AiSdrCompositionProfileId =>
+    supportedProfiles.has(profile as AiSdrCompositionProfileId),
+  );
+
+  return configured.length > 0 ? configured : ["minimum", "productionParity"];
 }
 
 async function checkModuleDocs() {

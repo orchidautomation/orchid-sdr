@@ -10,14 +10,16 @@ import {
   SlackWebhookAdapter,
 } from "../adapters.js";
 import { getConfig, type AppConfig } from "../config.js";
-import type { ContactEmail, ProspectContext } from "../domain/types.js";
+import type { ContactEmail, DiscoverySource, ProspectContext } from "../domain/types.js";
 import type {
   ConfigurableResearchSearchProvider,
+  DiscoverySignalSourceAdapter,
   HandoffProvider,
   OutboundEmailProvider,
   WebExtractProvider,
 } from "../framework/index.js";
-import { OrchidRepository } from "../repository.js";
+import { ConvexRepository } from "../repository-convex.js";
+import { OrchidRepository, type OrchidRepositoryPort } from "../repository.js";
 import { AiStructuredService } from "./ai-service.js";
 import { getFrameworkRuntimeConfig, type FrameworkRuntimeConfig } from "./framework-stack.js";
 import { KnowledgeService } from "./knowledge-service.js";
@@ -59,6 +61,10 @@ export interface ActiveEnrichmentProvider {
   enrich(prospect: ProspectContext): Promise<ContactEmail | null>;
 }
 
+export interface ActiveDiscoveryProvider extends DiscoverySignalSourceAdapter<DiscoverySource> {
+  providerId: string;
+}
+
 export interface ActiveCrmProvider {
   providerId: string;
   isConfigured(): boolean;
@@ -76,7 +82,7 @@ export interface ActiveHandoffProvider extends HandoffProvider {
 export interface AppContext {
   config: AppConfig;
   framework: FrameworkRuntimeConfig;
-  repository: OrchidRepository;
+  repository: OrchidRepositoryPort;
   state: StatePlaneProvider;
   knowledge: KnowledgeService;
   ai: AiStructuredService;
@@ -88,9 +94,10 @@ export interface AppContext {
   agentMail: AgentMailAdapter;
   slack: SlackWebhookAdapter;
   providers: {
+    discovery: ActiveDiscoveryProvider | null;
     search: ActiveSearchProvider;
     extract: ActiveExtractProvider;
-    enrichment: ActiveEnrichmentProvider;
+    enrichment: ActiveEnrichmentProvider | null;
     crm: ActiveCrmProvider | null;
     email: ActiveEmailProvider | null;
     handoff: ActiveHandoffProvider | null;
@@ -120,10 +127,13 @@ export function getAppContext(): AppContext {
     process.env.AI_GATEWAY_API_KEY = config.gatewayApiKey;
   }
 
-  const repository = new OrchidRepository();
   const knowledge = new KnowledgeService();
   const ai = new AiStructuredService();
   const framework = getFrameworkRuntimeConfig();
+  const repository = createRepository({
+    config,
+    framework,
+  });
   const apify = new ApifySourceAdapter();
   const prospeo = new ProspeoEmailEnricher();
   const parallel = new ParallelResearchAdapter();
@@ -150,6 +160,7 @@ export function getAppContext(): AppContext {
     agentMail,
     slack,
     providers: {
+      discovery: createActiveDiscoveryProvider(framework, { apify }),
       search: createActiveSearchProvider(framework, { parallel, firecrawl }),
       extract: createActiveExtractProvider(framework, { firecrawl }),
       enrichment: createActiveEnrichmentProvider(framework, { prospeo }),
@@ -174,6 +185,55 @@ export function getAppContext(): AppContext {
 
   cachedContext.mcpTools = new OrchidMcpToolService(cachedContext);
   return cachedContext;
+}
+
+function createRepository(input: {
+  config: AppConfig;
+  framework: FrameworkRuntimeConfig;
+}): OrchidRepositoryPort {
+  if (input.framework.selections.state.providerId === "convex") {
+    const convexUrl = input.config.CONVEX_URL ?? input.config.NEXT_PUBLIC_CONVEX_URL;
+    if (!convexUrl) {
+      throw new Error("CONVEX_URL or NEXT_PUBLIC_CONVEX_URL is required when the Convex state provider is enabled.");
+    }
+
+    return new ConvexRepository(convexUrl, input.config.DEFAULT_CAMPAIGN_TIMEZONE);
+  }
+
+  return new OrchidRepository();
+}
+
+function createActiveDiscoveryProvider(
+  framework: FrameworkRuntimeConfig,
+  adapters: {
+    apify: ApifySourceAdapter;
+  },
+): ActiveDiscoveryProvider | null {
+  switch (framework.selections.sourceDiscovery.providerId) {
+    case null:
+      return null;
+    case "apify-linkedin":
+      return {
+        providerId: "apify-linkedin",
+        hasDiscoveryTarget(source) {
+          return adapters.apify.hasDiscoveryTarget(source);
+        },
+        fetchDatasetItems(datasetId, source) {
+          return adapters.apify.fetchDatasetItems(datasetId, source);
+        },
+        startDiscoveryRun(input) {
+          return adapters.apify.startDiscoveryRun(input);
+        },
+        getRun(actorRunId) {
+          return adapters.apify.getRun(actorRunId);
+        },
+        normalizeSignals(source, items) {
+          return adapters.apify.normalizeSignals(source, items);
+        },
+      };
+    default:
+      throw new Error(`unsupported configured discovery provider: ${framework.selections.sourceDiscovery.providerId}`);
+  }
 }
 
 function createActiveSearchProvider(
@@ -230,8 +290,10 @@ function createActiveEnrichmentProvider(
   adapters: {
     prospeo: ProspeoEmailEnricher;
   },
-): ActiveEnrichmentProvider {
+): ActiveEnrichmentProvider | null {
   switch (framework.selections.enrichment.providerId) {
+    case null:
+      return null;
     case "prospeo":
       return {
         providerId: "prospeo",

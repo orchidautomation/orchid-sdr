@@ -22,7 +22,7 @@ Use one of these modes first:
 Required:
 
 - Node.js 22 or Docker
-- Postgres 15+; Neon is the recommended hosted Postgres provider for production pilots
+- Convex deployment details
 - a public HTTPS URL for production
 - a long random `ORCHID_SDR_SANDBOX_TOKEN`
 - a long random `ORCHID_SDR_MCP_TOKEN`
@@ -43,7 +43,7 @@ Optional:
 - Attio for CRM sync
 - Slack for handoff
 - Prospeo for email enrichment
-- Neon API key for future provisioning automation; `DATABASE_URL` is enough to run the app
+- Neon/Postgres only if you intentionally enable the optional SQL compatibility module
 
 ## 1. Clone And Configure
 
@@ -60,7 +60,6 @@ Minimum safe-pilot values:
 ```bash
 PORT=3000
 APP_URL=https://sdr.example.com
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/orchid_sdr
 CONVEX_URL=https://your-deployment.convex.cloud
 NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
 NO_SENDS_MODE=true
@@ -76,7 +75,6 @@ Important:
 
 - `APP_URL` must be reachable from Vercel Sandboxes.
 - `APP_URL` must be reachable from Apify and AgentMail if those webhooks are enabled.
-- For Neon, use the pooled or direct connection string they provide as `DATABASE_URL`. This remains required while the repository layer is being ported to Convex.
 - For Convex, set `CONVEX_URL` for the Node service and `NEXT_PUBLIC_CONVEX_URL` for future browser/live-query clients.
 - Keep `NO_SENDS_MODE=true` until the customer has approved real sends.
 
@@ -111,7 +109,7 @@ cp docker-compose.example.yml docker-compose.yml
 docker compose up --build
 ```
 
-The app runs migrations on startup. To verify:
+The app bootstraps the Convex-backed runtime on startup. To verify:
 
 ```bash
 curl -fsS http://localhost:3000/healthz
@@ -133,7 +131,7 @@ For production, put the app behind HTTPS with Caddy, Nginx, Traefik, a cloud loa
 
 ## 4. Run Without Docker
 
-Use this path on a VM or PaaS that provides Node and Postgres.
+Use this path on a VM or PaaS that provides Node and can reach your configured Convex deployment and provider APIs.
 
 ```bash
 npm install
@@ -141,7 +139,6 @@ npm run typecheck
 npm test
 npm run doctor
 npm run build
-npm run db:migrate
 npm start
 ```
 

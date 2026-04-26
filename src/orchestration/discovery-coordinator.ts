@@ -649,7 +649,8 @@ async function runDiscoveryTick(
         reason: `discovery only runs on weekdays in ${campaign.timezone}`,
       };
     }
-    if (!context.apify.hasDiscoveryTarget(source)) {
+    const discoveryProvider = context.providers.discovery;
+    if (!discoveryProvider) {
       c.state.lastStatus = "skipped";
       return {
         ok: true,
@@ -659,7 +660,20 @@ async function runDiscoveryTick(
         planner,
         startedRuns,
         skipped: true,
-        reason: `Apify target is not configured for ${source}`,
+        reason: "discovery provider is not configured",
+      };
+    }
+    if (!discoveryProvider.hasDiscoveryTarget(source)) {
+      c.state.lastStatus = "skipped";
+      return {
+        ok: true,
+        source,
+        campaignId,
+        scheduledNextTickAt: await scheduleNextTick(c),
+        planner,
+        startedRuns,
+        skipped: true,
+        reason: `${discoveryProvider.providerId} target is not configured for ${source}`,
       };
     }
 
@@ -715,7 +729,7 @@ async function runDiscoveryTick(
       });
 
       try {
-        const started = await context.apify.startDiscoveryRun({
+        const started = await discoveryProvider.startDiscoveryRun({
           campaignId,
           source,
           term: term.term,

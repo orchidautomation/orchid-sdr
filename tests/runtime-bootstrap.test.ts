@@ -75,7 +75,7 @@ describe("ensureRuntimeBootstrapped", () => {
     const { ensureRuntimeBootstrapped } = await import("../src/services/runtime-bootstrap.js");
 
     await expect(ensureRuntimeBootstrapped()).resolves.toBeUndefined();
-    expect(migrateDatabase).toHaveBeenCalledTimes(1);
+    expect(migrateDatabase).not.toHaveBeenCalled();
     expect(ensureDefaultCampaign).toHaveBeenCalledTimes(2);
     expect(setControlFlag).toHaveBeenCalledWith("no_sends_mode", {
       enabled: true,
