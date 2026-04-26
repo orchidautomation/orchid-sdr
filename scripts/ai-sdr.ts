@@ -41,9 +41,11 @@ Examples:
 
   npm run ai-sdr -- add crm attio
   npm run ai-sdr -- add email agentmail
-  npm run ai-sdr -- add search parallel
+  npm run ai-sdr -- add search firecrawl
   npm run ai-sdr -- add extract firecrawl
-  npm run ai-sdr -- add enrichment parallel
+  npm run ai-sdr -- add deep-research parallel
+  npm run ai-sdr -- add monitor parallel
+  npm run ai-sdr -- add enrichment prospeo
   npm run ai-sdr -- add state convex
   npm run ai-sdr -- add runtime rivet
   npm run ai-sdr -- add database neon
@@ -52,7 +54,8 @@ Examples:
   npm run ai-sdr -- add runtime vercel-sandbox
   npm run ai-sdr -- add handoff slack
 
-The alias "research" also resolves to search/extract/enrichment providers.
+Simple labels stay short in the CLI: search, extract, deep-research, monitor, enrichment.
+The alias "research" resolves to the full research contract family.
 
 This is a local prototype for the future framework CLI. The add command prints an install plan; it does not mutate files yet.`);
 }
@@ -77,7 +80,7 @@ function printCompositionCheck() {
 
 function printAddPlan(moduleId: string | undefined) {
   if (!moduleId) {
-    console.error("Missing module or capability. Example: npm run ai-sdr -- add search parallel");
+    console.error("Missing module or capability. Example: npm run ai-sdr -- add search firecrawl");
     process.exitCode = 1;
     return;
   }

@@ -205,15 +205,27 @@ describe("AI SDR framework config helpers", () => {
       capabilityBindings: [
         {
           capabilityId: "search",
-          providerId: "parallel",
+          providerId: "firecrawl",
           contractId: "research.search.v1",
           default: true,
+        },
+        {
+          capabilityId: "search",
+          providerId: "parallel",
+          contractId: "research.deepResearch.v1",
+          purpose: "deep_research",
         },
         {
           capabilityId: "extract",
           providerId: "firecrawl",
           contractId: "research.extract.v1",
           default: true,
+        },
+        {
+          capabilityId: "observability",
+          providerId: "parallel",
+          contractId: "research.monitor.v1",
+          purpose: "monitor",
         },
         {
           capabilityId: "enrichment",
@@ -236,11 +248,19 @@ describe("AI SDR framework config helpers", () => {
     expect(resolveProviderForCapability(config, {
       capabilityId: "search",
       contractId: "research.search.v1",
+    })?.id).toBe("firecrawl");
+    expect(resolveProviderForCapability(config, {
+      capabilityId: "search",
+      contractId: "research.deepResearch.v1",
     })?.id).toBe("parallel");
     expect(resolveProviderForCapability(config, {
       capabilityId: "extract",
       contractId: "research.extract.v1",
     })?.id).toBe("firecrawl");
+    expect(resolveProviderForCapability(config, {
+      capabilityId: "observability",
+      contractId: "research.monitor.v1",
+    })?.id).toBe("parallel");
     expect(resolveProviderForCapability(config, {
       capabilityId: "enrichment",
       contractId: "research.enrich.v1",

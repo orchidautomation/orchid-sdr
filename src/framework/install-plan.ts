@@ -1,4 +1,8 @@
-import type { AiSdrCapabilityId, AiSdrModuleDefinition } from "./index.js";
+import type {
+  AiSdrCapabilityId,
+  AiSdrContractId,
+  AiSdrModuleDefinition,
+} from "./index.js";
 
 export type AiSdrModuleInstallPlan = {
   moduleId: string;
@@ -15,6 +19,11 @@ export type AiSdrModuleInstallPlan = {
   docs: string[];
   smokeChecks: string[];
   nextSteps: string[];
+};
+
+type AddSelector = {
+  capabilityIds: AiSdrCapabilityId[];
+  contractIds: AiSdrContractId[];
 };
 
 export function buildModuleInstallPlan(
@@ -72,16 +81,22 @@ export function findModuleForAddCommand(
     return modules.find((module) => normalizeAddToken(module.id) === capabilityOrModule);
   }
 
-  const capabilities = new Set(normalizeCapabilities(capabilityOrModule));
+  const selector = resolveAddSelector(capabilityOrModule);
+  const capabilities = new Set(selector.capabilityIds);
+  const contracts = new Set(selector.contractIds);
   return modules.find((module) => {
     const moduleProviderKeys = new Set([
       module.id,
       module.providerKey,
       ...(module.providers ?? []).map((item) => item.id),
     ].filter((value): value is string => Boolean(value)).map(normalizeAddToken));
+    const moduleCapabilities = new Set(module.capabilityIds ?? []);
+    const moduleContracts = new Set(module.contracts ?? []);
+    const capabilityMatch = [...capabilities].some((capability) => moduleCapabilities.has(capability));
+    const contractMatch = [...contracts].some((contract) => moduleContracts.has(contract));
 
     return (
-      module.capabilityIds?.some((capability) => capabilities.has(capability))
+      (capabilityMatch || contractMatch)
       && moduleProviderKeys.has(provider)
     );
   });
@@ -107,39 +122,81 @@ function buildNextSteps(module: AiSdrModuleDefinition, alreadyInstalled: boolean
   ];
 }
 
-function normalizeCapabilities(value: string): AiSdrCapabilityId[] {
+function resolveAddSelector(value: string): AddSelector {
   switch (normalizeAddToken(value)) {
     case "research":
-    case "deep-research":
-    case "deepresearch":
-      return ["search", "extract", "enrichment"];
+      return {
+        capabilityIds: ["search", "extract", "enrichment", "observability"],
+        contractIds: [
+          "research.search.v1",
+          "research.extract.v1",
+          "research.deepResearch.v1",
+          "research.monitor.v1",
+          "research.enrich.v1",
+        ],
+      };
+    case "search":
+      return {
+        capabilityIds: ["search"],
+        contractIds: ["research.search.v1"],
+      };
     case "extract":
     case "extraction":
-      return ["extract"];
+      return {
+        capabilityIds: ["extract"],
+        contractIds: ["research.extract.v1"],
+      };
+    case "deep-research":
+    case "deepresearch":
+      return {
+        capabilityIds: [],
+        contractIds: ["research.deepResearch.v1"],
+      };
     case "enrich":
     case "enrichment":
-      return ["enrichment"];
+      return {
+        capabilityIds: ["enrichment"],
+        contractIds: ["research.enrich.v1"],
+      };
     case "monitor":
     case "monitoring":
-      return ["source", "observability"];
+      return {
+        capabilityIds: [],
+        contractIds: ["research.monitor.v1"],
+      };
     case "postgres":
     case "storage":
     case "db":
-      return ["database"];
+      return {
+        capabilityIds: ["database"],
+        contractIds: [],
+      };
     case "convex":
     case "reactive":
     case "threads":
     case "memory":
-      return ["state"];
+      return {
+        capabilityIds: ["state"],
+        contractIds: [],
+      };
     case "discovery":
     case "signal":
     case "signals":
-      return ["source"];
+      return {
+        capabilityIds: ["source"],
+        contractIds: [],
+      };
     case "mail":
     case "outreach":
-      return ["email"];
+      return {
+        capabilityIds: ["email"],
+        contractIds: [],
+      };
     default:
-      return [normalizeAddToken(value) as AiSdrCapabilityId];
+      return {
+        capabilityIds: [normalizeAddToken(value) as AiSdrCapabilityId],
+        contractIds: [],
+      };
   }
 }
 

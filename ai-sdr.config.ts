@@ -77,7 +77,7 @@ export default defineAiSdr({
     },
     {
       capabilityId: "search",
-      providerId: "parallel",
+      providerId: "firecrawl",
       contractId: "research.search.v1",
       default: true,
     },
@@ -86,6 +86,18 @@ export default defineAiSdr({
       providerId: "firecrawl",
       contractId: "research.extract.v1",
       default: true,
+    },
+    {
+      capabilityId: "search",
+      providerId: "parallel",
+      contractId: "research.deepResearch.v1",
+      purpose: "deep_research",
+    },
+    {
+      capabilityId: "observability",
+      providerId: "parallel",
+      contractId: "research.monitor.v1",
+      purpose: "monitor",
     },
     {
       capabilityId: "enrichment",
@@ -179,6 +191,7 @@ export default defineAiSdr({
       id: "ai-sdr-search-parallel",
       packageName: "@ai-sdr/parallel",
       visibility: "public",
+      description: "Deep research, monitoring, and async web-task orchestration.",
       moduleIds: ["parallel"],
       providerIds: ["parallel"],
       capabilityIds: ["search", "extract", "enrichment", "source", "observability"],
@@ -188,6 +201,7 @@ export default defineAiSdr({
       id: "ai-sdr-extract-firecrawl",
       packageName: "@ai-sdr/firecrawl",
       visibility: "public",
+      description: "Primary web search and extraction surface for the reference AI SDR stack.",
       moduleIds: ["firecrawl"],
       providerIds: ["firecrawl"],
       capabilityIds: ["search", "extract", "enrichment", "source", "runtime", "observability"],

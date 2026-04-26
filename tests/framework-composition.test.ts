@@ -18,6 +18,8 @@ describe("AI SDR module composition", () => {
     expect(evaluation.missingCapabilities).toEqual([]);
     expect(evaluation.missingContracts).toEqual([]);
     expect(evaluation.modulesByCapability.state).toEqual(["convex"]);
+    expect(evaluation.modulesByContract["research.deepResearch.v1"]).toEqual(["parallel"]);
+    expect(evaluation.modulesByContract["research.monitor.v1"]).toEqual(["parallel"]);
     expect(evaluation.modulesByContract["runtime.actor.v1"]).toEqual(["rivet"]);
     expect(evaluation.modulesByContract["runtime.sandbox.v1"]).toEqual(["vercel-sandbox"]);
   });

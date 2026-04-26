@@ -22,6 +22,8 @@ export type FrameworkStackSelections = {
   sourceDiscovery: FrameworkProviderSelection;
   search: FrameworkProviderSelection;
   extract: FrameworkProviderSelection;
+  deepResearch: FrameworkProviderSelection;
+  monitor: FrameworkProviderSelection;
   enrichment: FrameworkProviderSelection;
   handoff: FrameworkProviderSelection;
   model: FrameworkProviderSelection;
@@ -56,6 +58,8 @@ export function getFrameworkRuntimeConfig(): FrameworkRuntimeConfig {
       sourceDiscovery: pickProvider(config, "source", "signal.discovery.v1"),
       search: pickProvider(config, "search"),
       extract: pickProvider(config, "extract"),
+      deepResearch: pickProvider(config, "search", "research.deepResearch.v1"),
+      monitor: pickProvider(config, "observability", "research.monitor.v1"),
       enrichment: pickProvider(config, "enrichment"),
       handoff: pickProvider(config, "handoff"),
       model: pickProvider(config, "model", "model.gateway.v1"),

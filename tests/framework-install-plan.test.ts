@@ -40,9 +40,12 @@ describe("framework module install plans", () => {
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "research", provider: "parallel" })?.id).toBe("parallel");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "search", provider: "parallel" })?.id).toBe("parallel");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "extract", provider: "parallel" })?.id).toBe("parallel");
+    expect(findModuleForAddCommand(modules, { capabilityOrModule: "deep-research", provider: "parallel" })?.id).toBe("parallel");
+    expect(findModuleForAddCommand(modules, { capabilityOrModule: "monitor", provider: "parallel" })?.id).toBe("parallel");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "enrichment", provider: "parallel" })?.id).toBe("parallel");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "search", provider: "firecrawl" })?.id).toBe("firecrawl");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "extract", provider: "firecrawl" })?.id).toBe("firecrawl");
+    expect(findModuleForAddCommand(modules, { capabilityOrModule: "monitor", provider: "firecrawl" })).toBeUndefined();
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "database", provider: "neon" })?.id).toBe("neon");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "state", provider: "convex" })?.id).toBe("convex");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "threads", provider: "convex" })?.id).toBe("convex");
@@ -56,7 +59,7 @@ describe("framework module install plans", () => {
 
   it("indexes MCP servers and tool capabilities", () => {
     const parallelPlan = buildModuleInstallPlan(
-      findModuleForAddCommand(defaultOrchidModules(), { capabilityOrModule: "search", provider: "parallel" })!,
+      findModuleForAddCommand(defaultOrchidModules(), { capabilityOrModule: "deep-research", provider: "parallel" })!,
     );
     const firecrawlPlan = buildModuleInstallPlan(
       findModuleForAddCommand(defaultOrchidModules(), { capabilityOrModule: "extract", provider: "firecrawl" })!,

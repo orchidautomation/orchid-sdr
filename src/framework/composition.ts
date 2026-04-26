@@ -76,6 +76,8 @@ export const aiSdrCompositionProfiles = {
       "signal.discovery.v1",
       "research.search.v1",
       "research.extract.v1",
+      "research.deepResearch.v1",
+      "research.monitor.v1",
       "research.enrich.v1",
       "model.gateway.v1",
       "runtime.actor.v1",

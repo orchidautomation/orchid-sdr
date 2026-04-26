@@ -129,7 +129,7 @@ export function firecrawlModule(): AiSdrModuleDefinition {
     id: "firecrawl",
     displayName: "Firecrawl research",
     packageName: "@ai-sdr/firecrawl",
-    description: "Search, scrape, crawl, extract, and operate browser-backed web research through Firecrawl.",
+    description: "Primary search and extraction surface for open-web research, crawling, and browser-backed page interaction.",
     providerKey: "firecrawl",
     capabilityIds: ["source", "search", "extract", "enrichment", "runtime", "observability"],
     contracts: ["research.search.v1", "research.extract.v1"],
@@ -247,7 +247,7 @@ export function parallelModule(): AiSdrModuleDefinition {
     id: "parallel",
     displayName: "Parallel research",
     packageName: "@ai-sdr/parallel",
-    description: "Run agentic research, URL extraction, enrichment, discovery, and web monitoring through Parallel APIs and MCP tools.",
+    description: "Run deep research, monitoring, async task workflows, and optional enrichment through Parallel APIs and MCP tools.",
     providerKey: "parallel",
     capabilityIds: ["search", "extract", "enrichment", "source", "observability"],
     contracts: [
