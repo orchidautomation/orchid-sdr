@@ -110,6 +110,8 @@ If you want a new working reference app scaffold from this repo:
 npm run ai-sdr -- init ../trellis-starter --profile starter --name trellis-starter
 ```
 
+The generated project includes `TRELLIS_SETUP.md` with the exact first-boot checklist for that selected profile.
+
 For the current repo itself:
 
 1. Install dependencies.
@@ -193,6 +195,7 @@ Separate deploys are safer when the underlying product or knowledge pack is diff
 ## Read Next
 
 - [Reference](docs/reference.md)
+- [Getting Started](docs/getting-started.md)
 - [Framework Primitives](docs/framework-primitives.md)
 - [CRM Normalization](docs/crm-normalization.md)
 - [Self-Hosting](docs/self-hosting.md)

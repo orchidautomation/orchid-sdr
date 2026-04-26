@@ -5,6 +5,7 @@ import {
   buildScaffoldSpec,
   renderScaffoldConfigModule,
   renderScaffoldEnvExample,
+  renderScaffoldSetupChecklist,
 } from "../src/framework/scaffold.js";
 
 describe("framework scaffold profiles", () => {
@@ -52,6 +53,7 @@ describe("framework scaffold profiles", () => {
 
     const configModule = renderScaffoldConfigModule(spec);
     const envExample = renderScaffoldEnvExample(spec);
+    const setupChecklist = renderScaffoldSetupChecklist(spec);
 
     expect(configModule).toContain('const selectedModuleIds =');
     expect(configModule).toContain('"compositionTargets": [');
@@ -60,5 +62,8 @@ describe("framework scaffold profiles", () => {
     expect(envExample).toContain("FIRECRAWL_API_KEY=");
     expect(envExample).toContain("PARALLEL_API_KEY=");
     expect(envExample).toContain("ORCHID_SDR_SANDBOX_TOKEN=change-me");
+    expect(setupChecklist).toContain("# Trellis Setup Checklist");
+    expect(setupChecklist).toContain("`CONVEX_URL`");
+    expect(setupChecklist).not.toContain("`DATABASE_URL`");
   });
 });

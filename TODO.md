@@ -155,6 +155,12 @@ Important:
   - product: `Trellis`
   - category: `Composable Agentic GTM`
 
+### Onboarding
+
+- [x] generated `TRELLIS_SETUP.md` per scaffolded project
+- [x] added a first-pass getting-started guide in `docs/getting-started.md`
+- [x] added a tracked `skills/setup-and-verify` skill for first-boot agent guidance
+
 ## What Still Needs To Be Done
 
 ## P0: Turn It Into A Real Framework Product

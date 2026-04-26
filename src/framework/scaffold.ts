@@ -193,6 +193,94 @@ export function renderScaffoldEnvExample(spec: AiSdrScaffoldSpec) {
     .join("\n") + "\n";
 }
 
+export function renderScaffoldSetupChecklist(spec: AiSdrScaffoldSpec) {
+  const requiredEnv = spec.envVars.filter((envVar) => envVar.required);
+  const optionalEnv = spec.envVars.filter((envVar) => !envVar.required);
+  const moduleLines = spec.selectedModules.map((module) =>
+    `- \`${module.id}\` - ${module.description ?? module.displayName}`,
+  );
+  const requiredEnvLines = requiredEnv.map((envVar) =>
+    `- \`${envVar.name}\`${envVar.description ? ` - ${envVar.description}` : ""}`,
+  );
+  const optionalEnvLines = optionalEnv.map((envVar) =>
+    `- \`${envVar.name}\`${envVar.description ? ` - ${envVar.description}` : ""}`,
+  );
+
+  return `# Trellis Setup Checklist
+
+This project was scaffolded with the **${spec.profile.displayName}** profile.
+
+## What This Profile Includes
+
+${moduleLines.join("\n")}
+
+## First-Time Setup
+
+1. Install dependencies
+
+\`\`\`bash
+npm install
+\`\`\`
+
+2. Copy envs
+
+\`\`\`bash
+cp .env.example .env
+\`\`\`
+
+3. Fill the required env values first
+
+${requiredEnvLines.join("\n")}
+
+4. Optionally fill the rest once you enable more providers
+
+${optionalEnvLines.length > 0 ? optionalEnvLines.join("\n") : "- none"}
+
+5. Verify locally
+
+\`\`\`bash
+npm run typecheck
+npm test
+npm run doctor
+\`\`\`
+
+6. Boot the app
+
+\`\`\`bash
+npm run dev
+\`\`\`
+
+7. Verify the operator surface
+
+- Open \`http://localhost:3000/dashboard\`
+- Check \`http://localhost:3000/healthz\`
+- Confirm the dashboard resolves service, send mode, and automation flags
+
+## Safe First Actions
+
+- Keep \`NO_SENDS_MODE=true\`
+- Use the dashboard or MCP to inspect runtime flags
+- Post a normalized signal before enabling discovery or outbound
+- Only enable optional providers after \`npm run doctor\` is clean
+
+## Useful Commands
+
+\`\`\`bash
+npm run ai-sdr -- check
+npm run doctor
+npm run sandbox:probe
+\`\`\`
+
+## Common Failure Modes
+
+- Missing \`CONVEX_URL\` or \`NEXT_PUBLIC_CONVEX_URL\`
+- Missing \`ORCHID_SDR_SANDBOX_TOKEN\`
+- Missing \`HANDOFF_WEBHOOK_SECRET\`
+- Provider API keys present in config intent but absent in \`.env\`
+- Running discovery or probe before the dashboard and health check are healthy
+`;
+}
+
 function filterCapabilityBindings(
   capabilityBindings: AiSdrCapabilityBinding[],
   selectedProviderIds: Set<string>,

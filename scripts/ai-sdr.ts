@@ -16,6 +16,7 @@ import {
   buildScaffoldSpec,
   renderScaffoldConfigModule,
   renderScaffoldEnvExample,
+  renderScaffoldSetupChecklist,
 } from "../src/framework/scaffold.js";
 
 const [command, ...commandArgs] = process.argv.slice(2);
@@ -200,6 +201,7 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
   await writeFile(path.join(targetDir, "ai-sdr.config.ts"), renderScaffoldConfigModule(spec));
   await writeFile(path.join(targetDir, ".env.example"), renderScaffoldEnvExample(spec));
   await writeFile(path.join(targetDir, "README.md"), renderScaffoldReadme(appName, targetDir, spec.profile.id));
+  await writeFile(path.join(targetDir, "TRELLIS_SETUP.md"), renderScaffoldSetupChecklist(spec));
 
   console.log(`Initialized ${appName} in ${targetDir}`);
   console.log(`Profile: ${spec.profile.displayName}`);
@@ -216,6 +218,7 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
   console.log("  5. npm test");
   console.log("  6. npm run doctor");
   console.log("  7. npm run dev");
+  console.log("  8. open TRELLIS_SETUP.md");
 }
 
 function printPlan(module: AiSdrModuleDefinition) {
@@ -325,6 +328,7 @@ http://localhost:3000/dashboard
 
 ## Notes
 
+- follow \`TRELLIS_SETUP.md\` for the first boot and verification path
 - \`ai-sdr.config.ts\` controls the active modules and provider bindings
 - optional providers can be removed or added by editing the config and env
 - this scaffold preserves the current reference app behavior while the framework packages are still being extracted

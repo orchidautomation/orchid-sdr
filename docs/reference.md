@@ -97,6 +97,7 @@ Current tracked skills:
 - `skills/sdr-copy`
 - `skills/reply-policy`
 - `skills/handoff-policy`
+- `skills/setup-and-verify`
 
 How skills are loaded:
 
