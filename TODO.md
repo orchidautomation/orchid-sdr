@@ -1,166 +1,359 @@
 # TODO
 
-This file is the practical confidence checklist for Orchid SDR.
+This file is the working state document for the product currently living in this repo.
 
-It is not a product wishlist.
-It is the set of things that are still untested, partially tested, or still need tightening before the system feels fully trustworthy in production.
+Current framing:
 
-## P0: Must Validate Before Real Outbound
+- **Product:** `Trellis`
+- **Company / studio:** Orchid Labs
+- **Category:** Composable Agentic GTM
+- **Current reference app:** Orchid SDR
 
-- [x] Complete the real AgentMail send/reply smoke test.
-  Proven on Apr 24, 2026:
-  - `NO_SENDS_MODE=false` path works when intentionally enabled
-  - one campaign sender inbox was auto-provisioned and pinned
-  - the outbound message was written to `messages`
-  - `provider_inbox_id`, `provider_thread_id`, and `provider_message_id` were stored
-  - the happy-path `mail.send` call through the remote MCP surface completed successfully
-  - replying to the email woke `/webhooks/agentmail`
-  - the inbound message was stored
-  - the reply was classified as `positive`
-  - the thread moved into `respond_or_handoff`
-  - with `NO_SENDS_MODE=true` restored, the thread paused safely after the inbound path
+This is no longer just an outbound checklist. It is the current map of:
 
-- [x] Verify the happy-path `mail.send` call through the remote MCP surface.
-  Proven on Apr 24, 2026:
-  - blocked sends short-circuit correctly
-  - the old "hang while blocked" bug was fixed
-  - the policy-check hang was fixed with timeout fallback
-  - the AgentMail sender provisioning bug was fixed (invalid `client_id` format)
-  - one clean allowed send through MCP completed and advanced the thread to `await_reply`
+- what exists today
+- what is partially done
+- what still blocks the framework/product from feeling complete
 
-- [x] Fix quiet-hours timezone behavior.
-  Proven on Apr 24, 2026:
-  - quiet hours are evaluated in the campaign's local IANA timezone
-  - the default campaign was updated live to `America/New_York`
-  - new campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE`
-  - the first-party MCP now exposes `control.setCampaignTimezone` for live updates
+## Current Truth
 
-- [x] Auto-sync Attio after `OutboundSent` and promote the card on classified replies.
-  Current state:
-  - first outbound can auto-run the deterministic `crm.syncProspect` path at `ATTIO_AUTO_OUTBOUND_STAGE`
-  - reply classification can auto-promote the same Attio card using the positive / negative reply stage envs
-  - manual `crm.syncProspect` still exists for operator control
+What is true right now:
 
-## P1: Strong Confidence Tests
+- the repo runs as a **single application package** named `orchid-sdr`
+- the framework now has **typed capability bindings**, **module definitions**, **package boundaries**, and **composition profiles**
+- the default research taxonomy is now explicitly:
+  - `research.search.v1`
+  - `research.extract.v1`
+  - `research.deepResearch.v1`
+  - `research.monitor.v1`
+  - `research.enrich.v1`
+- the default provider split is now:
+  - `search -> firecrawl`
+  - `extract -> firecrawl`
+  - `deep research -> parallel`
+  - `monitor -> parallel`
+  - `enrichment -> prospeo`
+- the app is deployed and working with:
+  - Vercel
+  - Rivet
+  - Convex
+  - Neon/Postgres still required for the current repository layer
+- the operator dashboard, pause controls, Rivet integration, and framework config-driven provider selection are live
 
-- [ ] Run a full discovery -> qualification -> research -> database append loop on a fresh signal source and verify all artifacts.
-  Verify:
-  - `signals`
-  - `prospects`
-  - `threads`
-  - `research_briefs`
-  - audit events
-  - dashboard state
-  - MCP state
+What is **not** true yet:
 
-- [ ] Test generic `/webhooks/signals` with at least one non-Apify source payload.
-  Good candidates:
-  - manual test source
-  - X/Twitter-like normalized payload
-  - another public-signal source
-  Goal:
-  - prove the normalized signal contract is real, not just Apify-compatible
+- this is **not yet** a real multi-package npm workspace
+- `@ai-sdr/*` packages are currently **package boundaries / target packages**, not fully extracted published packages
+- `npx ai-sdr init` does **not** exist yet
+- the reference app still depends on some implicit app glue rather than being fully generated from config
+- Convex is **not yet** the full operational source of truth for all entities
 
-- [ ] Validate Apify failure and retry paths.
-  Specifically:
-  - empty run
-  - malformed payload
-  - webhook misses / late arrivals
-  - repeated deliveries
-  - provider run failure visibility in dashboard + MCP
+## How To Run It Today
 
-- [ ] Re-score or refresh older prospects after major qualification logic changes.
-  Current state:
-  - new prospects use the current framework
-  - older rows may still reflect older qualification behavior
-  Need:
-  - one explicit re-qualification job or procedure
+This is how it works **right now**, before the packaging/wizard work is finished:
 
-- [ ] Test reply classification and handoff on real inbound examples.
-  Proven on Apr 24, 2026:
-  - positive reply path works end to end with real AgentMail webhook payloads
-  Still need scenarios:
+1. install dependencies
+
+```bash
+npm install
+```
+
+2. configure env
+
+```bash
+cp .env.example .env
+```
+
+3. validate the repo
+
+```bash
+npm run typecheck
+npm test
+npm run doctor
+```
+
+4. build and run
+
+```bash
+npm run build
+npm run db:migrate
+npm run dev
+```
+
+5. use the current local framework CLI prototype
+
+```bash
+npm run ai-sdr -- modules
+npm run ai-sdr -- check
+npm run ai-sdr -- add search firecrawl
+npm run ai-sdr -- add extract firecrawl
+npm run ai-sdr -- add deep-research parallel
+npm run ai-sdr -- add monitor parallel
+npm run ai-sdr -- add enrichment prospeo
+```
+
+Important:
+
+- this current `ai-sdr` CLI is a **prototype helper**, not the finished onboarding/install wizard
+- it prints install/composition information; it does **not** scaffold a new project yet
+
+## What Has Been Done
+
+### Framework / Composition
+
+- [x] introduce typed framework config in `ai-sdr.config.ts`
+- [x] define module metadata for the current providers
+- [x] define provider metadata from modules
+- [x] add capability bindings
+- [x] add package boundary metadata for future `@ai-sdr/*` extraction
+- [x] add composition profiles:
+  - `minimum`
+  - `productionParity`
+- [x] validate config references and unsupported bindings
+- [x] expose a prototype `npm run ai-sdr` CLI
+
+### Taxonomy / Provider Mapping
+
+- [x] formalize research contracts:
+  - `research.search.v1`
+  - `research.extract.v1`
+  - `research.deepResearch.v1`
+  - `research.monitor.v1`
+  - `research.enrich.v1`
+- [x] keep CLI labels simple:
+  - `search`
+  - `extract`
+  - `deep-research`
+  - `monitor`
+  - `enrichment`
+- [x] bind Firecrawl to search/extract by default
+- [x] bind Parallel to deep research/monitor by default
+- [x] bind Prospeo to enrichment by default
+
+### Runtime / Deployment
+
+- [x] Vercel production deployment
+- [x] Rivet connected to Vercel deployment
+- [x] Convex production deployment created and wired
+- [x] dashboard split into faster core data and slower runtime data
+- [x] pause automation control
+- [x] pause semantics changed to:
+  - allow in-flight work to finish
+  - prevent new automation from starting
+
+### Vision / Product Direction
+
+- [x] private vision doc created and maintained in `.agents/vision/`
+- [x] broader GTM preset ideas documented
+- [x] linked intelligence / attribution / meeting prep / CS use cases documented
+- [x] naming direction updated:
+  - product: `Trellis`
+  - category: `Composable Agentic GTM`
+
+## What Still Needs To Be Done
+
+## P0: Turn It Into A Real Framework Product
+
+- [ ] extract the package boundaries into a real workspace/package structure
+  - likely shape:
+    - `@ai-sdr/framework`
+    - `@ai-sdr/firecrawl`
+    - `@ai-sdr/parallel`
+    - `@ai-sdr/prospeo`
+    - `@ai-sdr/attio`
+    - `@ai-sdr/agentmail`
+    - `@ai-sdr/convex`
+    - `@ai-sdr/neon`
+    - `@ai-sdr/rivet`
+    - `@ai-sdr/vercel-sandbox`
+    - `@ai-sdr/vercel-ai-gateway`
+    - `@ai-sdr/webhooks`
+    - `@ai-sdr/mcp`
+- [ ] decide on the workspace/package manager shape
+  - npm workspaces vs pnpm vs turbo
+  - package build/publish strategy
+- [ ] define the minimal public package surface for each extracted package
+- [ ] make the reference app consume those packages rather than local module boundaries
+
+## P0: Build The Real Onboarding Flow
+
+- [ ] build `npx ai-sdr init`
+- [ ] generate a new project from a template instead of expecting repo surgery
+- [ ] support at least three profiles:
+  - `demo`
+  - `starter`
+  - `production`
+- [ ] wizard should collect:
+  - project/preset name
+  - runtime choice
+  - state/database choice
+  - research provider choices
+  - CRM/email/handoff choices
+- [ ] wizard should generate:
+  - config file
+  - `.env.example`
+  - install checklist
+  - deploy checklist
+  - optional skills/knowledge scaffolding
+
+## P0: Finish The State Plane Migration
+
+- [ ] move prospects into Convex-backed state plane boundaries
+- [ ] move threads into Convex-backed state plane boundaries
+- [ ] move messages into Convex-backed state plane boundaries
+- [ ] move provider runs into Convex-backed state plane boundaries
+- [ ] move dashboard reads off the old repository path where appropriate
+- [ ] reduce or remove the current hard dependency on `DATABASE_URL` for the default future architecture
+
+Important current truth:
+
+- Convex is now part of the runtime architecture
+- Neon/Postgres is still operationally required by the current reference app
+
+## P0: Finish Provider Normalization
+
+- [ ] formalize contracts for:
+  - CRM
+  - email
+  - handoff
+  - source
+  - state
+  - runtime
+- [ ] define which provider capabilities are:
+  - default
+  - optional
+  - experimental
+- [ ] add stronger provider-specific smoke checks
+- [ ] model MCP-first providers cleanly:
+  - fast path = MCP + skills
+  - productized path = package + config binding
+
+## P0: Make The Reference App Truly Config-Driven
+
+- [ ] reduce remaining implicit adapter wiring inside the reference app
+- [ ] allow the app to instantiate its runtime shape entirely from config selections
+- [ ] make missing capabilities fail clearly and early
+- [ ] ensure removing a provider from config actually removes the behavior cleanly
+
+Example target behavior:
+
+- remove Attio -> no CRM sync
+- remove Firecrawl -> no search/extract
+- remove Parallel -> no deep research or monitor
+- remove AgentMail -> no outbound email lane
+
+## P1: Productization / Docs / Installability
+
+- [ ] update README to describe `Trellis` framing without breaking the current Orchid SDR reference app explanation
+- [ ] document the package taxonomy clearly
+- [ ] document the preset model clearly
+- [ ] create a first-class setup guide for:
+  - local development
+  - self-hosted customer deployment
+  - Vercel + Rivet + Convex default deployment
+- [ ] add automated secret/env validation for the wizard path
+- [ ] add generated examples for:
+  - `ai-sdr`
+  - `inbound-router`
+  - `meeting-prep`
+  - `signal-ops`
+
+## P1: Deploy / Provisioning UX
+
+- [ ] make it easier to wire:
+  - Vercel
+  - Rivet
+  - Convex
+  - Neon
+  - Firecrawl
+  - Parallel
+  - Attio
+  - AgentMail
+- [ ] decide how much provisioning the wizard should automate vs document
+- [ ] add one happy-path “best stack” deploy flow for the default opinionated setup
+
+## P1: Operational Confidence Still Needed
+
+- [ ] run a full discovery -> qualification -> research -> database/state append loop on a fresh signal source and verify all artifacts
+- [ ] test generic `/webhooks/signals` with at least one non-Apify source payload
+- [ ] validate Apify failure and retry paths
+- [ ] re-score or refresh older prospects after major qualification logic changes
+- [ ] test real reply classifications beyond the positive path:
   - objection
   - referral
   - unsubscribe
   - wrong person
-  Goal:
-  - verify pause / handoff / continue behavior with real provider payloads across those classes
 
-## P2: Operational Hardening
+## P2: Operator / Observability Hardening
 
-- [ ] Persist richer sandbox logs.
-  Current state:
-  - sandbox job status/output/error is visible
-  Missing:
-  - clean raw stdout/stderr or transcript-grade logs for failed turns
-
-- [ ] Improve operator visibility for why sends are blocked.
-  Current state:
-  - reasons exist in the tool path and thread pause reason
-  Better:
-  - one clean dashboard/MCP surface for blocked-send diagnostics
-
-- [ ] Add a manual `research.rebuild` or `lead.refreshResearch` control.
-  Why:
-  - useful after changing copy skills, research-brief format, or ICP docs
-
-- [ ] Add a one-off Attio duplicate cleanup tool for old records created before stronger idempotency.
-  Current state:
-  - future syncs are much better
-  - historical duplicate people may still exist
-
-- [ ] Stabilize live `mail.preview` latency for on-demand sandbox drafts.
-  Current state:
-  - the draft path works conceptually and has produced good copy
-  - live preview calls can still hang long enough to feel broken in operator workflows
-  Need:
-  - timeout / queueing / better operator visibility so preview behaves predictably
-
-- [ ] Add a clearer sandbox / preview mode for send testing.
-  Current state:
-  - `mail.preview` exists, but the live operator experience is still not reliable enough
-  Nice improvement:
-  - a dedicated "generate but do not send and do not mutate state" test tool for operator workflows
-
-## P3: Before Calling It Boring And Reliable
-
-- [x] Add automated post-send CRM sync if that remains the chosen behavior.
-- [ ] Add first-class X discovery once the source adapter is ready.
-- [x] Add per-campaign timezone support if outbound becomes customer-facing.
-- [ ] Add stronger throughput / cost / conversion scorecards.
-- [ ] Add one prospect detail page that shows:
+- [ ] persist richer sandbox logs
+- [ ] improve blocked-send diagnostics in dashboard + MCP
+- [ ] add a manual `research.rebuild` or `lead.refreshResearch` control
+- [ ] add a dedicated preview/test mode for outbound generation
+- [ ] add stronger throughput / cost / conversion scorecards
+- [ ] add one prospect detail page with:
   - qualification reasoning
   - research brief
   - copy guidance
   - send / reply history
   - CRM sync state
 
-## What Already Looks Good
+## P2: Future Capability Expansion
 
-These are not TODOs, just reminders of what is already in decent shape:
+- [ ] add more first-class capability families over time:
+  - `browser`
+  - `retrieval`
+  - `knowledge_sync`
+  - `private_context`
+  - possibly `identity`
+  - possibly `analytics`
+- [ ] evaluate future provider packages for:
+  - Exa
+  - Steel
+  - Airweave
+  - Salesforce
+  - HubSpot
+  - Twenty
+  - Nango-backed CRM adapters
 
-- [x] discovery scheduling via Rivet actors
-- [x] Firecrawl-backed research path
-- [x] ICP-driven qualification framework
-- [x] draft preview path through MCP
-- [x] remote MCP operator surface
-- [x] Attio deterministic sync with stored IDs
-- [x] campaign sender guardrails for AgentMail
-- [x] simpler README and separate reference docs
+## Decisions Already Made
 
-## Current Bottom Line
+- [x] internal contracts stay precise
+- [x] public CLI/wizard labels stay simple
+- [x] Firecrawl is the default search/extract provider
+- [x] Parallel is the default deep-research/monitor provider
+- [x] Prospeo is the default enrichment provider
+- [x] `.agents/vision/` remains private and gitignored
+- [x] `Trellis` is the product name direction
+- [x] `useTrellis.dev` is good enough as the current domain
 
-If the question is:
+## Short Answer: Do We Still Need The CLI Wizard?
 
-"Can this be open-sourced and shown publicly?"
+Yes.
 
-The answer is yes.
+Right now the system is powerful, but still too repo-native.
 
-If the question is:
+Without the wizard, a new user still has to understand:
 
-"Can this run real outbound with confidence?"
+- env setup
+- provider selection
+- capability bindings
+- deployment choices
+- knowledge pack editing
+- runtime wiring
 
-The answer is:
+That is too much friction for the product shape you want.
 
-Yes for operator-guided outbound, with `mail.preview` latency still the main rough edge to smooth out.
+`npx ai-sdr init` or a broader future `trellis` CLI is still one of the highest-value missing pieces.
+
+## Short Answer: What Still Blocks "Packages And Stuff"?
+
+The biggest blockers are:
+
+1. real workspace/package extraction
+2. real scaffold/init wizard
+3. full Convex state-plane migration
+4. fully config-driven reference app wiring
+5. smoother provisioning/deploy UX
+
+Until those are done, the framework exists conceptually and operationally, but not yet in the polished installable form you want.
