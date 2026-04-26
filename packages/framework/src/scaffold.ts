@@ -8,20 +8,46 @@ import {
   type AiSdrModuleDefinition,
   type AiSdrPackageBoundary,
 } from "./index.js";
+import { evaluateModuleComposition, type AiSdrCompositionProfileId } from "./composition.js";
 
 export type AiSdrInitProfile = {
   id: string;
   displayName: string;
   description: string;
+  defaultDirectoryName: string;
   compositionTargets: string[];
   moduleIds: string[];
 };
 
+export type AiSdrInitModuleChoice = {
+  id: string;
+  displayName: string;
+  description: string;
+  moduleId: string;
+};
+
 export const aiSdrInitProfiles = {
+  demo: {
+    id: "demo",
+    displayName: "Demo workspace",
+    description: "Smallest honest Trellis workspace for local boot, dashboard verification, MCP inspection, and manual signal ingest. No live discovery, CRM sync, or outbound providers.",
+    defaultDirectoryName: "trellis-demo",
+    compositionTargets: ["minimum"],
+    moduleIds: [
+      "normalized-webhook",
+      "firecrawl",
+      "convex",
+      "rivet",
+      "vercel-sandbox",
+      "vercel-ai-gateway",
+      "orchid-mcp",
+    ],
+  },
   core: {
     id: "core",
     displayName: "Core runtime",
     description: "Smallest self-hostable Trellis runtime that can ingest normalized signals, research the web, run actors, persist state, and expose MCP tools.",
+    defaultDirectoryName: "trellis-core",
     compositionTargets: ["minimum"],
     moduleIds: [
       "normalized-webhook",
@@ -37,6 +63,7 @@ export const aiSdrInitProfiles = {
     id: "starter",
     displayName: "Starter AI SDR",
     description: "Core runtime plus discovery, deep research, and enrichment for a dry-run AI SDR deployment.",
+    defaultDirectoryName: "trellis-starter",
     compositionTargets: ["minimum"],
     moduleIds: [
       "normalized-webhook",
@@ -55,6 +82,7 @@ export const aiSdrInitProfiles = {
     id: "production",
     displayName: "Production parity AI SDR",
     description: "Current Orchid SDR stack with outbound email, CRM sync, handoff, discovery, and the full research lane.",
+    defaultDirectoryName: "trellis-production",
     compositionTargets: ["minimum", "productionParity"],
     moduleIds: [
       "normalized-webhook",
@@ -76,6 +104,45 @@ export const aiSdrInitProfiles = {
 
 export type AiSdrInitProfileId = keyof typeof aiSdrInitProfiles;
 
+export const aiSdrInitModuleChoices = [
+  {
+    id: "discovery",
+    displayName: "Live Discovery",
+    description: "Apify LinkedIn public-post discovery for finding new signals on a schedule.",
+    moduleId: "apify-linkedin",
+  },
+  {
+    id: "deep-research",
+    displayName: "Deep Research",
+    description: "Parallel deep research and monitoring for broader async research workflows.",
+    moduleId: "parallel",
+  },
+  {
+    id: "enrichment",
+    displayName: "Enrichment",
+    description: "Prospeo contact enrichment for email discovery and higher-confidence prospect data.",
+    moduleId: "prospeo",
+  },
+  {
+    id: "crm",
+    displayName: "CRM Sync",
+    description: "Attio writeback for prospects, accounts, and stage updates.",
+    moduleId: "attio",
+  },
+  {
+    id: "email",
+    displayName: "Outbound Email",
+    description: "AgentMail outbound sending, inboxes, and reply handling.",
+    moduleId: "agentmail",
+  },
+  {
+    id: "handoff",
+    displayName: "Slack Handoff",
+    description: "Slack notifications and human escalation routing.",
+    moduleId: "slack-handoff",
+  },
+] as const satisfies readonly AiSdrInitModuleChoice[];
+
 export type AiSdrScaffoldSpec = {
   profile: AiSdrInitProfile;
   config: AiSdrConfig;
@@ -93,12 +160,14 @@ export function buildScaffoldSpec(
     name: string;
     description?: string;
     profile?: string;
+    moduleIds?: string[];
   },
 ): AiSdrScaffoldSpec {
   const profile = resolveInitProfile(input.profile);
-  const selectedModuleIdSet = new Set(profile.moduleIds);
+  const selectedModuleIdSet = new Set(input.moduleIds ?? profile.moduleIds);
   const selectedModules = (baseConfig.modules ?? []).filter((module) => selectedModuleIdSet.has(module.id));
   const selectedProviderIdSet = new Set(providersFromModules(selectedModules).map((provider) => provider.id));
+  const compositionTargets = resolveScaffoldCompositionTargets(profile, selectedModules);
 
   const capabilityBindings = filterCapabilityBindings(
     baseConfig.capabilityBindings ?? [],
@@ -119,7 +188,7 @@ export function buildScaffoldSpec(
     ...baseConfig,
     name: input.name,
     description: input.description ?? baseConfig.description,
-    compositionTargets: [...profile.compositionTargets],
+    compositionTargets,
     modules: selectedModules,
     providers: providersFromModules(selectedModules),
     capabilityBindings,
@@ -133,6 +202,34 @@ export function buildScaffoldSpec(
     selectedModules,
     envVars: collectConfigEnv(config),
   };
+}
+
+export function resolveInitModuleIds(
+  profileId: string | undefined,
+  input: {
+    include?: string[];
+    exclude?: string[];
+  } = {},
+) {
+  const profile = resolveInitProfile(profileId);
+  const selectedModuleIds = new Set(profile.moduleIds);
+  const include = new Set(input.include ?? []);
+  const exclude = new Set(input.exclude ?? []);
+
+  for (const choice of aiSdrInitModuleChoices) {
+    if (include.has(choice.id) || include.has(choice.moduleId)) {
+      selectedModuleIds.add(choice.moduleId);
+    }
+    if (exclude.has(choice.id) || exclude.has(choice.moduleId)) {
+      selectedModuleIds.delete(choice.moduleId);
+    }
+  }
+
+  return [...selectedModuleIds];
+}
+
+export function isInitModuleEnabled(profile: AiSdrInitProfile, choice: AiSdrInitModuleChoice) {
+  return profile.moduleIds.includes(choice.moduleId);
 }
 
 export function renderScaffoldConfigModule(spec: AiSdrScaffoldSpec) {
@@ -208,6 +305,8 @@ export function renderScaffoldSetupChecklist(spec: AiSdrScaffoldSpec) {
   return `# Trellis Setup Checklist
 
 This project was scaffolded with the **${spec.profile.displayName}** profile.
+
+${spec.profile.description}
 
 ## What This Profile Includes
 
@@ -285,6 +384,14 @@ function filterCapabilityBindings(
   selectedProviderIds: Set<string>,
 ) {
   return capabilityBindings.filter((binding) => selectedProviderIds.has(binding.providerId));
+}
+
+function resolveScaffoldCompositionTargets(profile: AiSdrInitProfile, selectedModules: AiSdrModuleDefinition[]) {
+  const supportedTargets = profile.compositionTargets.filter((target) =>
+    evaluateModuleComposition(selectedModules, { profile: target as AiSdrCompositionProfileId }).ok,
+  );
+
+  return supportedTargets.length > 0 ? supportedTargets : ["minimum"];
 }
 
 function filterPackageBoundaries(

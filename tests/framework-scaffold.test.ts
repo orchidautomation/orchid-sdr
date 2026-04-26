@@ -2,13 +2,36 @@ import { describe, expect, it } from "vitest";
 
 import baseConfig from "../ai-sdr.config.js";
 import {
+  aiSdrInitModuleChoices,
   buildScaffoldSpec,
   renderScaffoldConfigModule,
   renderScaffoldEnvExample,
   renderScaffoldSetupChecklist,
+  resolveInitModuleIds,
 } from "../src/framework/scaffold.js";
 
 describe("framework scaffold profiles", () => {
+  it("builds a demo scaffold for manual signal workflows", () => {
+    const spec = buildScaffoldSpec(baseConfig, {
+      name: "trellis-demo",
+      profile: "demo",
+    });
+
+    expect(spec.profile.id).toBe("demo");
+    expect(spec.profile.defaultDirectoryName).toBe("trellis-demo");
+    expect(spec.config.compositionTargets).toEqual(["minimum"]);
+    expect(spec.config.campaigns?.[0]?.sources).toEqual(["normalized-webhook"]);
+    expect(spec.selectedModules.map((module) => module.id)).toEqual([
+      "normalized-webhook",
+      "firecrawl",
+      "convex",
+      "vercel-ai-gateway",
+      "rivet",
+      "vercel-sandbox",
+      "orchid-mcp",
+    ]);
+  });
+
   it("builds a core scaffold without optional providers", () => {
     const spec = buildScaffoldSpec(baseConfig, {
       name: "trellis-core",
@@ -45,6 +68,38 @@ describe("framework scaffold profiles", () => {
     expect(spec.config.campaigns?.[0]?.sources).toEqual(["normalized-webhook", "apify-linkedin"]);
   });
 
+  it("can extend a demo scaffold with optional module choices", () => {
+    const moduleIds = resolveInitModuleIds("demo", {
+      include: ["discovery", "deep-research"],
+    });
+    const spec = buildScaffoldSpec(baseConfig, {
+      name: "trellis-demo-plus",
+      profile: "demo",
+      moduleIds,
+    });
+
+    expect(aiSdrInitModuleChoices.map((choice) => choice.id)).toContain("discovery");
+    expect(spec.selectedModules.map((module) => module.id)).toContain("apify-linkedin");
+    expect(spec.selectedModules.map((module) => module.id)).toContain("parallel");
+    expect(spec.config.campaigns?.[0]?.sources).toEqual(["normalized-webhook", "apify-linkedin"]);
+  });
+
+  it("drops production parity when optional production modules are removed", () => {
+    const moduleIds = resolveInitModuleIds("production", {
+      exclude: ["crm", "email", "handoff"],
+    });
+    const spec = buildScaffoldSpec(baseConfig, {
+      name: "trellis-prod-lite",
+      profile: "production",
+      moduleIds,
+    });
+
+    expect(spec.config.compositionTargets).toEqual(["minimum"]);
+    expect(spec.selectedModules.map((module) => module.id)).not.toContain("attio");
+    expect(spec.selectedModules.map((module) => module.id)).not.toContain("agentmail");
+    expect(spec.selectedModules.map((module) => module.id)).not.toContain("slack-handoff");
+  });
+
   it("renders scaffold config and env example content", () => {
     const spec = buildScaffoldSpec(baseConfig, {
       name: "trellis-starter",
@@ -65,6 +120,7 @@ describe("framework scaffold profiles", () => {
     expect(envExample).toContain("PARALLEL_API_KEY=");
     expect(envExample).toContain("ORCHID_SDR_SANDBOX_TOKEN=change-me");
     expect(setupChecklist).toContain("# Trellis Setup Checklist");
+    expect(setupChecklist).toContain(spec.profile.description);
     expect(setupChecklist).toContain("`CONVEX_URL`");
     expect(setupChecklist).not.toContain("`DATABASE_URL`");
   });

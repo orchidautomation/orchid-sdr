@@ -5,19 +5,41 @@ This is the shortest path to a working Trellis reference app.
 ## 1. Scaffold
 
 ```bash
-npm run ai-sdr -- init ../trellis-starter --profile starter --name trellis-starter
+npm run ai-sdr -- init
 ```
 
 Profiles:
 
+- `demo` - manual signals, dashboard, MCP, and local runtime verification with no live discovery or outbound providers
 - `core` - minimum runtime
 - `starter` - core plus discovery, deep research, and enrichment
 - `production` - current production-parity reference stack
 
+The wizard also lets you keep or remove optional modules such as:
+
+- live discovery
+- deep research
+- enrichment
+- CRM sync
+- outbound email
+- Slack handoff
+
+If you already know what you want, the flag path still works:
+
+```bash
+npm run ai-sdr -- init ../trellis-starter --profile starter --name trellis-starter
+```
+
+You can also override optional modules directly:
+
+```bash
+npm run ai-sdr -- init ../trellis-demo-plus --profile demo --with-discovery --with-deep-research
+```
+
 ## 2. Install
 
 ```bash
-cd ../trellis-starter
+cd <your-target-directory>
 npm install
 cp .env.example .env
 ```

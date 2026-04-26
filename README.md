@@ -107,7 +107,7 @@ It wakes up on a schedule, finds leads from public signals, researches the perso
 If you want a new working reference app scaffold from this repo:
 
 ```bash
-npm run ai-sdr -- init ../trellis-starter --profile starter --name trellis-starter
+npm run ai-sdr -- init
 ```
 
 The generated project includes:
@@ -115,6 +115,13 @@ The generated project includes:
 - `TRELLIS_SETUP.md` with the exact first-boot checklist for that selected profile
 - `packages/` with the extracted local `@ai-sdr/*` workspace packages
 - a workspace-backed `package.json` so the generated app installs and runs as its own local Trellis workspace
+- optional module prompts for discovery, deep research, enrichment, CRM, outbound email, and handoff when you use the wizard path
+
+If you already know which profile you want, the explicit path still works:
+
+```bash
+npm run ai-sdr -- init ../trellis-starter --profile starter --name trellis-starter
+```
 
 For the current repo itself:
 

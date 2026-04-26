@@ -115,6 +115,7 @@ Important:
 - [x] validate config references and unsupported bindings
 - [x] expose a prototype `npm run ai-sdr` CLI
 - [x] add a first-pass `npm run ai-sdr -- init` scaffold flow with:
+  - `demo`
   - `core`
   - `starter`
   - `production` profiles
@@ -163,6 +164,7 @@ Important:
 - [x] added a first-pass getting-started guide in `docs/getting-started.md`
 - [x] added a tracked `skills/setup-and-verify` skill for first-boot agent guidance
 - [x] make `init` generate workspace-backed package dependencies and copy local `packages/`
+- [x] make `init` work as an interactive local wizard when you omit the target directory
 
 ## What Still Needs To Be Done
 
@@ -197,27 +199,34 @@ Important:
 
 - [ ] publish the scaffold flow as a real `npx ai-sdr init` experience
 - [x] generate a new project from a template instead of expecting repo surgery
-- [ ] support at least three profiles:
+- [x] support at least three profiles:
   - `demo`
   - `starter`
   - `production`
 - [x] support current local profiles:
+  - `demo`
   - `core`
   - `starter`
   - `production`
+- [ ] add a stricter zero-vendor mock profile if we want a pure no-accounts demo later
 - [ ] wizard should collect:
   - project/preset name
   - runtime choice
   - state/database choice
-  - research provider choices
-  - CRM/email/handoff choices
+- [x] wizard now collects optional module choices for:
+  - discovery
+  - deep research
+  - enrichment
+  - CRM
+  - email
+  - handoff
 - [ ] wizard should generate:
   - config file
   - `.env.example`
   - install checklist
   - deploy checklist
   - optional skills/knowledge scaffolding
-- [ ] make `init` interactive instead of flag-only
+- [x] make `init` interactive instead of flag-only
 - [ ] split `init` into product presets as the framework grows beyond AI SDR
 
 ## P0: Finish The State Plane Migration
