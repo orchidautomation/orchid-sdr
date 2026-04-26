@@ -1,0 +1,23 @@
+{
+  "name": "@ai-sdr/framework",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./composition": "./src/composition.ts",
+    "./install-plan": "./src/install-plan.ts",
+    "./providers": "./src/providers.ts",
+    "./builtin-modules": "./src/builtin-modules.ts",
+    "./scaffold": "./src/scaffold.ts",
+    "./signals": "./src/signals.ts",
+    "./state": "./src/state.ts",
+    "./validation": "./src/validation.ts",
+    "./provider-contracts": "./src/provider-contracts.ts",
+    "./crm": "./src/crm.ts"
+  },
+  "peerDependencies": {
+    "zod": "^3.25.76"
+  }
+}

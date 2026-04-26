@@ -1,0 +1,9 @@
+{
+  "name": "@ai-sdr/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ai-sdr": "./src/cli.ts"
+  }
+}

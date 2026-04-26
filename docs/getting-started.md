@@ -54,6 +54,7 @@ http://localhost:3000/dashboard
 Every scaffolded project includes:
 
 - `TRELLIS_SETUP.md`
+- `packages/` with the local `@ai-sdr/*` workspace packages used by the scaffold
 
 That file is the profile-specific onboarding checklist. Start there before enabling discovery, CRM, or outbound email.
 

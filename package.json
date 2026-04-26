@@ -2,6 +2,9 @@
   "name": "orchid-sdr",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "license": "AGPL-3.0-only",
   "type": "module",
   "engines": {
@@ -14,7 +17,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ai-sdr": "tsx scripts/ai-sdr.ts",
+    "ai-sdr": "tsx packages/ai-sdr/src/cli.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "doctor": "tsx scripts/doctor.ts",
     "discovery:tick": "tsx scripts/discovery-tick.ts",

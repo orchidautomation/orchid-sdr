@@ -20,6 +20,7 @@ This is no longer just an outbound checklist. It is the current map of:
 What is true right now:
 
 - the repo runs as a **single application package** named `orchid-sdr`
+- the repo is now also an **npm workspace** with extracted local packages under `packages/`
 - the framework now has **typed capability bindings**, **module definitions**, **package boundaries**, and **composition profiles**
 - the default research taxonomy is now explicitly:
   - `research.search.v1`
@@ -43,9 +44,9 @@ What is true right now:
 
 What is **not** true yet:
 
-- this is **not yet** a real multi-package npm workspace
-- `@ai-sdr/*` packages are currently **package boundaries / target packages**, not fully extracted published packages
-- `npm run ai-sdr -- init` now exists as a **first-pass scaffold command**
+- this is **not yet** a published multi-package npm distribution
+- the extracted `@ai-sdr/*` packages are real local workspace packages, but they are **not published to npm** yet
+- `npm run ai-sdr -- init` now generates a **workspace-backed scaffold**
 - a published `npx ai-sdr init` experience still does **not** exist yet
 - the reference app still depends on some implicit app glue rather than being fully generated from config
 - the state-plane contract still has some compatibility-era duplication semantics that should be simplified now that the repository is also Convex-backed
@@ -95,8 +96,9 @@ npm run ai-sdr -- add enrichment prospeo
 
 Important:
 
-- this current `ai-sdr` CLI is a **prototype helper**, not the finished onboarding/install wizard
-- it can now scaffold a working reference app template, but it is still not the polished published onboarding experience
+- this current `ai-sdr` CLI is now a **workspace-backed local install surface**
+- it can scaffold a working reference app template that includes local `@ai-sdr/*` packages
+- it is still not the polished published `npx` onboarding experience
 
 ## What Has Been Done
 
@@ -160,31 +162,36 @@ Important:
 - [x] generated `TRELLIS_SETUP.md` per scaffolded project
 - [x] added a first-pass getting-started guide in `docs/getting-started.md`
 - [x] added a tracked `skills/setup-and-verify` skill for first-boot agent guidance
+- [x] make `init` generate workspace-backed package dependencies and copy local `packages/`
 
 ## What Still Needs To Be Done
 
 ## P0: Turn It Into A Real Framework Product
 
-- [ ] extract the package boundaries into a real workspace/package structure
-  - likely shape:
+- [x] extract the first package boundaries into a real workspace/package structure
+  - current local packages:
     - `@ai-sdr/framework`
+    - `@ai-sdr/convex`
     - `@ai-sdr/firecrawl`
     - `@ai-sdr/parallel`
-    - `@ai-sdr/prospeo`
-    - `@ai-sdr/attio`
-    - `@ai-sdr/agentmail`
-    - `@ai-sdr/convex`
-    - `@ai-sdr/neon`
     - `@ai-sdr/rivet`
     - `@ai-sdr/vercel-sandbox`
     - `@ai-sdr/vercel-ai-gateway`
     - `@ai-sdr/webhooks`
+    - `@ai-sdr/apify-linkedin`
+    - `@ai-sdr/prospeo`
+    - `@ai-sdr/attio`
+    - `@ai-sdr/agentmail`
+    - `@ai-sdr/slack`
     - `@ai-sdr/mcp`
-- [ ] decide on the workspace/package manager shape
-  - npm workspaces vs pnpm vs turbo
-  - package build/publish strategy
+    - `@ai-sdr/cli`
+- [x] decide on the workspace/package manager shape
+  - current answer: **npm workspaces**
+- [x] make the reference app consume the extracted framework package through compatibility shims
+- [ ] decide package build/publish strategy for public npm distribution
 - [ ] define the minimal public package surface for each extracted package
-- [ ] make the reference app consume those packages rather than local module boundaries
+- [ ] replace the remaining compatibility shims with direct package imports where it improves clarity
+- [ ] decide whether `@ai-sdr/neon` should ship as a real optional package or stay internal until needed
 
 ## P0: Build The Real Onboarding Flow
 
@@ -192,6 +199,10 @@ Important:
 - [x] generate a new project from a template instead of expecting repo surgery
 - [ ] support at least three profiles:
   - `demo`
+  - `starter`
+  - `production`
+- [x] support current local profiles:
+  - `core`
   - `starter`
   - `production`
 - [ ] wizard should collect:
@@ -206,6 +217,8 @@ Important:
   - install checklist
   - deploy checklist
   - optional skills/knowledge scaffolding
+- [ ] make `init` interactive instead of flag-only
+- [ ] split `init` into product presets as the framework grows beyond AI SDR
 
 ## P0: Finish The State Plane Migration
 

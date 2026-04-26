@@ -110,7 +110,11 @@ If you want a new working reference app scaffold from this repo:
 npm run ai-sdr -- init ../trellis-starter --profile starter --name trellis-starter
 ```
 
-The generated project includes `TRELLIS_SETUP.md` with the exact first-boot checklist for that selected profile.
+The generated project includes:
+
+- `TRELLIS_SETUP.md` with the exact first-boot checklist for that selected profile
+- `packages/` with the extracted local `@ai-sdr/*` workspace packages
+- a workspace-backed `package.json` so the generated app installs and runs as its own local Trellis workspace
 
 For the current repo itself:
 

@@ -55,9 +55,11 @@ describe("framework scaffold profiles", () => {
     const envExample = renderScaffoldEnvExample(spec);
     const setupChecklist = renderScaffoldSetupChecklist(spec);
 
+    expect(configModule).toContain('from "@ai-sdr/framework"');
     expect(configModule).toContain('const selectedModuleIds =');
     expect(configModule).toContain('"compositionTargets": [');
     expect(configModule).toContain('"name": "trellis-starter"');
+    expect(configModule).not.toContain('./src/framework/index.js');
     expect(envExample).toContain("CONVEX_URL=https://your-deployment.convex.cloud");
     expect(envExample).toContain("FIRECRAWL_API_KEY=");
     expect(envExample).toContain("PARALLEL_API_KEY=");
