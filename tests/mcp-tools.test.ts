@@ -442,35 +442,76 @@ describe("OrchidMcpToolService operator tools", () => {
       })),
     };
 
+    const agentMail = {
+      isConfigured: vi.fn(() => true),
+      createInbox: vi.fn(async () => ({
+        providerInboxId: "inbox_campaign_1",
+        email: "ai-sdr@agentmail.to",
+        displayName: "Default SDR Campaign",
+        raw: {},
+      })),
+      getInbox: vi.fn(async () => ({
+        providerInboxId: "inbox_campaign_1",
+        email: "ai-sdr@agentmail.to",
+        displayName: "Default SDR Campaign",
+        raw: {},
+      })),
+      send: vi.fn(async () => ({
+        providerMessageId: "am_msg_1",
+        providerThreadId: "am_thr_1",
+        providerInboxId: "inbox_campaign_1",
+        raw: {},
+      })),
+      reply: vi.fn(async () => ({
+        providerMessageId: "am_msg_reply_1",
+        providerThreadId: "am_thr_1",
+        providerInboxId: "inbox_campaign_1",
+        raw: {},
+      })),
+      getMessage: vi.fn(async () => ({
+        providerInboxId: "inbox_campaign_1",
+        providerThreadId: "am_thr_1",
+        providerMessageId: "am_msg_1",
+        subject: "Hello",
+        bodyText: "body",
+        bodyHtml: null,
+        raw: {},
+      })),
+    };
+
     const context = {
       repository,
       attio,
-      agentMail: {
-        isConfigured: vi.fn(() => true),
-        createInbox: vi.fn(async () => ({
-          providerInboxId: "inbox_campaign_1",
-          email: "ai-sdr@agentmail.to",
-          displayName: "Default SDR Campaign",
-          raw: {},
-        })),
-        getInbox: vi.fn(async () => ({
-          providerInboxId: "inbox_campaign_1",
-          email: "ai-sdr@agentmail.to",
-          displayName: "Default SDR Campaign",
-          raw: {},
-        })),
-        send: vi.fn(async () => ({
-          providerMessageId: "am_msg_1",
-          providerThreadId: "am_thr_1",
-          providerInboxId: "inbox_campaign_1",
-          raw: {},
-        })),
-        reply: vi.fn(async () => ({
-          providerMessageId: "am_msg_reply_1",
-          providerThreadId: "am_thr_1",
-          providerInboxId: "inbox_campaign_1",
-          raw: {},
-        })),
+      agentMail,
+      providers: {
+        search: {
+          providerId: "parallel",
+          search: vi.fn(async () => []),
+        },
+        extract: {
+          providerId: "firecrawl",
+          extract: vi.fn(async (url: string) => ({ url, markdown: "" })),
+          searchCompanyNews: vi.fn(async () => []),
+        },
+        enrichment: {
+          providerId: "prospeo",
+          enrich: vi.fn(async () => null),
+        },
+        crm: {
+          providerId: "attio",
+          isConfigured: attio.isConfigured,
+          adapter: attio,
+        },
+        email: {
+          providerId: "agentmail",
+          isConfigured: agentMail.isConfigured,
+          createInbox: agentMail.createInbox,
+          getInbox: agentMail.getInbox,
+          send: agentMail.send,
+          reply: agentMail.reply,
+          getMessage: agentMail.getMessage,
+        },
+        handoff: null,
       },
       ai: {
         policyCheck: vi.fn(async () => ({ allow: true })),

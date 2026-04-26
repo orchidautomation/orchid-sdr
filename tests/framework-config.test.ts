@@ -5,12 +5,14 @@ import {
   buildProviderMap,
   collectConfigEnv,
   collectKnowledgePaths,
+  collectPackageBoundaries,
   collectModuleDocs,
   collectModuleMcpServers,
   collectSkillPaths,
   defaultOrchidModules,
   defineAiSdr,
   providersFromModules,
+  resolveProviderForCapability,
   validateAiSdrConfigReferences,
 } from "../src/framework/index.js";
 
@@ -153,10 +155,12 @@ describe("AI SDR framework config helpers", () => {
     expect(config.modules?.some((item) => item.id === "rivet")).toBe(true);
     expect(config.providers?.some((item) => item.id === "attio")).toBe(true);
     expect(config.providers?.some((item) => item.id === "parallel")).toBe(true);
+    expect(config.providers?.some((item) => item.id === "prospeo")).toBe(true);
     expect(collectConfigEnv(config).some((envVar) => envVar.name === "ATTIO_API_KEY")).toBe(true);
     expect(collectConfigEnv(config).some((envVar) => envVar.name === "NEXT_PUBLIC_CONVEX_URL")).toBe(true);
     expect(collectConfigEnv(config).some((envVar) => envVar.name === "RIVET_ENDPOINT")).toBe(true);
     expect(collectConfigEnv(config).some((envVar) => envVar.name === "PARALLEL_API_KEY")).toBe(true);
+    expect(collectConfigEnv(config).some((envVar) => envVar.name === "PROSPEO_API_KEY")).toBe(true);
     expect(config.modules?.find((item) => item.id === "convex")?.contracts).toEqual([
       "state.reactive.v1",
       "state.workflow.v1",
@@ -180,10 +184,117 @@ describe("AI SDR framework config helpers", () => {
     ]);
     expect(config.modules?.find((item) => item.id === "rivet")?.contracts).toContain("runtime.actor.v1");
     expect(config.modules?.find((item) => item.id === "parallel")?.contracts).toContain("research.monitor.v1");
+    expect(config.modules?.find((item) => item.id === "prospeo")?.contracts).toContain("research.enrich.v1");
     expect(collectModuleDocs(config).some((doc) => doc.path === "docs/self-hosting.md")).toBe(true);
     expect(collectModuleMcpServers(config).some((server) => server.id === "parallel-search")).toBe(true);
     expect(collectModuleMcpServers(config).some((server) => server.id === "firecrawl")).toBe(true);
     expect(config.modules?.flatMap((item) => item.contracts ?? [])).toContain("crm.prospectSync.v1");
     expect(validateAiSdrConfigReferences(config)).toEqual([]);
+  });
+
+  it("resolves stack providers from capability bindings and package boundaries", () => {
+    const modules = defaultOrchidModules();
+    const config = defineAiSdr({
+      name: "composable-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      modules,
+      providers: providersFromModules(modules),
+      capabilityBindings: [
+        {
+          capabilityId: "search",
+          providerId: "parallel",
+          contractId: "research.search.v1",
+          default: true,
+        },
+        {
+          capabilityId: "extract",
+          providerId: "firecrawl",
+          contractId: "research.extract.v1",
+          default: true,
+        },
+        {
+          capabilityId: "enrichment",
+          providerId: "prospeo",
+          contractId: "research.enrich.v1",
+          default: true,
+        },
+      ],
+      packageBoundaries: [
+        {
+          id: "framework-core",
+          packageName: "@ai-sdr/framework",
+          visibility: "public",
+          moduleIds: ["parallel", "firecrawl", "prospeo"],
+          providerIds: ["parallel", "firecrawl", "prospeo"],
+        },
+      ],
+    });
+
+    expect(resolveProviderForCapability(config, {
+      capabilityId: "search",
+      contractId: "research.search.v1",
+    })?.id).toBe("parallel");
+    expect(resolveProviderForCapability(config, {
+      capabilityId: "extract",
+      contractId: "research.extract.v1",
+    })?.id).toBe("firecrawl");
+    expect(resolveProviderForCapability(config, {
+      capabilityId: "enrichment",
+      contractId: "research.enrich.v1",
+    })?.id).toBe("prospeo");
+    expect(collectPackageBoundaries(config).map((boundary) => boundary.id)).toEqual(["framework-core"]);
+    expect(validateAiSdrConfigReferences(config)).toEqual([]);
+  });
+
+  it("rejects capability bindings that are not backed by module contracts", () => {
+    const modules = defaultOrchidModules();
+    const config = defineAiSdr({
+      name: "broken-bindings",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      modules,
+      providers: providersFromModules(modules),
+      capabilityBindings: [
+        {
+          capabilityId: "search",
+          providerId: "attio",
+          contractId: "research.search.v1",
+          default: true,
+        },
+      ],
+      packageBoundaries: [
+        {
+          id: "broken-boundary",
+          packageName: "@ai-sdr/framework",
+          visibility: "public",
+          moduleIds: ["missing-module"],
+          providerIds: ["missing-provider"],
+        },
+      ],
+    });
+
+    expect(validateAiSdrConfigReferences(config)).toEqual([
+      {
+        severity: "error",
+        code: "unsupported_capability_binding",
+        message:
+          'Capability binding "search" -> "attio" declares contract "research.search.v1", but no module for that provider exposes both the capability and contract',
+      },
+      {
+        severity: "error",
+        code: "unknown_package_boundary_module",
+        message: 'Package boundary "broken-boundary" references unknown module "missing-module"',
+      },
+      {
+        severity: "error",
+        code: "unknown_package_boundary_provider",
+        message: 'Package boundary "broken-boundary" references unknown provider "missing-provider"',
+      },
+    ]);
   });
 });

@@ -120,6 +120,26 @@ export function createDefaultStatePlaneProvider(
   return new DisabledStatePlaneProvider();
 }
 
+export function createConfiguredStatePlaneProvider(
+  input: {
+    providerId?: string | null;
+    convexUrl?: string;
+  } = {},
+): StatePlaneProvider {
+  if (!input.providerId || input.providerId === DISABLED_PROVIDER_ID) {
+    return new DisabledStatePlaneProvider();
+  }
+
+  if (input.providerId === CONVEX_PROVIDER_ID) {
+    if (!input.convexUrl) {
+      return new DisabledStatePlaneProvider();
+    }
+    return new ConvexStatePlaneProvider(input.convexUrl);
+  }
+
+  throw new Error(`unsupported configured state provider: ${input.providerId}`);
+}
+
 function stripUndefinedDeep<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map(stripUndefinedDeep) as T;

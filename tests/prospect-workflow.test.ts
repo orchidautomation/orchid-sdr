@@ -312,8 +312,11 @@ describe("processInboundReply", () => {
               shouldHandoff: false,
             })),
           },
-          attio: {
-            isConfigured: vi.fn(() => true),
+          providers: {
+            crm: {
+              providerId: "attio",
+              isConfigured: vi.fn(() => true),
+            },
           },
           config: {
             ATTIO_AUTO_POSITIVE_REPLY_STAGE: "Qualification",

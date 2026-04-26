@@ -390,8 +390,8 @@ export function createApp() {
       ?? readString(json, ["bodyText", "body_text", "text"])
       ?? readString(payload, ["bodyText", "body_text", "text"]);
 
-    if (!bodyText && inboxId && messageId && context.agentMail.isConfigured()) {
-      const fullMessage = await context.agentMail.getMessage(inboxId, messageId).catch(() => null);
+    if (!bodyText && inboxId && messageId && context.providers.email?.isConfigured()) {
+      const fullMessage = await context.providers.email.getMessage(inboxId, messageId).catch(() => null);
       bodyText = fullMessage?.bodyText ?? null;
     }
 

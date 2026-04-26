@@ -97,6 +97,22 @@ export function parallelProvider(): AiSdrProviderDefinition {
   });
 }
 
+export function prospeoProvider(): AiSdrProviderDefinition {
+  return provider({
+    id: "prospeo",
+    kind: "research",
+    displayName: "Prospeo",
+    packageName: "@ai-sdr/prospeo",
+    env: [
+      { name: "PROSPEO_API_KEY", description: "Prospeo API key used for email enrichment." },
+    ],
+    capabilities: [
+      "research.enrich",
+      "email.enrich",
+    ],
+  });
+}
+
 export function neonProvider(): AiSdrProviderDefinition {
   return provider({
     id: "neon",

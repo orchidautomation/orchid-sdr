@@ -28,9 +28,11 @@ export class OrchidMcpToolService {
       case "email.enrich":
         return this.handleEmailEnrich(String(args.prospectId));
       case "research.search":
-        return this.context.parallel.search(String(args.query ?? ""), Number(args.limit ?? 5));
+        return this.context.providers.search.search(String(args.query ?? ""), {
+          limit: Number(args.limit ?? 5),
+        });
       case "research.extract":
-        return this.context.firecrawl.extract(String(args.url ?? ""));
+        return this.context.providers.extract.extract(String(args.url ?? ""));
       case "pipeline.summary":
         return this.handlePipelineSummary(args);
       case "pipeline.activeThreads":
@@ -85,6 +87,18 @@ export class OrchidMcpToolService {
     }
 
     return Math.max(1, Math.min(Math.trunc(parsed), max));
+  }
+
+  private getConfiguredCrmProvider() {
+    return this.context.providers.crm;
+  }
+
+  private getConfiguredEmailProvider() {
+    return this.context.providers.email;
+  }
+
+  private getConfiguredHandoffProvider() {
+    return this.context.providers.handoff;
   }
 
   private readDiscoverySource(value: unknown): DiscoverySource {
@@ -561,9 +575,17 @@ export class OrchidMcpToolService {
     if (!prospectId) {
       throw new Error("prospectId is required");
     }
-    if (!this.context.attio.isConfigured()) {
-      throw new Error("ATTIO_API_KEY is not configured");
+    const crmProvider = this.getConfiguredCrmProvider();
+    if (!crmProvider) {
+      throw new Error("no CRM provider is configured for this stack");
     }
+    if (crmProvider.providerId !== "attio") {
+      throw new Error(`configured CRM provider "${crmProvider.providerId}" is not supported by the reference AI SDR yet`);
+    }
+    if (!crmProvider.isConfigured()) {
+      throw new Error("configured CRM provider is not authenticated");
+    }
+    const crm = crmProvider.adapter;
 
     const createNote = args.createNote !== false;
     const addToList = args.addToList === true;
@@ -579,7 +601,7 @@ export class OrchidMcpToolService {
     ]);
 
     const providerRunId = await this.context.repository.recordProviderRun({
-      provider: "attio",
+      provider: crmProvider.providerId,
       kind: "crm_sync",
       externalId: prospectId,
       status: "running",
@@ -593,7 +615,7 @@ export class OrchidMcpToolService {
 
     try {
       const warnings: string[] = [];
-      const company = await this.context.attio.upsertCompany({
+      const company = await crm.upsertCompany({
         name: snapshot.prospect.company,
         domain: snapshot.prospect.companyDomain,
         recordId: snapshot.prospect.attioCompanyRecordId,
@@ -603,7 +625,7 @@ export class OrchidMcpToolService {
       }
       warnings.push(...(company?.warnings ?? []));
 
-      const person = await this.context.attio.upsertPerson({
+      const person = await crm.upsertPerson({
         fullName: snapshot.prospect.fullName,
         title: snapshot.prospect.title,
         email: snapshot.email?.address ?? null,
@@ -623,7 +645,7 @@ export class OrchidMcpToolService {
         if (!company?.recordId) {
           warnings.push("company record missing; skipped Attio note creation");
         } else {
-        note = await this.context.attio.createNote({
+        note = await crm.createNote({
           parentObject: "companies",
           parentRecordId: company.recordId,
           title: `Orchid SDR qualification - ${snapshot.prospect.company ?? snapshot.prospect.fullName}`,
@@ -639,11 +661,11 @@ export class OrchidMcpToolService {
         } else if (!company?.recordId) {
           warnings.push("company record missing; skipped Attio list entry");
         } else {
-          const list = await this.context.attio.getList(this.context.config.ATTIO_DEFAULT_LIST_ID);
+          const list = await crm.getList(this.context.config.ATTIO_DEFAULT_LIST_ID);
           if (!list.parentObject.includes("companies")) {
             warnings.push(`Attio list "${list.name}" is not a companies list; skipped list entry`);
           } else {
-            const existingEntries = await this.context.attio.listRecordEntries("companies", company.recordId);
+            const existingEntries = await crm.listRecordEntries("companies", company.recordId);
             const matchingEntries = existingEntries.filter((entry) => entry.listId === list.listId);
 
             if (matchingEntries.length > 1) {
@@ -656,7 +678,7 @@ export class OrchidMcpToolService {
               };
             } else {
               const entryValues: Record<string, unknown> = {};
-              const listAttributes = await this.context.attio.listAttributes(list.listId);
+              const listAttributes = await crm.listAttributes(list.listId);
               const mainPointOfContactAttribute = listAttributes.find((attribute) =>
                 attribute.type === "record-reference"
                 && attribute.isWritable
@@ -693,7 +715,7 @@ export class OrchidMcpToolService {
                     `Attio list "${list.name}" does not expose a writable status attribute; skipped stage update`,
                   );
                 } else {
-                  const statuses = await this.context.attio.listStatuses(list.listId, stageAttribute.apiSlug);
+                  const statuses = await crm.listStatuses(list.listId, stageAttribute.apiSlug);
                   const matchedStatus = statuses.find(
                     (status) => status.title.toLowerCase() === requestedListStage.toLowerCase(),
                   );
@@ -707,7 +729,7 @@ export class OrchidMcpToolService {
                 }
               }
 
-              const assertedEntry = await this.context.attio.assertCompanyInList({
+              const assertedEntry = await crm.assertCompanyInList({
                 listId: list.listId,
                 companyRecordId: company.recordId,
                 entryValues,
@@ -723,7 +745,7 @@ export class OrchidMcpToolService {
 
       const result = {
         ok: true,
-        provider: "attio",
+        provider: crmProvider.providerId,
         company,
         person,
         note,
@@ -743,7 +765,7 @@ export class OrchidMcpToolService {
         responsePayload: result as unknown as Record<string, unknown>,
       });
       await this.context.repository.appendAuditEvent("prospect", prospectId, "CrmSynced", {
-        provider: "attio",
+        provider: crmProvider.providerId,
         personRecordId: person.recordId,
         companyRecordId: company?.recordId ?? null,
         noteId: note?.noteId ?? null,
@@ -772,7 +794,8 @@ export class OrchidMcpToolService {
     addToList: boolean;
     sourceEvent: string;
   }) {
-    if (!this.context.attio.isConfigured()) {
+    const crmProvider = this.getConfiguredCrmProvider();
+    if (!crmProvider?.isConfigured()) {
       return null;
     }
 
@@ -785,7 +808,7 @@ export class OrchidMcpToolService {
       });
     } catch (error) {
       console.error(
-        `[attio] automatic sync failed after ${input.sourceEvent} for prospect ${input.prospectId}`,
+        `[${crmProvider.providerId}] automatic sync failed after ${input.sourceEvent} for prospect ${input.prospectId}`,
         error,
       );
       return null;
@@ -861,7 +884,7 @@ export class OrchidMcpToolService {
 
   private async handleEmailEnrich(prospectId: string) {
     const snapshot = await this.context.repository.getProspectSnapshot(prospectId);
-    const enriched = await this.context.prospeo.enrich(snapshot.prospect);
+    const enriched = await this.context.providers.enrichment.enrich(snapshot.prospect);
     if (enriched) {
       await this.context.repository.upsertContactEmail(prospectId, enriched);
     }
@@ -978,6 +1001,11 @@ export class OrchidMcpToolService {
     bodyHtml: string | null;
     isReply: boolean;
   }) {
+    const emailProvider = this.getConfiguredEmailProvider();
+    if (!emailProvider) {
+      throw new Error("no outbound email provider is configured for this stack");
+    }
+
     const controlFlags = await this.context.repository.getControlFlags();
     const preflightAuthority = this.context.policy.evaluateSendAuthority({
       snapshot: input.snapshot,
@@ -1016,7 +1044,7 @@ export class OrchidMcpToolService {
       };
     }
 
-    const sender = await this.ensureCampaignSenderIdentity(input.snapshot);
+    const sender = await this.ensureCampaignSenderIdentity(input.snapshot, emailProvider);
     if (!sender.ok) {
       await this.context.repository.pauseThread(input.snapshot.thread.id, sender.reasons.join("; "));
       return {
@@ -1040,17 +1068,17 @@ export class OrchidMcpToolService {
 
     const providerInboxId = threadInboxId ?? campaignInboxId;
     if (!providerInboxId) {
-      throw new Error(`no AgentMail inbox available for campaign ${input.snapshot.campaign.id}`);
+      throw new Error(`no ${emailProvider.providerId} inbox available for campaign ${input.snapshot.campaign.id}`);
     }
 
     const sendResponse = input.isReply
-      ? await this.replyFromThread(input.snapshot, {
+      ? await this.replyFromThread(input.snapshot, emailProvider, {
           inboxId: providerInboxId,
           bodyText: input.bodyText,
           bodyHtml: input.bodyHtml,
           subject: input.subject,
         })
-      : await this.context.agentMail.send({
+      : await emailProvider.send({
           inboxId: providerInboxId,
           to: this.requireProspectEmail(input.snapshot),
           subject: input.subject,
@@ -1123,6 +1151,7 @@ export class OrchidMcpToolService {
 
   private async replyFromThread(
     snapshot: ProspectSnapshot,
+    emailProvider: NonNullable<AppContext["providers"]["email"]>,
     input: {
       inboxId: string;
       subject: string;
@@ -1140,7 +1169,7 @@ export class OrchidMcpToolService {
       throw new Error(`cannot reply on thread ${snapshot.thread.id} without an inbound provider message id`);
     }
 
-    return this.context.agentMail.reply({
+    return emailProvider.reply({
       inboxId: input.inboxId,
       messageId: providerMessageId,
       bodyText: input.bodyText,
@@ -1150,9 +1179,12 @@ export class OrchidMcpToolService {
     });
   }
 
-  private async ensureCampaignSenderIdentity(snapshot: ProspectSnapshot) {
+  private async ensureCampaignSenderIdentity(
+    snapshot: ProspectSnapshot,
+    emailProvider: NonNullable<AppContext["providers"]["email"]>,
+  ) {
     if (snapshot.campaign.senderProviderInboxId) {
-      if (!this.context.agentMail.isConfigured()) {
+      if (!emailProvider.isConfigured()) {
         return {
           ok: true as const,
           senderEmail: snapshot.campaign.senderEmail,
@@ -1162,7 +1194,7 @@ export class OrchidMcpToolService {
       }
 
       try {
-        const providerInbox = await this.context.agentMail.getInbox(snapshot.campaign.senderProviderInboxId);
+        const providerInbox = await emailProvider.getInbox(snapshot.campaign.senderProviderInboxId);
         const senderEmail = providerInbox.email ?? snapshot.campaign.senderEmail;
         const senderDisplayName =
           providerInbox.displayName ?? snapshot.campaign.senderDisplayName ?? snapshot.campaign.name;
@@ -1183,7 +1215,7 @@ export class OrchidMcpToolService {
             senderEmail,
             senderDisplayName,
             senderProviderInboxId,
-            source: "agentmail",
+            source: emailProvider.providerId,
           });
         }
 
@@ -1195,7 +1227,7 @@ export class OrchidMcpToolService {
         };
       } catch (error) {
         console.warn(
-          "[agentmail] failed to refresh sender identity for campaign " + snapshot.campaign.id,
+          `[${emailProvider.providerId}] failed to refresh sender identity for campaign ${snapshot.campaign.id}`,
           error,
         );
         return {
@@ -1207,10 +1239,10 @@ export class OrchidMcpToolService {
       }
     }
 
-    if (!this.context.agentMail.isConfigured()) {
+    if (!emailProvider.isConfigured()) {
       return {
         ok: false as const,
-        reasons: ["AGENTMAIL_API_KEY is not configured"],
+        reasons: [`${emailProvider.providerId} is not configured`],
       };
     }
 
@@ -1221,7 +1253,7 @@ export class OrchidMcpToolService {
       };
     }
 
-    const provisioned = await this.context.agentMail.createInbox({
+    const provisioned = await emailProvider.createInbox({
       displayName:
         snapshot.campaign.senderDisplayName
         ?? this.context.config.AGENTMAIL_DEFAULT_SENDER_NAME
@@ -1231,7 +1263,7 @@ export class OrchidMcpToolService {
     });
 
     if (!provisioned.providerInboxId) {
-      throw new Error(`AgentMail did not return an inbox id for campaign ${snapshot.campaign.id}`);
+      throw new Error(`${emailProvider.providerId} did not return an inbox id for campaign ${snapshot.campaign.id}`);
     }
 
     await this.context.repository.updateCampaignSenderIdentity({
@@ -1262,11 +1294,16 @@ export class OrchidMcpToolService {
   }
 
   private async handleSlackHandoff(threadId: string, reason: string, payload: unknown) {
-    const handoffId = await this.context.repository.createHandoff(threadId, "slack", {
+    const handoffProvider = this.getConfiguredHandoffProvider();
+    if (!handoffProvider) {
+      throw new Error("no handoff provider is configured for this stack");
+    }
+
+    const handoffId = await this.context.repository.createHandoff(threadId, handoffProvider.providerId, {
       reason,
       payload,
     });
-    await this.context.slack.notify(
+    await handoffProvider.notify(
       undefined,
       `SDR handoff requested for thread ${threadId}: ${reason}`,
       { threadId, reason, payload },

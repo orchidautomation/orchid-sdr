@@ -9,6 +9,7 @@ import {
   normalizedWebhookProvider,
   orchidMcpProvider,
   parallelProvider,
+  prospeoProvider,
   rivetProvider,
   slackHandoffProvider,
   vercelAiGatewayProvider,
@@ -374,6 +375,25 @@ export function neonModule(): AiSdrModuleDefinition {
   });
 }
 
+export function prospeoModule(): AiSdrModuleDefinition {
+  return module({
+    id: "prospeo",
+    displayName: "Prospeo enrichment",
+    packageName: "@ai-sdr/prospeo",
+    description: "Resolve verified work email addresses for qualified prospects before outbound begins.",
+    providerKey: "prospeo",
+    capabilityIds: ["enrichment"],
+    contracts: ["research.enrich.v1"],
+    providers: [prospeoProvider()],
+    smokeChecks: [
+      {
+        id: "email.enrich",
+        description: "Enrich one prospect with a verified work email.",
+      },
+    ],
+  });
+}
+
 export function convexModule(): AiSdrModuleDefinition {
   return module({
     id: "convex",
@@ -515,6 +535,7 @@ export function defaultOrchidModules(): AiSdrModuleDefinition[] {
     firecrawlModule(),
     convexModule(),
     neonModule(),
+    prospeoModule(),
     vercelAiGatewayModule(),
     rivetModule(),
     vercelSandboxModule(),

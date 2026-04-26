@@ -103,6 +103,31 @@ export const aiSdrContractIdSchema = z.enum([
   "handoff.notify.v1",
 ]);
 
+export const aiSdrCapabilityBindingSchema = z.object({
+  capabilityId: aiSdrCapabilityIdSchema,
+  providerId: z.string().min(1),
+  contractId: aiSdrContractIdSchema.optional(),
+  purpose: z.string().min(1).optional(),
+  default: z.boolean().optional(),
+});
+
+export const aiSdrPackageBoundaryVisibilitySchema = z.enum([
+  "public",
+  "private",
+  "internal",
+]);
+
+export const aiSdrPackageBoundarySchema = z.object({
+  id: z.string().min(1),
+  packageName: z.string().min(1),
+  visibility: aiSdrPackageBoundaryVisibilitySchema.default("public"),
+  description: z.string().optional(),
+  moduleIds: z.array(z.string().min(1)).optional(),
+  providerIds: z.array(z.string().min(1)).optional(),
+  capabilityIds: z.array(aiSdrCapabilityIdSchema).optional(),
+  contractIds: z.array(aiSdrContractIdSchema).optional(),
+});
+
 export const aiSdrMcpAuthModeSchema = z.enum([
   "none",
   "optional-bearer",
@@ -154,6 +179,8 @@ export const aiSdrConfigSchema = z.object({
   modules: z.array(aiSdrModuleDefinitionSchema).optional(),
   skills: z.array(aiSdrSkillDefinitionSchema).optional(),
   providers: z.array(aiSdrProviderDefinitionSchema).optional(),
+  capabilityBindings: z.array(aiSdrCapabilityBindingSchema).optional(),
+  packageBoundaries: z.array(aiSdrPackageBoundarySchema).optional(),
   campaigns: z.array(aiSdrCampaignDefinitionSchema).optional(),
   requiredEnv: z.array(aiSdrEnvVarSchema).optional(),
 });
@@ -168,6 +195,9 @@ export type AiSdrKnowledgeDefinition = z.infer<typeof aiSdrKnowledgeDefinitionSc
 export type AiSdrCampaignDefinition = z.infer<typeof aiSdrCampaignDefinitionSchema>;
 export type AiSdrModuleDoc = z.infer<typeof aiSdrModuleDocSchema>;
 export type AiSdrModuleSmokeCheck = z.infer<typeof aiSdrModuleSmokeCheckSchema>;
+export type AiSdrCapabilityBinding = z.infer<typeof aiSdrCapabilityBindingSchema>;
+export type AiSdrPackageBoundaryVisibility = z.infer<typeof aiSdrPackageBoundaryVisibilitySchema>;
+export type AiSdrPackageBoundary = z.infer<typeof aiSdrPackageBoundarySchema>;
 export type AiSdrContractId = z.infer<typeof aiSdrContractIdSchema>;
 export type AiSdrMcpAuthMode = z.infer<typeof aiSdrMcpAuthModeSchema>;
 export type AiSdrMcpToolCapability = z.infer<typeof aiSdrMcpToolCapabilitySchema>;
@@ -225,6 +255,74 @@ export function collectKnowledgePaths(config: AiSdrConfig): string[] {
 
 export function collectSkillPaths(config: AiSdrConfig): string[] {
   return (config.skills ?? []).map((skill) => skill.path);
+}
+
+export function collectPackageBoundaries(config: AiSdrConfig): AiSdrPackageBoundary[] {
+  return config.packageBoundaries ?? [];
+}
+
+export function buildCapabilityBindingMap(config: AiSdrConfig) {
+  const bindings = new Map<AiSdrCapabilityId, AiSdrCapabilityBinding[]>();
+
+  for (const binding of config.capabilityBindings ?? []) {
+    bindings.set(binding.capabilityId, [...(bindings.get(binding.capabilityId) ?? []), binding]);
+  }
+
+  return bindings;
+}
+
+export function resolveCapabilityBinding(
+  config: AiSdrConfig,
+  input: {
+    capabilityId: AiSdrCapabilityId;
+    contractId?: AiSdrContractId;
+    purpose?: string;
+  },
+): AiSdrCapabilityBinding | null {
+  const matches = (buildCapabilityBindingMap(config).get(input.capabilityId) ?? []).filter((binding) => {
+    if (input.contractId && binding.contractId !== input.contractId) {
+      return false;
+    }
+
+    if (input.purpose && binding.purpose !== input.purpose) {
+      return false;
+    }
+
+    return true;
+  });
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  if (matches.length === 1) {
+    return matches[0] ?? null;
+  }
+
+  const defaultMatch = matches.find((binding) => binding.default);
+  if (defaultMatch) {
+    return defaultMatch;
+  }
+
+  throw new Error(
+    `Multiple capability bindings match ${input.capabilityId}${input.contractId ? ` (${input.contractId})` : ""}; mark one as default`,
+  );
+}
+
+export function resolveProviderForCapability(
+  config: AiSdrConfig,
+  input: {
+    capabilityId: AiSdrCapabilityId;
+    contractId?: AiSdrContractId;
+    purpose?: string;
+  },
+): AiSdrProviderDefinition | null {
+  const binding = resolveCapabilityBinding(config, input);
+  if (!binding) {
+    return null;
+  }
+
+  return (config.providers ?? []).find((provider) => provider.id === binding.providerId) ?? null;
 }
 
 export function provider(

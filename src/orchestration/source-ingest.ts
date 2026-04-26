@@ -25,6 +25,7 @@ async function ingestNormalizedSignals(
     signals: NormalizedInboundSignal[];
   },
 ) {
+  const runtimeProviderId = deps.context.framework?.selections.runtimeActor.providerId ?? "rivet";
   const campaign = input.campaignId
     ? await deps.context.repository.getCampaign(input.campaignId)
     : await deps.context.repository.ensureDefaultCampaign();
@@ -39,13 +40,13 @@ async function ingestNormalizedSignals(
   try {
     await deps.context.state.recordWorkflowCheckpoint({
       workflowName: "signal-ingest",
-      entityType: "providerRun",
-      entityId: providerRunId,
-      step: "started",
-      status: "running",
-      runtimeProvider: "rivet",
-      input: {
-        provider: input.provider,
+        entityType: "providerRun",
+        entityId: providerRunId,
+        step: "started",
+        status: "running",
+        runtimeProvider: runtimeProviderId,
+        input: {
+          provider: input.provider,
         kind: input.kind,
         source: input.source,
         campaignId: campaign.id,
@@ -92,7 +93,7 @@ async function ingestNormalizedSignals(
         entityId: signalId,
         step: "captured",
         status: "succeeded",
-        runtimeProvider: "rivet",
+        runtimeProvider: runtimeProviderId,
         output: {
           stateProviderId: stateSignal.providerId,
           stateSignalId: stateSignal.stateSignalId,
@@ -125,7 +126,7 @@ async function ingestNormalizedSignals(
         entityId: prospectId,
         step: outcome.action,
         status: "succeeded",
-        runtimeProvider: "rivet",
+        runtimeProvider: runtimeProviderId,
         output: compactRecord({
           prospectId: outcome.prospectId,
           threadId: outcome.threadId,
@@ -150,7 +151,7 @@ async function ingestNormalizedSignals(
       entityId: providerRunId,
       step: "completed",
       status: "succeeded",
-      runtimeProvider: "rivet",
+      runtimeProvider: runtimeProviderId,
       output: {
         signalsReceived: input.signals.length,
         prospectsProcessed: outcomes.length,
@@ -179,7 +180,7 @@ async function ingestNormalizedSignals(
         entityId: providerRunId,
         step: "failed",
         status: "failed",
-        runtimeProvider: "rivet",
+        runtimeProvider: runtimeProviderId,
         error: errorMessage,
       });
     } catch {
@@ -206,7 +207,7 @@ export async function ingestApifyRun(
   const normalized = deps.context.apify.normalizeSignals(source, rawItems);
 
   return ingestNormalizedSignals(deps, {
-    provider: "apify",
+    provider: "apify-linkedin",
     kind: `${source}-source`,
     source,
     externalId: input.actorRunId,

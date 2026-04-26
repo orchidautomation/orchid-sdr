@@ -49,7 +49,7 @@ export interface NormalizedSignalBatch {
 
 export function normalizeSignalWebhookPayload(payload: SignalWebhookPayload | unknown): NormalizedSignalBatch {
   const parsed = signalWebhookPayloadSchema.parse(payload);
-  const provider = parsed.provider?.trim() || "webhook";
+  const provider = parsed.provider?.trim() || "normalized-webhook";
   const defaultSource = parsed.source?.trim() || "other";
   const rawSignals = Array.isArray(parsed.signals)
     ? parsed.signals

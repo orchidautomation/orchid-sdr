@@ -248,7 +248,7 @@ export async function executeProspectWorkflow(
     }
 
     await deps.context.repository.appendAuditEvent("prospect", prospectId, "EmailEnriched", {
-      provider: "prospeo",
+      provider: deps.context.providers.enrichment.providerId,
     });
     snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
   }
@@ -513,14 +513,14 @@ async function buildResearchBrief(
     .join(" ");
 
   const [searchResults, companyNewsResults, sourceExtract, knowledgeContext] = await Promise.all([
-    searchQuery ? deps.context.parallel.search(searchQuery, 5) : Promise.resolve([]),
-    deps.context.firecrawl.searchCompanyNews(
+    searchQuery ? deps.context.providers.search.search(searchQuery, { limit: 5 }) : Promise.resolve([]),
+    deps.context.providers.extract.searchCompanyNews(
       snapshot.prospect.company,
       snapshot.prospect.companyDomain,
       3,
     ).catch(() => []),
     sourceSignal?.url
-      ? deps.context.firecrawl.extract(sourceSignal.url).catch(() => ({ url: sourceSignal.url, markdown: "" }))
+      ? deps.context.providers.extract.extract(sourceSignal.url).catch(() => ({ url: sourceSignal.url, markdown: "" }))
       : Promise.resolve(null),
     deps.context.knowledge.composeKnowledgeContext(
       `${snapshot.prospect.company ?? ""} ${snapshot.prospect.title ?? ""} ${snapshot.prospect.fullName}`,
@@ -1005,13 +1005,13 @@ async function qualifyProspect(
 
   const [postExtract, profileExtract, companyExtract] = await Promise.all([
     sourceSignal?.url
-      ? deps.context.firecrawl.extract(sourceSignal.url).catch(() => ({ url: sourceSignal.url, markdown: "" }))
+      ? deps.context.providers.extract.extract(sourceSignal.url).catch(() => ({ url: sourceSignal.url, markdown: "" }))
       : Promise.resolve(null),
     profileUrl && profileUrl !== sourceSignal?.url
-      ? deps.context.firecrawl.extract(profileUrl).catch(() => ({ url: profileUrl, markdown: "" }))
+      ? deps.context.providers.extract.extract(profileUrl).catch(() => ({ url: profileUrl, markdown: "" }))
       : Promise.resolve(null),
     companyUrl
-      ? deps.context.firecrawl.extract(companyUrl).catch(() => ({ url: companyUrl, markdown: "" }))
+      ? deps.context.providers.extract.extract(companyUrl).catch(() => ({ url: companyUrl, markdown: "" }))
       : Promise.resolve(null),
   ]);
 
@@ -1113,7 +1113,8 @@ async function maybePromoteAttioAfterReply(
   prospectId: string,
   replyClass: ReplyClass,
 ) {
-  if (!deps.context.attio.isConfigured()) {
+  const crmProvider = deps.context.providers.crm;
+  if (!crmProvider?.isConfigured()) {
     return;
   }
 
@@ -1131,7 +1132,7 @@ async function maybePromoteAttioAfterReply(
     });
   } catch (error) {
     console.error(
-      `[attio] automatic reply-stage promotion failed for prospect ${prospectId} after ${replyClass}`,
+      `[${crmProvider.providerId}] automatic reply-stage promotion failed for prospect ${prospectId} after ${replyClass}`,
       error,
     );
   }
