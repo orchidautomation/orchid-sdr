@@ -192,6 +192,16 @@ DISCOVERY_LINKEDIN_ENABLED=true
 DISCOVERY_LINKEDIN_SEED_TERMS=sales automation,revops,gtm engineering
 ```
 
+If you also want exact known LinkedIn post URLs to run through the same discovery source, optionally add a Harvest profile-posts actor or task:
+
+```bash
+APIFY_LINKEDIN_POSTS_TASK_ID=<task-id>
+# or
+APIFY_LINKEDIN_POSTS_ACTOR_ID=harvestapi/linkedin-profile-posts
+```
+
+When a discovery term is itself a LinkedIn post URL, Trellis will prefer that exact-post actor/task and send a `targetUrls`-style payload instead of the normal search payload.
+
 Webhook endpoint:
 
 ```text
@@ -223,7 +233,15 @@ The default input shape Trellis uses is:
 
 If both a person URL and a company URL are available, Trellis will send them in the same `queries` array so one Apify run can return both records.
 
-This is the current post-discovery Apify lane used by AI SDR. A separate "scrape recent posts for one LinkedIn profile" actor is a reasonable future extension, but it is not wired into the default AI SDR flow today.
+This is the current post-discovery Apify lane used by AI SDR.
+
+Operator commands:
+
+```bash
+npm run ai-sdr -- discovery seed "clay workflow"
+npm run ai-sdr -- discovery run "https://www.linkedin.com/feed/update/urn:li:activity:123/"
+npm run ai-sdr -- discovery tick --source linkedin_public_post
+```
 
 For generic warm leads or custom sources, post normalized signals to:
 

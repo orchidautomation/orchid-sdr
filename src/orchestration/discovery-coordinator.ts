@@ -181,6 +181,50 @@ export const discoveryCoordinator = actor({
         campaignId: c.state.campaignId,
       };
     },
+    runTerm: async (
+      c,
+      input: {
+        term: string;
+        source?: DiscoverySource;
+        campaignId?: string;
+        reason?: string;
+        priority?: number;
+      },
+    ) => {
+      const context = getAppContext();
+      const source = input.source ?? c.state.source;
+      if (!source) {
+        throw new Error("discovery source is required");
+      }
+
+      const campaignId = input.campaignId ?? c.state.campaignId ?? (await context.repository.ensureDefaultCampaign()).id;
+      c.state.campaignId = campaignId;
+      c.state.source = source;
+      c.state.initialized = true;
+      c.state.lastTickAt = Date.now();
+      c.state.ticks += 1;
+
+      const started = await startDiscoveryRunForTerm(c, {
+        source,
+        campaignId,
+        term: input.term,
+        planner: "manual",
+        reason: input.reason ?? "manual_cli",
+        priority: input.priority ?? 0.95,
+      });
+
+      c.state.lastPlanner = "manual";
+      c.state.lastStatus = "running";
+
+      return {
+        ok: true,
+        source,
+        campaignId,
+        scheduledNextTickAt: await scheduleNextTick(c),
+        planner: "manual",
+        startedRuns: [started],
+      } satisfies DiscoveryTickResult;
+    },
     handleApifyRunCompleted: async (c, payload: RunCompletionPayload) => {
       return handleCompletedDiscoveryRun(c, payload);
     },
@@ -721,97 +765,31 @@ async function runDiscoveryTick(
     }
 
     for (const term of plannedTerms) {
-      const metadata = JSON.stringify({
-        planner,
-        reason: term.reason,
-        source,
-        tickReason: input?.reason ?? null,
-      });
-
       try {
-        const started = await discoveryProvider.startDiscoveryRun({
-          campaignId,
+        const started = await startDiscoveryRunForTerm(c, {
           source,
+          campaignId,
           term: term.term,
-          metadata: {
-            planner,
-            reason: term.reason,
-          },
+          planner,
+          reason: term.reason,
+          tickReason: input?.reason ?? null,
+          priority: term.priority,
         });
-        const now = Date.now();
-        await c.db.execute(
-          `
-          insert into discovery_runs (actor_run_id, term, status, dataset_id, created_at, metadata)
-          values (?, ?, 'running', ?, ?, ?)
-          on conflict(actor_run_id)
-          do update set
-            term = excluded.term,
-            status = excluded.status,
-            dataset_id = excluded.dataset_id,
-            metadata = excluded.metadata
-          `,
-          started.actorRunId,
-          term.term,
-          started.defaultDatasetId ?? null,
-          now,
-          metadata,
-        );
-        await c.db.execute(
-          `
-          insert into discovery_terms (
-            term,
-            status,
-            priority,
-            total_runs,
-            last_used_at,
-            last_actor_run_id,
-            last_error,
-            metadata
-          )
-          values (?, 'active', ?, 1, ?, ?, null, ?)
-          on conflict(term)
-          do update set
-            status = 'active',
-            priority = excluded.priority,
-            total_runs = discovery_terms.total_runs + 1,
-            last_used_at = excluded.last_used_at,
-            last_actor_run_id = excluded.last_actor_run_id,
-            last_error = null,
-            metadata = excluded.metadata
-          `,
-          term.term,
-          term.priority,
-          now,
-          started.actorRunId,
-          metadata,
-        );
         startedRuns = [
           ...startedRuns,
-          {
-            actorRunId: started.actorRunId,
-            term: term.term,
-          },
+          started,
         ];
-        await c.schedule.after(APIFY_RUN_POLL_DELAY_MS, "pollRunStatus", {
-          actorRunId: started.actorRunId,
-          source,
-          campaignId,
-          term: term.term,
-          defaultDatasetId: started.defaultDatasetId ?? null,
-          metadata: {
-            planner,
-            reason: term.reason,
-            source,
-            tickReason: input?.reason ?? null,
-          },
-        });
-        c.state.lastRunId = started.actorRunId;
-        c.state.lastTerm = term.term;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         failures.push({
           term: term.term,
           error: message,
+        });
+        const errorMetadata = JSON.stringify({
+          planner,
+          reason: term.reason,
+          source,
+          tickReason: input?.reason ?? null,
         });
         await c.db.execute(
           `
@@ -827,7 +805,7 @@ async function runDiscoveryTick(
           term.term,
           term.priority,
           message,
-          metadata,
+          errorMetadata,
         );
       }
     }
@@ -891,6 +869,118 @@ async function ensureSeedTerms(
       term,
     );
   }
+}
+
+async function startDiscoveryRunForTerm(
+  c: {
+    state: DiscoveryActorState;
+    db: {
+      execute: <TRow extends Record<string, unknown> = Record<string, unknown>>(
+        query: string,
+        ...args: unknown[]
+      ) => Promise<TRow[]>;
+    };
+    schedule: {
+      after: (duration: number, fn: string, ...args: unknown[]) => Promise<void>;
+    };
+  },
+  input: {
+    source: DiscoverySource;
+    campaignId: string;
+    term: string;
+    planner: string;
+    reason?: string | null;
+    tickReason?: string | null;
+    priority: number;
+  },
+) {
+  const context = getAppContext();
+  const discoveryProvider = context.providers.discovery;
+  if (!discoveryProvider) {
+    throw new Error("discovery provider is not configured");
+  }
+
+  const metadata = {
+    planner: input.planner,
+    reason: input.reason ?? null,
+    source: input.source,
+    tickReason: input.tickReason ?? null,
+  };
+  const metadataJson = JSON.stringify(metadata);
+  const started = await discoveryProvider.startDiscoveryRun({
+    campaignId: input.campaignId,
+    source: input.source,
+    term: input.term,
+    metadata: {
+      planner: input.planner,
+      reason: input.reason ?? undefined,
+    },
+  });
+  const now = Date.now();
+
+  await c.db.execute(
+    `
+    insert into discovery_runs (actor_run_id, term, status, dataset_id, created_at, metadata)
+    values (?, ?, 'running', ?, ?, ?)
+    on conflict(actor_run_id)
+    do update set
+      term = excluded.term,
+      status = excluded.status,
+      dataset_id = excluded.dataset_id,
+      metadata = excluded.metadata
+    `,
+    started.actorRunId,
+    input.term,
+    started.defaultDatasetId ?? null,
+    now,
+    metadataJson,
+  );
+  await c.db.execute(
+    `
+    insert into discovery_terms (
+      term,
+      status,
+      priority,
+      total_runs,
+      last_used_at,
+      last_actor_run_id,
+      last_error,
+      metadata
+    )
+    values (?, 'active', ?, 1, ?, ?, null, ?)
+    on conflict(term)
+    do update set
+      status = 'active',
+      priority = excluded.priority,
+      total_runs = discovery_terms.total_runs + 1,
+      last_used_at = excluded.last_used_at,
+      last_actor_run_id = excluded.last_actor_run_id,
+      last_error = null,
+      metadata = excluded.metadata
+    `,
+    input.term,
+    input.priority,
+    now,
+    started.actorRunId,
+    metadataJson,
+  );
+
+  await c.schedule.after(APIFY_RUN_POLL_DELAY_MS, "pollRunStatus", {
+    actorRunId: started.actorRunId,
+    source: input.source,
+    campaignId: input.campaignId,
+    term: input.term,
+    defaultDatasetId: started.defaultDatasetId ?? null,
+    metadata,
+  });
+
+  c.state.lastRunId = started.actorRunId;
+  c.state.lastTerm = input.term;
+
+  return {
+    actorRunId: started.actorRunId,
+    term: input.term,
+  };
 }
 
 async function loadDiscoveryHistory(database: {

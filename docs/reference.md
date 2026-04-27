@@ -30,6 +30,7 @@ For the full sandbox lane:
 - Vercel Sandbox auth: `VERCEL_OIDC_TOKEN` or `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`
 - provider keys such as `APIFY_TOKEN`, `FIRECRAWL_API_KEY`, `AGENTMAIL_API_KEY`, `ATTIO_API_KEY`
 - discovery config such as `APIFY_LINKEDIN_TASK_ID` or `APIFY_LINKEDIN_ACTOR_ID`
+- optional exact-post discovery config such as `APIFY_LINKEDIN_POSTS_TASK_ID` or `APIFY_LINKEDIN_POSTS_ACTOR_ID`
 - optional LinkedIn profile/company research config such as `APIFY_LINKEDIN_PROFILE_TASK_ID` or `APIFY_LINKEDIN_PROFILE_ACTOR_ID`
 - a separate "profile posts scraper" lane is a valid future Apify extension, but it is not part of the current AI SDR happy path and is not wired as a first-class runtime step yet
 - `modelRouting` in `ai-sdr.config.ts` can scope different gateway models by sandbox stage and by structured service operation

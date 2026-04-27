@@ -43,6 +43,14 @@ export function apifyLinkedInProvider(): AiSdrProviderDefinition {
       { name: "APIFY_LINKEDIN_TASK_ID", description: "Apify task ID for LinkedIn discovery." },
       { name: "APIFY_LINKEDIN_ACTOR_ID", description: "Apify actor ID for LinkedIn discovery." },
       {
+        name: "APIFY_LINKEDIN_POSTS_TASK_ID",
+        description: "Optional Apify task ID for exact LinkedIn post URL discovery via Harvest profile-posts.",
+      },
+      {
+        name: "APIFY_LINKEDIN_POSTS_ACTOR_ID",
+        description: "Optional Apify actor ID for exact LinkedIn post URL discovery via Harvest profile-posts.",
+      },
+      {
         name: "APIFY_LINKEDIN_PROFILE_TASK_ID",
         description: "Optional Apify task ID for Harvest-style LinkedIn profile/company research.",
       },

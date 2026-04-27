@@ -90,4 +90,23 @@ describe("ApifySourceAdapter", () => {
       ],
     });
   });
+
+  it("builds an exact LinkedIn post discovery payload for known post urls", () => {
+    const adapter = new ApifySourceAdapter() as unknown as {
+      buildLinkedinExactPostInput: (postUrl: string) => Record<string, unknown>;
+    };
+
+    expect(
+      adapter.buildLinkedinExactPostInput(
+        "https://www.linkedin.com/feed/update/urn:li:activity:7453109055172063232/",
+      ),
+    ).toEqual({
+      targetUrls: ["https://www.linkedin.com/feed/update/urn:li:activity:7453109055172063232/"],
+      maxPosts: 5,
+      maxReactions: 5,
+      postNestedReactions: false,
+      maxComments: 5,
+      postNestedComments: false,
+    });
+  });
 });

@@ -26,17 +26,21 @@ Usage:
 
 Required env:
   APIFY_TOKEN
-  APIFY_LINKEDIN_TASK_ID or APIFY_LINKEDIN_ACTOR_ID
+  APIFY_LINKEDIN_POSTS_TASK_ID or APIFY_LINKEDIN_POSTS_ACTOR_ID (recommended)
+    or APIFY_LINKEDIN_TASK_ID / APIFY_LINKEDIN_ACTOR_ID (fallback search actor)
   APIFY_LINKEDIN_PROFILE_TASK_ID or APIFY_LINKEDIN_PROFILE_ACTOR_ID
 
 Optional env:
   APIFY_BASE_URL=https://api.apify.com/v2
+  APIFY_LINKEDIN_POSTS_INPUT_TEMPLATE=<json template for exact post lookup>
   APIFY_LINKEDIN_INPUT_TEMPLATE=<json template for post lookup>
   APIFY_LINKEDIN_PROFILE_INPUT_TEMPLATE=<json template for profile/company lookup>
   PROSPEO_API_KEY
   PROSPEO_BASE_URL=https://api.prospeo.io
 
 Template placeholders:
+  Exact post lookup template:
+    {{post_url}}, {{max_posts}}, {{target_urls}}
   Discovery template:
     {{post_url}}, {{query}}, {{limit}}, {{queries}}, {{target_urls}}
   Profile/company template:
@@ -192,6 +196,27 @@ def build_discovery_input(post_url: str, limit: int) -> Dict[str, Any]:
     }
 
 
+def build_exact_post_lookup_input(post_url: str, max_posts: int) -> Dict[str, Any]:
+    template = os.getenv("APIFY_LINKEDIN_POSTS_INPUT_TEMPLATE")
+    if template:
+        rendered = interpolate_template(
+            template,
+            {
+                "post_url": post_url,
+                "max_posts": str(max_posts),
+                "target_urls": json.dumps([post_url]),
+            },
+        )
+        return json.loads(rendered)
+
+    return {
+        "targetUrls": [post_url],
+        "maxPosts": max_posts,
+        "scrapeComments": False,
+        "scrapeReactions": False,
+    }
+
+
 def build_profile_research_input(queries: List[str]) -> Dict[str, Any]:
     template = os.getenv("APIFY_LINKEDIN_PROFILE_INPUT_TEMPLATE")
     if template:
@@ -218,6 +243,16 @@ def resolve_discovery_path() -> str:
     if actor_id:
         return f"/acts/{actor_id}/runs"
     raise SystemExit("Missing APIFY_LINKEDIN_TASK_ID or APIFY_LINKEDIN_ACTOR_ID")
+
+
+def resolve_exact_post_lookup_path() -> Optional[str]:
+    task_id = os.getenv("APIFY_LINKEDIN_POSTS_TASK_ID")
+    actor_id = os.getenv("APIFY_LINKEDIN_POSTS_ACTOR_ID")
+    if task_id:
+        return f"/actor-tasks/{task_id}/runs"
+    if actor_id:
+        return f"/acts/{actor_id}/runs"
+    return None
 
 
 def resolve_profile_research_path() -> str:
@@ -294,6 +329,19 @@ def run_discovery_for_post(post_url: str, *, verbose: bool) -> List[Dict[str, An
     if not dataset_id:
         raise RuntimeError("Apify discovery run did not expose a dataset id")
     return fetch_dataset_items(dataset_id, limit=10)
+
+
+def run_exact_post_lookup(post_url: str, *, verbose: bool) -> List[Dict[str, Any]]:
+    path = resolve_exact_post_lookup_path()
+    if not path:
+        return []
+    payload = build_exact_post_lookup_input(post_url, max_posts=5)
+    handle = start_apify_run(path, payload, verbose=verbose)
+    run = wait_for_apify_run(handle["actorRunId"], verbose=verbose)
+    dataset_id = pick_string(run, "defaultDatasetId", "defaultDataset_id") or handle["defaultDatasetId"]
+    if not dataset_id:
+        raise RuntimeError("Apify exact post lookup run did not expose a dataset id")
+    return fetch_dataset_items(dataset_id, limit=5)
 
 
 def run_profile_research(queries: List[str], *, verbose: bool) -> List[Dict[str, Any]]:
@@ -469,10 +517,19 @@ def main() -> None:
     args = parser.parse_args()
 
     require_env("APIFY_TOKEN")
-    resolve_discovery_path()
     resolve_profile_research_path()
+    exact_post_path = resolve_exact_post_lookup_path()
 
-    discovery_items = run_discovery_for_post(args.post_url, verbose=args.verbose)
+    if exact_post_path:
+        log("Using exact post lookup actor/task for targetUrls-based post fetch", args.verbose)
+        discovery_items = run_exact_post_lookup(args.post_url, verbose=args.verbose)
+    else:
+        log(
+            "Exact post lookup actor/task is not configured; falling back to the search-oriented LinkedIn discovery actor",
+            args.verbose,
+        )
+        resolve_discovery_path()
+        discovery_items = run_discovery_for_post(args.post_url, verbose=args.verbose)
     post_item = choose_post_item(discovery_items, args.post_url)
     author_profile_url = extract_author_profile_url(post_item)
     if not author_profile_url:

@@ -78,6 +78,9 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
   private readonly config = getConfig();
 
   hasDiscoveryTarget(source: DiscoverySource) {
+    if (source === "linkedin_public_post") {
+      return Boolean(this.resolveLinkedinSearchDiscoveryTarget() || this.resolveLinkedinPostDiscoveryTarget());
+    }
     return Boolean(this.resolveDiscoveryTarget(source));
   }
 
@@ -174,7 +177,7 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
       throw new Error("APIFY_TOKEN is not configured");
     }
 
-    const target = this.resolveDiscoveryTarget(input.source);
+    const target = this.resolveDiscoveryTarget(input.source, input.term);
     if (!target) {
       throw new Error(`Apify target is not configured for ${input.source}`);
     }
@@ -206,7 +209,7 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
       "utf8",
     ).toString("base64");
 
-    return this.startActorRun(target.path, this.buildDiscoveryInput(input), {
+    return this.startActorRun(target.path, this.buildDiscoveryInput(input, target.mode), {
       webhooks,
       errorContext: `Apify discovery run failed for ${input.source}`,
     });
@@ -334,7 +337,7 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
     });
   }
 
-  private resolveDiscoveryTarget(source: DiscoverySource) {
+  private resolveDiscoveryTarget(source: DiscoverySource, term?: string) {
     if (source === "x_public_post") {
       if (this.config.APIFY_X_TASK_ID) {
         return { path: `/actor-tasks/${encodeURIComponent(this.config.APIFY_X_TASK_ID)}/runs` };
@@ -345,13 +348,41 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
       return null;
     }
 
-    if (this.config.APIFY_LINKEDIN_TASK_ID) {
-      return { path: `/actor-tasks/${encodeURIComponent(this.config.APIFY_LINKEDIN_TASK_ID)}/runs` };
-    }
-    if (this.config.APIFY_LINKEDIN_ACTOR_ID) {
-      return { path: `/acts/${encodeURIComponent(this.config.APIFY_LINKEDIN_ACTOR_ID)}/runs` };
+    if (isLinkedinPostUrl(term) && this.resolveLinkedinPostDiscoveryTarget()) {
+      return {
+        path: this.resolveLinkedinPostDiscoveryTarget()!,
+        mode: "exact_post" as const,
+      };
     }
 
+    const searchTarget = this.resolveLinkedinSearchDiscoveryTarget();
+    if (searchTarget) {
+      return {
+        path: searchTarget,
+        mode: "search" as const,
+      };
+    }
+
+    return null;
+  }
+
+  private resolveLinkedinSearchDiscoveryTarget() {
+    if (this.config.APIFY_LINKEDIN_TASK_ID) {
+      return `/actor-tasks/${encodeURIComponent(this.config.APIFY_LINKEDIN_TASK_ID)}/runs`;
+    }
+    if (this.config.APIFY_LINKEDIN_ACTOR_ID) {
+      return `/acts/${encodeURIComponent(this.config.APIFY_LINKEDIN_ACTOR_ID)}/runs`;
+    }
+    return null;
+  }
+
+  private resolveLinkedinPostDiscoveryTarget() {
+    if (this.config.APIFY_LINKEDIN_POSTS_TASK_ID) {
+      return `/actor-tasks/${encodeURIComponent(this.config.APIFY_LINKEDIN_POSTS_TASK_ID)}/runs`;
+    }
+    if (this.config.APIFY_LINKEDIN_POSTS_ACTOR_ID) {
+      return `/acts/${encodeURIComponent(this.config.APIFY_LINKEDIN_POSTS_ACTOR_ID)}/runs`;
+    }
     return null;
   }
 
@@ -366,7 +397,14 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
     return null;
   }
 
-  private buildDiscoveryInput(input: DiscoveryRunInput) {
+  private buildDiscoveryInput(
+    input: DiscoveryRunInput,
+    mode: "search" | "exact_post" = "search",
+  ) {
+    if (input.source === "linkedin_public_post" && mode === "exact_post" && isLinkedinPostUrl(input.term)) {
+      return this.buildLinkedinExactPostInput(input.term);
+    }
+
     const template =
       input.source === "x_public_post"
         ? this.config.APIFY_X_INPUT_TEMPLATE
@@ -403,6 +441,36 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
       limit,
       maxItems: limit,
       max_results: limit,
+    };
+  }
+
+  private buildLinkedinExactPostInput(postUrl: string) {
+    const template = this.config.APIFY_LINKEDIN_POSTS_INPUT_TEMPLATE;
+    const maxPosts = Math.max(1, Math.min(this.config.APIFY_LINKEDIN_DATASET_LIMIT, 5));
+
+    if (template) {
+      const rendered = interpolateTemplate(template, {
+        post_url: postUrl,
+        max_posts: String(maxPosts),
+        target_urls: JSON.stringify([postUrl]),
+      });
+
+      try {
+        return JSON.parse(rendered) as Record<string, unknown>;
+      } catch (error) {
+        throw new Error(
+          `Invalid Apify LinkedIn exact post input template: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return {
+      targetUrls: [postUrl],
+      maxPosts,
+      maxReactions: 5,
+      postNestedReactions: false,
+      maxComments: 5,
+      postNestedComments: false,
     };
   }
 
@@ -1396,6 +1464,21 @@ function canonicalizeLinkedinUrl(value: string | null | undefined) {
     return `${url.protocol}//www.linkedin.com${pathname}`;
   } catch {
     return value.trim();
+  }
+}
+
+function isLinkedinPostUrl(value: string | null | undefined) {
+  const normalized = canonicalizeLinkedinUrl(value);
+  if (!normalized) {
+    return false;
+  }
+
+  try {
+    const url = new URL(normalized);
+    const pathname = url.pathname.toLowerCase();
+    return pathname.includes("/posts/") || pathname.includes("/feed/update/");
+  } catch {
+    return false;
   }
 }
 

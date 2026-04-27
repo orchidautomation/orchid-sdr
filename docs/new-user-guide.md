@@ -475,6 +475,14 @@ npm run ai-sdr -- add deep-research parallel --apply
 npm run ai-sdr -- add enrichment prospeo --apply
 ```
 
+For operator-triggered discovery:
+
+```bash
+npm run ai-sdr -- discovery seed "clay workflow"
+npm run ai-sdr -- discovery run "https://www.linkedin.com/feed/update/urn:li:activity:123/"
+npm run ai-sdr -- discovery tick --source linkedin_public_post
+```
+
 Under the hood this updates:
 
 - `ai-sdr.config.ts`

@@ -5,7 +5,10 @@ import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
 
+import { createClient } from "rivetkit/client";
+
 import config from "../../../ai-sdr.config.js";
+import { registry } from "../../../src/registry.js";
 import {
   aiSdrCompositionProfileIds,
   buildModuleInstallPlan,
@@ -67,6 +70,9 @@ async function main() {
       case "check":
         printCompositionCheck();
         break;
+      case "discovery":
+        await handleDiscoveryCommand(arg, providerArg, cliFlags);
+        break;
       case "init":
         await scaffoldProject(arg, cliFlags);
         break;
@@ -87,6 +93,9 @@ function printHelp() {
 
   npm run ai-sdr -- modules
   npm run ai-sdr -- check
+  npm run ai-sdr -- discovery seed <term>
+  npm run ai-sdr -- discovery run <term>
+  npm run ai-sdr -- discovery tick
   npm run ai-sdr -- add <module-id>
   npm run ai-sdr -- add <capability> <provider>
   npm run ai-sdr -- init [target-dir] [--name my-app]
@@ -105,6 +114,9 @@ Examples:
   npm run ai-sdr -- add state convex
   npm run ai-sdr -- add runtime rivet
   npm run ai-sdr -- add source apify
+  npm run ai-sdr -- discovery seed "https://www.linkedin.com/feed/update/urn:li:activity:123/"
+  npm run ai-sdr -- discovery run "https://www.linkedin.com/feed/update/urn:li:activity:123/" --source linkedin_public_post
+  npm run ai-sdr -- discovery tick --source linkedin_public_post
   npm run ai-sdr -- add model vercel-ai-gateway
   npm run ai-sdr -- add runtime vercel-sandbox
   npm run ai-sdr -- add handoff slack
@@ -117,6 +129,67 @@ The alias "research" resolves to the full research contract family.
 Init now scaffolds the bare minimum core runtime by default.
 Use add ... --apply to layer in new providers and sources after boot.
 Apply mode works on scaffold-generated workspaces.`);
+}
+
+async function handleDiscoveryCommand(
+  subcommand: string | undefined,
+  value: string | undefined,
+  flags: Record<string, string | boolean>,
+) {
+  const endpoint = String(flags.endpoint ?? process.env.RIVET_CLIENT_ENDPOINT ?? `http://127.0.0.1:${process.env.PORT ?? "3000"}/api/rivet`);
+  const source = String(flags.source ?? "linkedin_public_post") as "linkedin_public_post" | "x_public_post";
+  const campaignId = String(flags.campaign ?? "cmp_default");
+
+  const client = createClient<typeof registry>({
+    endpoint,
+    disableMetadataLookup: true,
+  });
+  const actor = client.discoveryCoordinator.getOrCreate([campaignId, source]);
+
+  switch (subcommand) {
+    case "seed": {
+      const term = value ?? (typeof flags.term === "string" ? flags.term : undefined);
+      if (!term) {
+        throw new Error("Missing discovery term. Example: npm run ai-sdr -- discovery seed \"clay workflow\"");
+      }
+
+      const result = await actor.addSeedTerms({
+        source,
+        terms: [term],
+      });
+      const snapshot = await actor.getSnapshot();
+      console.log(JSON.stringify({ endpoint, result, latestTerm: snapshot.terms[0] ?? null }, null, 2));
+      return;
+    }
+    case "run": {
+      const term = value ?? (typeof flags.term === "string" ? flags.term : undefined);
+      if (!term) {
+        throw new Error("Missing discovery term. Example: npm run ai-sdr -- discovery run \"https://www.linkedin.com/feed/update/urn:li:activity:123/\"");
+      }
+
+      const reason = String(flags.reason ?? "manual_cli");
+      const result = await actor.runTerm({
+        source,
+        campaignId,
+        term,
+        reason,
+      });
+      const snapshot = await actor.getSnapshot();
+      console.log(JSON.stringify({ endpoint, result, latestRun: snapshot.runs[0] ?? null, state: snapshot.state }, null, 2));
+      return;
+    }
+    case "tick": {
+      const reason = String(flags.reason ?? "manual_cli");
+      const result = await actor.enqueueTick({ reason });
+      const snapshot = await actor.getSnapshot();
+      console.log(JSON.stringify({ endpoint, result, latestRun: snapshot.runs[0] ?? null, state: snapshot.state }, null, 2));
+      return;
+    }
+    default:
+      throw new Error(
+        "Unknown discovery command. Use one of: seed, run, tick",
+      );
+  }
 }
 
 function listModules() {
