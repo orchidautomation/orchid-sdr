@@ -107,6 +107,12 @@ Smoke mode boots the dashboard and health check with in-memory repository/state 
 http://localhost:3000/dashboard
 ```
 
+To wire the first-party MCP into Claude Code locally:
+
+```bash
+npm run ai-sdr -- mcp claude-code --local --write
+```
+
 ## 5.5. How auth and URLs work
 
 - dashboard login:
@@ -134,6 +140,14 @@ Every scaffolded project includes:
 - `packages/` with the local `@ai-sdr/*` workspace packages used by the scaffold
 
 That file is the profile-specific onboarding checklist. Start there before enabling discovery, CRM, or outbound email.
+
+Helpful follow-up commands:
+
+```bash
+npm run ai-sdr -- connect source apify
+npm run ai-sdr -- deploy local
+npm run ai-sdr -- mcp claude-code --local --write
+```
 
 ## 7. Stay safe on first boot
 

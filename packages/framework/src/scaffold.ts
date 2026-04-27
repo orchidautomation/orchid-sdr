@@ -1,4 +1,5 @@
 import {
+  aiSdrCompositionProfileIds,
   collectConfigEnv,
   collectWebhookDefinitions,
   defineAiSdr,
@@ -135,6 +136,12 @@ export const aiSdrInitModuleChoices = [
 
 export type AiSdrScaffoldSpec = {
   profile: AiSdrInitProfile;
+  selection: {
+    id: string;
+    displayName: string;
+    description: string;
+    defaultDirectoryName: string;
+  };
   config: AiSdrConfig;
   selectedModules: AiSdrModuleDefinition[];
   envVars: AiSdrEnvVar[];
@@ -144,7 +151,7 @@ export function resolveInitProfile(profile: string | undefined): AiSdrInitProfil
   const normalizedProfile = profile && profile in legacyInitProfileAliases
     ? legacyInitProfileAliases[profile as keyof typeof legacyInitProfileAliases]
     : profile;
-  return aiSdrInitProfiles[(normalizedProfile ?? "starter") as AiSdrInitProfileId] ?? aiSdrInitProfiles.starter;
+  return aiSdrInitProfiles[(normalizedProfile ?? "core") as AiSdrInitProfileId] ?? aiSdrInitProfiles.core;
 }
 
 export function buildScaffoldSpec(
@@ -161,6 +168,10 @@ export function buildScaffoldSpec(
   const selectedModules = (baseConfig.modules ?? []).filter((module) => selectedModuleIdSet.has(module.id));
   const selectedProviderIdSet = new Set(providersFromModules(selectedModules).map((provider) => provider.id));
   const compositionTargets = resolveScaffoldCompositionTargets(profile, selectedModules);
+  const selection = describeScaffoldSelection({
+    profile,
+    selectedModuleIds: [...selectedModuleIdSet],
+  });
 
   const capabilityBindings = filterCapabilityBindings(
     baseConfig.capabilityBindings ?? [],
@@ -196,6 +207,7 @@ export function buildScaffoldSpec(
 
   return {
     profile,
+    selection,
     config,
     selectedModules,
     envVars: collectConfigEnv(config),
@@ -228,6 +240,35 @@ export function resolveInitModuleIds(
 
 export function isInitModuleEnabled(profile: AiSdrInitProfile, choice: AiSdrInitModuleChoice) {
   return profile.moduleIds.includes(choice.moduleId);
+}
+
+export function describeScaffoldSelection(input: {
+  profile: AiSdrInitProfile;
+  selectedModuleIds: string[];
+}) {
+  const exactMatch = findMatchingInitProfile(input.selectedModuleIds);
+  if (exactMatch) {
+    return {
+      id: exactMatch.id,
+      displayName: exactMatch.displayName,
+      description: exactMatch.description,
+      defaultDirectoryName: exactMatch.defaultDirectoryName,
+    };
+  }
+
+  const coreModuleIds = new Set<string>(aiSdrInitProfiles.core.moduleIds);
+  const optionalChoices = aiSdrInitModuleChoices.filter((choice) =>
+    input.selectedModuleIds.includes(choice.moduleId) && !coreModuleIds.has(choice.moduleId),
+  );
+
+  return {
+    id: "custom",
+    displayName: "Custom Trellis stack",
+    description: optionalChoices.length === 0
+      ? input.profile.description
+      : `Core runtime plus optional lanes: ${optionalChoices.map((choice) => choice.displayName).join(", ")}.`,
+    defaultDirectoryName: optionalChoices.length === 0 ? input.profile.defaultDirectoryName : "trellis-custom",
+  };
 }
 
 export function renderScaffoldConfigModule(spec: AiSdrScaffoldSpec) {
@@ -314,9 +355,9 @@ export function renderScaffoldSetupChecklist(spec: AiSdrScaffoldSpec) {
 
   return `# Trellis Setup Checklist
 
-This project was scaffolded with the **${spec.profile.displayName}** profile.
+This project was scaffolded as **${spec.selection.displayName}**.
 
-${spec.profile.description}
+${spec.selection.description}
 
 ## What This Profile Includes
 
@@ -362,6 +403,8 @@ Vercel OAuth is **not** part of the default Trellis auth story right now. The cu
   - route: \`/mcp/orchid-sdr\`
   - bearer token: \`ORCHID_SDR_MCP_TOKEN\`
   - fallback if unset: \`ORCHID_SDR_SANDBOX_TOKEN\`
+- Claude Code quick setup:
+  - \`npm run ai-sdr -- mcp claude-code --local --write\`
 
 ## URL Derivation
 
@@ -467,11 +510,21 @@ function filterWebhookDefinitions(
 }
 
 function resolveScaffoldCompositionTargets(profile: AiSdrInitProfile, selectedModules: AiSdrModuleDefinition[]) {
-  const supportedTargets = profile.compositionTargets.filter((target) =>
+  const supportedTargets = aiSdrCompositionProfileIds.filter((target) =>
     evaluateModuleComposition(selectedModules, { profile: target as AiSdrCompositionProfileId }).ok,
   );
 
-  return supportedTargets.length > 0 ? supportedTargets : ["minimum"];
+  return supportedTargets.length > 0 ? supportedTargets : [profile.compositionTargets[0] ?? "minimum"];
+}
+
+function findMatchingInitProfile(selectedModuleIds: string[]) {
+  const normalizedSelection = [...new Set(selectedModuleIds)].sort();
+
+  return Object.values(aiSdrInitProfiles).find((profile) => {
+    const normalizedProfileModules = [...profile.moduleIds].sort();
+    return normalizedProfileModules.length === normalizedSelection.length
+      && normalizedProfileModules.every((moduleId, index) => moduleId === normalizedSelection[index]);
+  }) ?? null;
 }
 
 function filterPackageBoundaries(

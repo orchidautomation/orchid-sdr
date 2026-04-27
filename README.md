@@ -193,6 +193,12 @@ The current auth model is token/password based, not Vercel OAuth:
 - deployed MCP URL is `${APP_URL}/mcp/orchid-sdr`
 - if `APP_URL` is unset on Vercel, the app falls back to `https://$VERCEL_URL`
 
+For Claude Code local setup:
+
+```bash
+npm run ai-sdr -- mcp claude-code --local --write
+```
+
 Campaign quiet hours are evaluated in the campaign's local timezone. New campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE` and you can update a live campaign later through the remote MCP tool `control.setCampaignTimezone`.
 
 Parallel Search MCP is mounted into sandbox turns by default using `https://search.parallel.ai/mcp`. If you set `PARALLEL_API_KEY`, the sandbox adds bearer auth and also mounts Parallel Task MCP at `https://task-mcp.parallel.ai/mcp` for async deep research and enrichment.

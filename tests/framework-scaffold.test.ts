@@ -18,6 +18,7 @@ describe("framework scaffold profiles", () => {
     });
 
     expect(spec.profile.id).toBe("core");
+    expect(spec.selection.id).toBe("core");
     expect(spec.profile.defaultDirectoryName).toBe("trellis-core");
     expect(spec.config.compositionTargets).toEqual(["minimum"]);
     expect(spec.config.campaigns?.[0]?.sources).toEqual(["normalized-webhook"]);
@@ -62,6 +63,7 @@ describe("framework scaffold profiles", () => {
     });
 
     expect(spec.profile.id).toBe("production");
+    expect(spec.selection.id).toBe("production");
     expect(spec.config.compositionTargets).toEqual(["minimum", "productionParity"]);
     expect(spec.config.capabilityBindings?.some((binding) => binding.providerId === "parallel")).toBe(true);
     expect(spec.config.capabilityBindings?.some((binding) => binding.providerId === "attio")).toBe(true);
@@ -80,9 +82,26 @@ describe("framework scaffold profiles", () => {
     });
 
     expect(aiSdrInitModuleChoices.map((choice) => choice.id)).toContain("discovery");
+    expect(spec.selection.id).toBe("custom");
+    expect(spec.selection.displayName).toBe("Custom Trellis stack");
     expect(spec.selectedModules.map((module) => module.id)).toContain("apify-linkedin");
     expect(spec.selectedModules.map((module) => module.id)).toContain("parallel");
     expect(spec.config.campaigns?.[0]?.sources).toEqual(["normalized-webhook", "apify-linkedin"]);
+  });
+
+  it("can reach production parity by starting from core and toggling all optional lanes on", () => {
+    const moduleIds = resolveInitModuleIds("core", {
+      include: ["discovery", "deep-research", "enrichment", "crm", "email", "handoff"],
+    });
+    const spec = buildScaffoldSpec(baseConfig, {
+      name: "trellis-core-prod",
+      profile: "core",
+      moduleIds,
+    });
+
+    expect(spec.profile.id).toBe("core");
+    expect(spec.selection.id).toBe("production");
+    expect(spec.config.compositionTargets).toEqual(["minimum", "productionParity"]);
   });
 
   it("drops production parity when optional production modules are removed", () => {
@@ -122,10 +141,11 @@ describe("framework scaffold profiles", () => {
     expect(envExample).toContain("PARALLEL_API_KEY=");
     expect(envExample).toContain("ORCHID_SDR_SANDBOX_TOKEN=change-me");
     expect(setupChecklist).toContain("# Trellis Setup Checklist");
-    expect(setupChecklist).toContain(spec.profile.description);
+    expect(setupChecklist).toContain(spec.selection.description);
     expect(setupChecklist).toContain("External Accounts You Actually Need");
     expect(setupChecklist).toContain("Vercel OAuth is **not** part of the default Trellis auth story right now.");
     expect(setupChecklist).toContain("Deployed MCP endpoint");
+    expect(setupChecklist).toContain("npm run ai-sdr -- mcp claude-code --local --write");
     expect(setupChecklist).toContain("Configured Webhooks");
     expect(configModule).toContain('"webhooks": [');
     expect(setupChecklist).toContain("`CONVEX_URL`");

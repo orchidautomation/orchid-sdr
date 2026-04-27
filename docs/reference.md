@@ -232,14 +232,22 @@ Example remote MCP config:
 {
   "mcpServers": {
     "orchid-sdr": {
-      "type": "http",
-      "url": "https://your-app.example.com/mcp/orchid-sdr",
-      "headers": {
-        "Authorization": "Bearer ${ORCHID_SDR_MCP_TOKEN}"
+      "transport": {
+        "type": "http",
+        "url": "https://your-app.example.com/mcp/orchid-sdr",
+        "headers": {
+          "Authorization": "Bearer ${ORCHID_SDR_MCP_TOKEN}"
+        }
       }
     }
   }
 }
+```
+
+For Claude Code local setup, the quickest path is:
+
+```bash
+npm run ai-sdr -- mcp claude-code --local --write
 ```
 
 Auth model:
