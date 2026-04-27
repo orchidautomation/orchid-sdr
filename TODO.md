@@ -150,7 +150,7 @@ Important:
 
 ### Vision / Product Direction
 
-- [x] private vision doc created and maintained in `.agents/vision/`
+- [x] tracked GTM vision docs created and maintained in `gtm/`
 - [x] broader GTM preset ideas documented
 - [x] linked intelligence / attribution / meeting prep / CS use cases documented
 - [x] naming direction updated:
@@ -359,7 +359,7 @@ Example target behavior:
 - [x] Firecrawl is the default search/extract provider
 - [x] Parallel is the default deep-research/monitor provider
 - [x] Prospeo is the default enrichment provider
-- [x] `.agents/vision/` remains private and gitignored
+- [x] GTM vision docs moved into tracked `gtm/`
 - [x] `Trellis` is the product name direction
 - [x] `useTrellis.dev` is good enough as the current domain
 
