@@ -13,16 +13,26 @@ import {
   type AiSdrCompositionProfileId,
   type AiSdrEnvVar,
 } from "@ai-sdr/framework";
+import { getFrameworkRuntimeConfig } from "../src/services/framework-stack.js";
+import { buildRuntimeReadinessChecks } from "../src/services/doctor-readiness.js";
 
 type Check = {
   label: string;
   ok: boolean;
   detail?: string;
   severity: "error" | "warning" | "info";
+  envNames?: string[];
+  fixGroup?: "boot" | "discovery" | "optional";
 };
 
 const strictEnv = process.argv.includes("--strict-env");
 const root = process.cwd();
+const readinessCoveredEnv = new Set([
+  "CONVEX_URL",
+  "NEXT_PUBLIC_CONVEX_URL",
+  "ORCHID_SDR_SANDBOX_TOKEN",
+  "HANDOFF_WEBHOOK_SECRET",
+]);
 
 const checks: Check[] = [];
 
@@ -34,12 +44,15 @@ for (const profile of resolveConfiguredCompositionProfiles()) {
 await checkModuleDocs();
 await checkEnvExample();
 checkRuntimeEnv();
+checkRuntimeReadiness();
 
 for (const check of checks) {
   const icon = check.ok ? "ok" : check.severity;
   const suffix = check.detail ? ` - ${check.detail}` : "";
   console.log(`${icon}: ${check.label}${suffix}`);
 }
+
+printFixNextBlock();
 
 const errors = checks.filter((check) => !check.ok && check.severity === "error");
 if (errors.length > 0) {
@@ -173,6 +186,9 @@ async function checkEnvExample() {
 
 function checkRuntimeEnv() {
   for (const envVar of collectConfigEnv(config).filter(isRequiredEnv)) {
+    if (readinessCoveredEnv.has(envVar.name)) {
+      continue;
+    }
     const ok = Boolean(process.env[envVar.name]);
     checks.push({
       label: `runtime env ${envVar.name}`,
@@ -180,6 +196,72 @@ function checkRuntimeEnv() {
       severity: strictEnv ? "error" : "warning",
       detail: ok ? undefined : strictEnv ? "missing required env" : "missing in current shell; rerun with --strict-env to fail",
     });
+  }
+}
+
+function checkRuntimeReadiness() {
+  const framework = getFrameworkRuntimeConfig();
+  const readinessChecks = buildRuntimeReadinessChecks({
+    env: process.env,
+    framework,
+  });
+
+  for (const check of readinessChecks) {
+    checks.push(check);
+  }
+}
+
+function printFixNextBlock() {
+  const grouped = new Map<NonNullable<Check["fixGroup"]>, string[]>();
+
+  for (const check of checks) {
+    if (check.ok || !check.fixGroup || !check.envNames?.length) {
+      continue;
+    }
+
+    const existing = grouped.get(check.fixGroup) ?? [];
+    const rendered = check.envNames.join(" or ");
+    if (!existing.includes(rendered)) {
+      existing.push(rendered);
+    }
+    grouped.set(check.fixGroup, existing);
+  }
+
+  const hasSmokeHint = process.env.TRELLIS_LOCAL_SMOKE_MODE !== "true"
+    && checks.some((check) => check.label === "boot readiness: Convex state plane URL" && !check.ok);
+
+  if (grouped.size === 0 && !hasSmokeHint) {
+    return;
+  }
+
+  console.log("");
+  console.log("Fix these envs next:");
+
+  printFixGroup(grouped, "boot", "  boot");
+  printFixGroup(grouped, "discovery", "  discovery");
+  printFixGroup(grouped, "optional", "  optional");
+
+  if (hasSmokeHint) {
+    console.log("  local boot-only smoke mode");
+    console.log("    - TRELLIS_LOCAL_SMOKE_MODE=true");
+    console.log("    - ORCHID_SDR_SANDBOX_TOKEN=<local-dev-token>");
+    console.log("    - HANDOFF_WEBHOOK_SECRET=<local-dev-secret>");
+  }
+}
+
+function printFixGroup(
+  grouped: Map<NonNullable<Check["fixGroup"]>, string[]>,
+  key: NonNullable<Check["fixGroup"]>,
+  label: string,
+) {
+  const values = grouped.get(key);
+  if (!values || values.length === 0) {
+    return;
+  }
+
+  console.log(label);
+  for (const value of values) {
+    console.log(`    - ${value}`);
   }
 }
 

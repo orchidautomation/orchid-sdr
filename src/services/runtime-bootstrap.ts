@@ -42,6 +42,11 @@ export async function ensureRuntimeBootstrapped() {
       registry.start();
     }
 
+    if (context.localSmokeMode) {
+      console.warn("Local smoke mode enabled: using in-memory repository/state fallbacks and skipping discovery actor bootstrap.");
+      return;
+    }
+
     await runNonFatalBootstrapTask("discovery actor bootstrap", bootstrapDiscoveryActors);
   })().catch((error) => {
     bootstrapPromise = null;

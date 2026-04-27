@@ -192,6 +192,19 @@ export const discoveryCoordinator = actor({
       },
     ) => {
       const context = getAppContext();
+      if (context.localSmokeMode) {
+        return {
+          ok: true,
+          source: input.source ?? c.state.source ?? "linkedin_public_post",
+          campaignId: input.campaignId ?? c.state.campaignId ?? "cmp_default",
+          scheduledNextTickAt: 0,
+          planner: "manual",
+          startedRuns: [],
+          skipped: true,
+          reason: "discovery is disabled in local smoke mode",
+        } satisfies DiscoveryTickResult;
+      }
+
       const source = input.source ?? c.state.source;
       if (!source) {
         throw new Error("discovery source is required");
@@ -632,6 +645,23 @@ async function runDiscoveryTick(
   },
 ): Promise<DiscoveryTickResult> {
   const context = getAppContext();
+  if (context.localSmokeMode) {
+    const source = c.state.source ?? "linkedin_public_post";
+    const campaignId = c.state.campaignId ?? "cmp_default";
+    c.state.lastStatus = "skipped";
+    c.state.nextTickAt = 0;
+    return {
+      ok: true,
+      source,
+      campaignId,
+      scheduledNextTickAt: 0,
+      planner: "local_smoke_mode",
+      startedRuns: [],
+      skipped: true,
+      reason: "discovery is disabled in local smoke mode",
+    };
+  }
+
   const campaignId = c.state.campaignId ?? (await context.repository.ensureDefaultCampaign()).id;
   const source = c.state.source;
   if (!source) {

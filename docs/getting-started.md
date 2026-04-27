@@ -89,6 +89,18 @@ npm run doctor
 npm run dev
 ```
 
+If you are only verifying local boot and do not have Convex ready yet, use boot-only smoke mode:
+
+```bash
+export TRELLIS_LOCAL_SMOKE_MODE=true
+export ORCHID_SDR_SANDBOX_TOKEN=local-sandbox-token
+export HANDOFF_WEBHOOK_SECRET=local-handoff-secret
+npm run doctor
+npm run dev
+```
+
+Smoke mode boots the dashboard and health check with in-memory repository/state fallbacks. It is not a full workflow runtime.
+
 ## 5. Open the operator surface
 
 ```text

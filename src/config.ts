@@ -36,6 +36,7 @@ const envSchema = z.object({
 
   DATABASE_URL: z.string().min(1).optional(),
   NO_SENDS_MODE: optionalBooleanFromEnv,
+  TRELLIS_LOCAL_SMOKE_MODE: booleanFromEnv,
 
   RIVET_ENDPOINT: z.string().optional(),
   RIVET_TOKEN: z.string().optional(),
@@ -151,4 +152,8 @@ export function getConfig(): AppConfig {
     mcpToken: parsed.ORCHID_SDR_MCP_TOKEN ?? parsed.ORCHID_SDR_SANDBOX_TOKEN,
   };
   return cachedConfig;
+}
+
+export function resetConfigForTests() {
+  cachedConfig = null;
 }

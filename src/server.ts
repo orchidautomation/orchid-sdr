@@ -97,6 +97,7 @@ export function createApp() {
     return c.json({
       ok: true,
       service: "orchid-sdr",
+      localSmokeMode: context.localSmokeMode,
     });
   });
 
@@ -133,6 +134,9 @@ export function createApp() {
   app.post("/api/dashboard/discovery-tick", async (c) => {
     if (!isDashboardAuthenticated(c.req.raw, dashboardCookieName, getDashboardPassword(context))) {
       return c.json({ error: "unauthorized" }, 401);
+    }
+    if (context.localSmokeMode) {
+      return c.json({ error: "discovery is disabled in local smoke mode" }, 409);
     }
 
     const body = await c.req.json().catch(() => ({})) as {
@@ -545,6 +549,7 @@ async function buildDashboardCoreState(context: ReturnType<typeof getAppContext>
 
   return {
     campaignId: campaign.id,
+    localSmokeMode: context.localSmokeMode,
     generatedAt: new Date().toISOString(),
     summary,
     controls,
@@ -592,6 +597,7 @@ async function buildDashboardRuntimeState(context: ReturnType<typeof getAppConte
 
   return {
     campaignId: campaign.id,
+    localSmokeMode: context.localSmokeMode,
     generatedAt: new Date().toISOString(),
     actors: {
       sourceIngest,

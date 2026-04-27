@@ -19,6 +19,7 @@ import type {
   WebExtractProvider,
 } from "@ai-sdr/framework";
 import { ConvexRepository } from "../repository-convex.js";
+import { LocalSmokeRepository } from "../repository-local-smoke.js";
 import { OrchidRepository, type OrchidRepositoryPort } from "../repository.js";
 import { AiStructuredService } from "./ai-service.js";
 import { getFrameworkRuntimeConfig, type FrameworkRuntimeConfig } from "./framework-stack.js";
@@ -82,6 +83,7 @@ export interface ActiveHandoffProvider extends HandoffProvider {
 export interface AppContext {
   config: AppConfig;
   framework: FrameworkRuntimeConfig;
+  localSmokeMode: boolean;
   repository: OrchidRepositoryPort;
   state: StatePlaneProvider;
   knowledge: KnowledgeService;
@@ -130,9 +132,11 @@ export function getAppContext(): AppContext {
   const knowledge = new KnowledgeService();
   const ai = new AiStructuredService();
   const framework = getFrameworkRuntimeConfig();
+  const localSmokeMode = shouldUseLocalSmokeMode(config);
   const repository = createRepository({
     config,
     framework,
+    localSmokeMode,
   });
   const apify = new ApifySourceAdapter();
   const prospeo = new ProspeoEmailEnricher();
@@ -145,10 +149,11 @@ export function getAppContext(): AppContext {
   cachedContext = {
     config,
     framework,
+    localSmokeMode,
     repository,
     state: createConfiguredStatePlaneProvider({
-      providerId: framework.selections.state.providerId,
-      convexUrl: config.CONVEX_URL ?? config.NEXT_PUBLIC_CONVEX_URL,
+      providerId: localSmokeMode ? "disabled" : framework.selections.state.providerId,
+      convexUrl: localSmokeMode ? undefined : config.CONVEX_URL ?? config.NEXT_PUBLIC_CONVEX_URL,
     }),
     knowledge,
     ai,
@@ -190,7 +195,12 @@ export function getAppContext(): AppContext {
 function createRepository(input: {
   config: AppConfig;
   framework: FrameworkRuntimeConfig;
+  localSmokeMode: boolean;
 }): OrchidRepositoryPort {
+  if (input.localSmokeMode) {
+    return new LocalSmokeRepository(input.config.DEFAULT_CAMPAIGN_TIMEZONE);
+  }
+
   if (input.framework.selections.state.providerId === "convex") {
     const convexUrl = input.config.CONVEX_URL ?? input.config.NEXT_PUBLIC_CONVEX_URL;
     if (!convexUrl) {
@@ -201,6 +211,18 @@ function createRepository(input: {
   }
 
   return new OrchidRepository();
+}
+
+export function shouldUseLocalSmokeMode(config: AppConfig) {
+  if (!config.TRELLIS_LOCAL_SMOKE_MODE) {
+    return false;
+  }
+
+  return true;
+}
+
+export function resetAppContextForTests() {
+  cachedContext = null;
 }
 
 function createActiveDiscoveryProvider(

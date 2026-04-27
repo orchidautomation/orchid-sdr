@@ -336,6 +336,18 @@ Then open:
 http://localhost:3000/dashboard
 ```
 
+If Convex is not ready yet and you only want a local boot check, use boot-only smoke mode:
+
+```bash
+export TRELLIS_LOCAL_SMOKE_MODE=true
+export ORCHID_SDR_SANDBOX_TOKEN=local-sandbox-token
+export HANDOFF_WEBHOOK_SECRET=local-handoff-secret
+npm run doctor
+npm run dev
+```
+
+That path is intentionally limited to boot and dashboard verification.
+
 ### 2. The dashboard should resolve
 
 You should expect:
