@@ -19,6 +19,35 @@ When code is likely to repeat across multiple GTM apps, it should move into Trel
 
 When code expresses app-specific judgment or domain behavior, it can remain in the app.
 
+## Recommended Package Boundary
+
+Not every extraction belongs in `@ai-sdr/framework`.
+
+There are now two distinct kinds of reusable code:
+
+1. generic Trellis primitives
+2. default SDR substrate
+
+The generic Trellis primitives belong in framework packages like:
+
+- `@ai-sdr/framework`
+- `@ai-sdr/convex`
+
+The SDR-specific reusable substrate should likely converge into a dedicated package such as:
+
+- `@ai-sdr/default-sdr`
+
+That package would own:
+
+- default SDR domain types
+- default repository contracts
+- default Convex repository client
+- default smoke repository
+- default actor topology
+- default webhook and MCP bootstrap for the reference SDR app
+
+This keeps the framework generic while still shipping a turnkey default SDR model.
+
 ## Extraction Buckets
 
 ## 1. State substrate

@@ -177,6 +177,13 @@ export const aiSdrMcpServerDefinitionSchema = z.object({
   tools: z.array(aiSdrMcpToolCapabilitySchema).optional(),
 });
 
+export {
+  createBootstrapRunner,
+  hasRemoteRuntimeEndpoint,
+  runNonFatalBootstrapTask,
+  shouldSkipLocalRuntimeOnVercel,
+} from "./runtime-bootstrap.js";
+
 export const aiSdrSandboxStageModelRoutingSchema = z.object({
   discovery: z.string().min(1).optional(),
   qualify: z.string().min(1).optional(),

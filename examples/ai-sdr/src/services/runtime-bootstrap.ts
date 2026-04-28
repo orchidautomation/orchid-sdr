@@ -4,15 +4,14 @@ import { TrellisRepository } from "../repository.js";
 import { getActorClient } from "./actor-client.js";
 import { getAppContext } from "./runtime-context.js";
 import { runSandboxCompatibilityProbe } from "./sandbox-probe.js";
+import {
+  createBootstrapRunner,
+  hasRemoteRuntimeEndpoint,
+  runNonFatalBootstrapTask,
+  shouldSkipLocalRuntimeOnVercel,
+} from "@ai-sdr/framework/runtime-bootstrap";
 
-let bootstrapPromise: Promise<void> | null = null;
-
-export async function ensureRuntimeBootstrapped() {
-  if (bootstrapPromise) {
-    return bootstrapPromise;
-  }
-
-  bootstrapPromise = (async () => {
+export const ensureRuntimeBootstrapped = createBootstrapRunner(async () => {
     const context = getAppContext();
     if (context.repository instanceof TrellisRepository) {
       await migrateDatabase();
@@ -48,28 +47,17 @@ export async function ensureRuntimeBootstrapped() {
     }
 
     await runNonFatalBootstrapTask("discovery actor bootstrap", bootstrapDiscoveryActors);
-  })().catch((error) => {
-    bootstrapPromise = null;
-    throw error;
-  });
-
-  return bootstrapPromise;
-}
+});
 
 export function shouldUseRemoteRivetRuntime() {
-  return Boolean(registry.parseConfig().endpoint);
+  return hasRemoteRuntimeEndpoint(registry.parseConfig().endpoint);
 }
 
 export function shouldSkipLocalRivetRuntime() {
-  return Boolean(process.env.VERCEL) && !shouldUseRemoteRivetRuntime();
-}
-
-async function runNonFatalBootstrapTask(label: string, task: () => Promise<void>) {
-  try {
-    await task();
-  } catch (error) {
-    console.error(`Non-fatal runtime bootstrap failure: ${label}`, error);
-  }
+  return shouldSkipLocalRuntimeOnVercel({
+    isVercel: Boolean(process.env.VERCEL),
+    remoteEndpoint: registry.parseConfig().endpoint,
+  });
 }
 
 async function bootstrapDiscoveryActors() {

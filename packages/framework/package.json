@@ -13,6 +13,7 @@
     "./scaffold": "./src/scaffold.ts",
     "./signals": "./src/signals.ts",
     "./state": "./src/state.ts",
+    "./runtime-bootstrap": "./src/runtime-bootstrap.ts",
     "./validation": "./src/validation.ts",
     "./provider-contracts": "./src/provider-contracts.ts",
     "./crm": "./src/crm.ts"
