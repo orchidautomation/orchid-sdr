@@ -71,6 +71,7 @@ Already moved into shared packages:
   - dashboard auth and cache helpers
   - dashboard state builders
   - dashboard auth/state route shell
+  - dashboard operator action route shell
   - MCP HTTP bearer-auth + transport route shell
   - reusable prospect workflow mechanics
 
@@ -92,7 +93,8 @@ Partially extracted but still mixed:
 - `examples/ai-sdr/src/server.ts`
   - dashboard state builders now belong to `packages/default-sdr/`
   - dashboard auth/state routes and MCP HTTP route now belong to `packages/default-sdr/`
-  - custom operator actions, Rivet proxy wiring, and app-specific webhook handler wiring still live in the app
+  - dashboard operator action route boilerplate now belongs to `packages/default-sdr/`
+  - Rivet proxy wiring and app-specific webhook handler wiring still live in the app
 - `examples/ai-sdr/src/orchestration/discovery-coordinator.ts`
   - actor shell and state machine now belong to `packages/default-sdr/`
   - the example keeps only a thin dependency-wiring wrapper

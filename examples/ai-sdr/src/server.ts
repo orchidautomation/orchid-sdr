@@ -29,6 +29,7 @@ import {
   mountDefaultSdrDashboardRoutes,
   mountDefaultSdrMcpHttpRoute,
 } from "../../../packages/default-sdr/src/http-routes.js";
+import { mountDefaultSdrDashboardActionRoutes } from "../../../packages/default-sdr/src/dashboard-actions.js";
 import { mountDefaultSdrWebhookRoutes } from "../../../packages/default-sdr/src/webhook-bootstrap.js";
 import type { DefaultSdrDashboardActorClient } from "../../../packages/default-sdr/src/dashboard-state.js";
 
@@ -78,127 +79,140 @@ export function createApp() {
     });
   });
 
-  app.post("/api/dashboard/discovery-tick", async (c) => {
-    if (!dashboardRoutes.requireAuth(c.req.raw)) {
-      return c.json({ error: "unauthorized" }, 401);
-    }
-    if (context.localSmokeMode) {
-      return c.json({ error: "discovery is disabled in local smoke mode" }, 409);
-    }
+  mountDefaultSdrDashboardActionRoutes(app, {
+    requireAuth: dashboardRoutes.requireAuth,
+    actions: [
+      {
+        path: "/api/dashboard/discovery-tick",
+        handle: async ({ body }) => {
+          if (context.localSmokeMode) {
+            return {
+              status: 409,
+              body: { error: "discovery is disabled in local smoke mode" },
+            };
+          }
 
-    const body = await c.req.json().catch(() => ({})) as {
-      source?: "linkedin_public_post" | "x_public_post";
-    };
-    const campaign = await context.repository.ensureDefaultCampaign();
-    const automationPauseReason = getAutomationPauseReason(
-      await context.repository.getControlFlags(),
-      campaign.id,
-    );
-    if (automationPauseReason) {
-      return c.json({ error: `automation paused: ${automationPauseReason}` }, 409);
-    }
-    const source = body.source === "x_public_post" ? "x_public_post" : "linkedin_public_post";
-    const client = getActorClient();
-    const actor = client.discoveryCoordinator.getOrCreate([campaign.id, source]) as any;
-    const result = await actor.enqueueTick({
-      reason: "dashboard_manual",
-    });
+          const campaign = await context.repository.ensureDefaultCampaign();
+          const automationPauseReason = getAutomationPauseReason(
+            await context.repository.getControlFlags(),
+            campaign.id,
+          );
+          if (automationPauseReason) {
+            return {
+              status: 409,
+              body: { error: `automation paused: ${automationPauseReason}` },
+            };
+          }
 
-    return c.json({
-      ...result,
-      source,
-    }, 202);
-  });
+          const source = body.source === "x_public_post" ? "x_public_post" : "linkedin_public_post";
+          const client = getActorClient();
+          const actor = client.discoveryCoordinator.getOrCreate([campaign.id, source]) as any;
+          const result = await actor.enqueueTick({
+            reason: "dashboard_manual",
+          });
 
-  app.post("/api/dashboard/sandbox-probe", async (c) => {
-    if (!dashboardRoutes.requireAuth(c.req.raw)) {
-      return c.json({ error: "unauthorized" }, 401);
-    }
-
-    const campaign = await context.repository.ensureDefaultCampaign();
-    const automationPauseReason = getAutomationPauseReason(
-      await context.repository.getControlFlags(),
-      campaign.id,
-    );
-    if (automationPauseReason) {
-      return c.json({ error: `automation paused: ${automationPauseReason}` }, 409);
-    }
-
-    const client = getActorClient();
-    const actor = client.sandboxBroker.getOrCreate() as any;
-    const job = await actor.enqueueTurn({
-      turnId: `dashboard-firecrawl-probe-${Date.now()}`,
-      prospectId: "dashboard",
-      campaignId: campaign.id,
-      stage: "build_research_brief",
-      systemPrompt: "Use available tools when needed. Keep the final answer to one short line.",
-      prompt: "Use the Firecrawl MCP server to inspect https://playkit.sh and reply with the page title only.",
-      metadata: {
-        kind: "dashboard-firecrawl-probe",
+          return {
+            status: 202,
+            body: {
+              ...result,
+              source,
+            },
+          };
+        },
       },
-    });
+      {
+        path: "/api/dashboard/sandbox-probe",
+        handle: async () => {
+          const campaign = await context.repository.ensureDefaultCampaign();
+          const automationPauseReason = getAutomationPauseReason(
+            await context.repository.getControlFlags(),
+            campaign.id,
+          );
+          if (automationPauseReason) {
+            return {
+              status: 409,
+              body: { error: `automation paused: ${automationPauseReason}` },
+            };
+          }
 
-    return c.json(job, 202);
-  });
-
-  app.post("/api/dashboard/automation-pause", async (c) => {
-    if (!dashboardRoutes.requireAuth(c.req.raw)) {
-      return c.json({ error: "unauthorized" }, 401);
-    }
-
-    const body = await c.req.json().catch(() => ({})) as {
-      paused?: boolean;
-    };
-    const paused = Boolean(body.paused);
-    const campaign = await context.repository.ensureDefaultCampaign();
-    const client = getActorClient();
-    const actor = client.campaignOps.getOrCreate() as any;
-    const discoverySources = [
-      ...(context.config.DISCOVERY_LINKEDIN_ENABLED ? (["linkedin_public_post"] as const) : []),
-      ...(context.config.DISCOVERY_X_ENABLED ? (["x_public_post"] as const) : []),
-    ];
-    const result = paused
-      ? await actor.pauseCampaign(campaign.id)
-      : await actor.resumeCampaign(campaign.id);
-    const pausedDiscoveryResults = paused
-      ? await Promise.all(
-        discoverySources.map(async (source) => {
-          const coordinator = client.discoveryCoordinator.getOrCreate([campaign.id, source]) as any;
-          const pauseResult = await coordinator.pauseAutomation({
+          const client = getActorClient();
+          const actor = client.sandboxBroker.getOrCreate() as any;
+          const job = await actor.enqueueTurn({
+            turnId: `dashboard-firecrawl-probe-${Date.now()}`,
+            prospectId: "dashboard",
             campaignId: campaign.id,
-            source,
+            stage: "build_research_brief",
+            systemPrompt: "Use available tools when needed. Keep the final answer to one short line.",
+            prompt: "Use the Firecrawl MCP server to inspect https://playkit.sh and reply with the page title only.",
+            metadata: {
+              kind: "dashboard-firecrawl-probe",
+            },
           });
-          return {
-            source,
-            sourcePaused: pauseResult.ok === true,
-          };
-        }),
-      )
-      : [];
-    const resumedDiscoveryResults = paused
-      ? []
-      : await Promise.all(
-        discoverySources.map(async (source) => {
-          const coordinator = client.discoveryCoordinator.getOrCreate([campaign.id, source]) as any;
-          const resumeResult = await coordinator.initialize({
-            campaignId: campaign.id,
-            source,
-            runNow: false,
-          });
-          return {
-            source,
-            scheduledNextTickAt: resumeResult.scheduledNextTickAt ?? null,
-          };
-        }),
-      );
 
-    return c.json({
-      paused,
-      campaignId: campaign.id,
-      ...result,
-      discovery: paused ? pausedDiscoveryResults : resumedDiscoveryResults,
-      flags: await context.repository.getControlFlags(),
-    });
+          return {
+            status: 202,
+            body: job,
+          };
+        },
+      },
+      {
+        path: "/api/dashboard/automation-pause",
+        handle: async ({ body }) => {
+          const paused = Boolean(body.paused);
+          const campaign = await context.repository.ensureDefaultCampaign();
+          const client = getActorClient();
+          const actor = client.campaignOps.getOrCreate() as any;
+          const discoverySources = [
+            ...(context.config.DISCOVERY_LINKEDIN_ENABLED ? (["linkedin_public_post"] as const) : []),
+            ...(context.config.DISCOVERY_X_ENABLED ? (["x_public_post"] as const) : []),
+          ];
+          const result = paused
+            ? await actor.pauseCampaign(campaign.id)
+            : await actor.resumeCampaign(campaign.id);
+          const pausedDiscoveryResults = paused
+            ? await Promise.all(
+              discoverySources.map(async (source) => {
+                const coordinator = client.discoveryCoordinator.getOrCreate([campaign.id, source]) as any;
+                const pauseResult = await coordinator.pauseAutomation({
+                  campaignId: campaign.id,
+                  source,
+                });
+                return {
+                  source,
+                  sourcePaused: pauseResult.ok === true,
+                };
+              }),
+            )
+            : [];
+          const resumedDiscoveryResults = paused
+            ? []
+            : await Promise.all(
+              discoverySources.map(async (source) => {
+                const coordinator = client.discoveryCoordinator.getOrCreate([campaign.id, source]) as any;
+                const resumeResult = await coordinator.initialize({
+                  campaignId: campaign.id,
+                  source,
+                  runNow: false,
+                });
+                return {
+                  source,
+                  scheduledNextTickAt: resumeResult.scheduledNextTickAt ?? null,
+                };
+              }),
+            );
+
+          return {
+            body: {
+              paused,
+              campaignId: campaign.id,
+              ...result,
+              discovery: paused ? pausedDiscoveryResults : resumedDiscoveryResults,
+              flags: await context.repository.getControlFlags(),
+            },
+          };
+        },
+      },
+    ],
   });
 
   mountDefaultSdrMcpHttpRoute(app, {
