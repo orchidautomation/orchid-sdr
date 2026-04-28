@@ -176,6 +176,12 @@ export const aiSdrMcpServerDefinitionSchema = z.object({
   tools: z.array(aiSdrMcpToolCapabilitySchema).optional(),
 });
 
+export const aiSdrMcpExposureSchema = z.object({
+  toolGroups: z.array(z.string().min(1)).optional(),
+  includeTools: z.array(z.string().min(1)).optional(),
+  excludeTools: z.array(z.string().min(1)).optional(),
+});
+
 export {
   createBootstrapRunner,
   hasRemoteRuntimeEndpoint,
@@ -232,6 +238,7 @@ export const aiSdrConfigSchema = z.object({
   skills: z.array(aiSdrSkillDefinitionSchema).optional(),
   providers: z.array(aiSdrProviderDefinitionSchema).optional(),
   capabilityBindings: z.array(aiSdrCapabilityBindingSchema).optional(),
+  mcp: aiSdrMcpExposureSchema.optional(),
   packageBoundaries: z.array(aiSdrPackageBoundarySchema).optional(),
   campaigns: z.array(aiSdrCampaignDefinitionSchema).optional(),
   webhooks: z.array(aiSdrWebhookDefinitionSchema).optional(),
@@ -257,6 +264,7 @@ export type AiSdrContractId = z.infer<typeof aiSdrContractIdSchema>;
 export type AiSdrMcpAuthMode = z.infer<typeof aiSdrMcpAuthModeSchema>;
 export type AiSdrMcpToolCapability = z.infer<typeof aiSdrMcpToolCapabilitySchema>;
 export type AiSdrMcpServerDefinition = z.infer<typeof aiSdrMcpServerDefinitionSchema>;
+export type AiSdrMcpExposure = z.infer<typeof aiSdrMcpExposureSchema>;
 export type AiSdrSandboxStageModelRouting = z.infer<typeof aiSdrSandboxStageModelRoutingSchema>;
 export type AiSdrModelRouting = z.infer<typeof aiSdrModelRoutingSchema>;
 export type AiSdrModuleDefinition = z.infer<typeof aiSdrModuleDefinitionSchema>;

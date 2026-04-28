@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { defaultSdrMcpToolCatalog } from "./mcp-tool-catalog.js";
+import { selectDefaultSdrMcpTools, type DefaultSdrMcpToolSelection } from "./mcp-tool-catalog.js";
 
 interface McpToolHandler {
   handleTool(name: string, args: Record<string, unknown>): Promise<unknown>;
@@ -49,6 +49,7 @@ export function createDefaultSdrMcpServer(
   input?: {
     name?: string;
     version?: string;
+    tools?: DefaultSdrMcpToolSelection;
   },
 ) {
   const server = new McpServer({
@@ -56,7 +57,7 @@ export function createDefaultSdrMcpServer(
     version: input?.version ?? "0.1.0",
   });
 
-  for (const tool of defaultSdrMcpToolCatalog) {
+  for (const tool of selectDefaultSdrMcpTools(input?.tools)) {
     registerTool(server, context, tool.name, tool.description, tool.inputSchema);
   }
 

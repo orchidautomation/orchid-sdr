@@ -18,6 +18,12 @@ export interface DefaultSdrMcpToolDefinition {
   inputSchema: Record<string, z.ZodTypeAny>;
 }
 
+export interface DefaultSdrMcpToolSelection {
+  toolGroups?: string[];
+  includeTools?: string[];
+  excludeTools?: string[];
+}
+
 export const defaultSdrMcpToolCatalog: DefaultSdrMcpToolDefinition[] = [
   {
     name: "knowledge.search",
@@ -283,4 +289,26 @@ export function listDefaultSdrMcpToolNames() {
 
 export function listDefaultSdrMcpToolGroups() {
   return [...new Set(defaultSdrMcpToolCatalog.map((tool) => tool.group))];
+}
+
+export function selectDefaultSdrMcpTools(selection?: DefaultSdrMcpToolSelection) {
+  const allowedGroups = selection?.toolGroups ? new Set(selection.toolGroups) : null;
+  const includeTools = new Set(selection?.includeTools ?? []);
+  const excludeTools = new Set(selection?.excludeTools ?? []);
+
+  return defaultSdrMcpToolCatalog.filter((tool) => {
+    if (excludeTools.has(tool.name)) {
+      return false;
+    }
+
+    if (includeTools.has(tool.name)) {
+      return true;
+    }
+
+    if (!allowedGroups) {
+      return true;
+    }
+
+    return allowedGroups.has(tool.group);
+  });
 }
