@@ -66,22 +66,30 @@ Already moved into shared packages:
   - default runtime bootstrap
   - default webhook bootstrap
   - default MCP server bootstrap
+  - default operator/runtime MCP tool service
   - default dashboard shell
   - dashboard auth and cache helpers
+  - dashboard state builders
 
 Still primarily app-owned:
 
-- `examples/ai-sdr/src/services/mcp-tools.ts`
 - `examples/ai-sdr/src/orchestration/discovery-coordinator.ts`
 - `examples/ai-sdr/src/orchestration/prospect-workflow.ts`
 - `examples/ai-sdr/src/server.ts`
 
 Partially extracted but still mixed:
 
+- `examples/ai-sdr/src/services/mcp-tools.ts`
+  - operator/runtime/pipeline reads now belong to `packages/default-sdr/`
+  - provider-heavy actions such as Attio sync, AgentMail send/reply, and custom handoff still belong to the AI SDR app or a future richer SDR package
+
 - `examples/ai-sdr/src/services/runtime-context.ts`
   - app-specific adapters/services still assembled here
 - `examples/ai-sdr/src/services/runtime-bootstrap.ts`
   - now mostly a thin wrapper over shared default SDR bootstrap
+- `examples/ai-sdr/src/server.ts`
+  - dashboard state builders now belong to `packages/default-sdr/`
+  - route-level orchestration and auth wiring still live in the app
 
 ## Extraction Buckets
 
@@ -189,6 +197,18 @@ What should remain configurable:
 - branching logic
 - stage-specific reasoning
 - provider-specific enrich/research decisions
+
+Boundary decision:
+
+- `discovery-coordinator.ts` is reusable **default SDR substrate**, not generic Trellis core
+- the reasons are concrete:
+  - it owns SDR-specific term frontier management
+  - it owns source-specific discovery state
+  - it assumes Apify-style run ingestion and poll/reconcile behavior
+  - it is useful across multiple SDR-style apps, but not across arbitrary GTM workflows
+- that means the next extraction target is:
+  - move `discovery-coordinator.ts` toward `packages/default-sdr/`
+  - do **not** force it into `@ai-sdr/framework`
 
 ## 5. MCP substrate
 

@@ -20,25 +20,29 @@ import {
 import { runSandboxTurn } from "./orchestration/sandbox-broker.js";
 import { getAutomationPauseReason } from "./orchestration/workflow-control.js";
 import {
-  calculateDurationMs,
   createDashboardStateController,
   getDashboardPassword as resolveDashboardPassword,
   hashDashboardPassword as hashDefaultDashboardPassword,
   isDashboardAuthenticated as checkDashboardAuthenticated,
   isSecureRequest,
-  withFallback,
 } from "../../../packages/default-sdr/src/dashboard-bootstrap.js";
+import {
+  buildDefaultSdrDashboardCoreState,
+  buildDefaultSdrDashboardRuntimeState,
+} from "../../../packages/default-sdr/src/dashboard-state.js";
 import { mountDefaultSdrWebhookRoutes } from "../../../packages/default-sdr/src/webhook-bootstrap.js";
-
-const DASHBOARD_RUNTIME_TIMEOUT_MS = 1_200;
+import type { DefaultSdrDashboardActorClient } from "../../../packages/default-sdr/src/dashboard-state.js";
 
 export function createApp() {
   const app = new Hono();
   const context = getAppContext();
   const dashboardCookieName = "trellis_dashboard_auth";
   const dashboardState = createDashboardStateController({
-    buildCoreState: () => buildDashboardCoreState(context),
-    buildRuntimeState: () => buildDashboardRuntimeState(context),
+    buildCoreState: () => buildDefaultSdrDashboardCoreState(context),
+    buildRuntimeState: () =>
+      buildDefaultSdrDashboardRuntimeState(context, {
+        getActorClient: () => getActorClient() as unknown as DefaultSdrDashboardActorClient,
+      }),
   });
 
   const workflowDeps = {
@@ -381,95 +385,4 @@ function hashDashboardPassword(password: string) {
 
 function isDashboardAuthenticated(request: Request, cookieName: string, password: string) {
   return checkDashboardAuthenticated(request, cookieName, password);
-}
-
-async function buildDashboardCoreState(context: ReturnType<typeof getAppContext>) {
-  const campaign = await context.repository.ensureDefaultCampaign();
-
-  const [
-    summary,
-    recentSignals,
-    recentProspects,
-    qualifiedLeads,
-    activeThreads,
-    providerRuns,
-    auditEvents,
-    controls,
-  ] = await Promise.all([
-    context.repository.getDashboardSummary(),
-    context.repository.listRecentSignals(12),
-    context.repository.listRecentProspects(12),
-    context.repository.listQualifiedLeads(12),
-    context.repository.listActiveThreads(12),
-    context.repository.listRecentProviderRuns(12),
-    context.repository.listRecentAuditEvents(16),
-    context.repository.getControlFlags(),
-  ]);
-
-  return {
-    campaignId: campaign.id,
-    localSmokeMode: context.localSmokeMode,
-    generatedAt: new Date().toISOString(),
-    summary,
-    controls,
-    providerRuns,
-    qualifiedLeads,
-    activeThreads,
-    recentProspects,
-    recentSignals,
-    auditEvents,
-  };
-}
-
-async function buildDashboardRuntimeState(context: ReturnType<typeof getAppContext>) {
-  const campaign = await context.repository.ensureDefaultCampaign();
-  const client = getActorClient();
-  const sandboxActor = client.sandboxBroker.getOrCreate() as any;
-
-  const [
-    sandboxJobs,
-    sourceIngest,
-    campaignOps,
-    sandboxBroker,
-    linkedinDiscovery,
-    xDiscovery,
-  ] = await Promise.all([
-    withFallback(sandboxActor.listJobs({ limit: 12 }), [], DASHBOARD_RUNTIME_TIMEOUT_MS),
-    withFallback((client.sourceIngest.getOrCreate() as any).getSnapshot(), null, DASHBOARD_RUNTIME_TIMEOUT_MS),
-    withFallback((client.campaignOps.getOrCreate() as any).getSnapshot(), null, DASHBOARD_RUNTIME_TIMEOUT_MS),
-    withFallback((sandboxActor as any).getSnapshot(), null, DASHBOARD_RUNTIME_TIMEOUT_MS),
-    context.config.DISCOVERY_LINKEDIN_ENABLED
-      ? withFallback(
-        (client.discoveryCoordinator.getOrCreate([campaign.id, "linkedin_public_post"]) as any).getSnapshot(),
-        null,
-        DASHBOARD_RUNTIME_TIMEOUT_MS,
-      )
-      : Promise.resolve(null),
-    context.config.DISCOVERY_X_ENABLED
-      ? withFallback(
-        (client.discoveryCoordinator.getOrCreate([campaign.id, "x_public_post"]) as any).getSnapshot(),
-        null,
-        DASHBOARD_RUNTIME_TIMEOUT_MS,
-      )
-      : Promise.resolve(null),
-  ]);
-
-  return {
-    campaignId: campaign.id,
-    localSmokeMode: context.localSmokeMode,
-    generatedAt: new Date().toISOString(),
-    actors: {
-      sourceIngest,
-      campaignOps,
-      sandboxBroker,
-    },
-    discovery: {
-      linkedin_public_post: linkedinDiscovery,
-      x_public_post: xDiscovery,
-    },
-    sandboxJobs: sandboxJobs.map((job: any) => ({
-      ...job,
-      durationMs: calculateDurationMs(job.startedAt, job.completedAt),
-    })),
-  };
 }

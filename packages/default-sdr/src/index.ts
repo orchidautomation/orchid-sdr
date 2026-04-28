@@ -7,6 +7,8 @@ export * from "./mcp-server.js";
 export * from "./webhook-bootstrap.js";
 export * from "./dashboard-bootstrap.js";
 export * from "./dashboard-shell.js";
+export * from "./dashboard-state.js";
 export * from "./actor-registry.js";
 export * from "./runtime-bindings.js";
 export * from "./runtime-bootstrap.js";
+export * from "./mcp-tool-service.js";
