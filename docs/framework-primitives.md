@@ -1,32 +1,26 @@
 # Framework Primitives
 
-This page describes the emerging modular shape of Trellis.
-
-The target user is a GTM engineer, RevOps engineer, or technical founder using a coding agent such as Codex or Claude Code to assemble a custom AI SDR from reliable primitives.
-
-The goal is not to make every company use the same SDR. The goal is to give teams the blocks to build the exact GTM motion they need.
+This page describes the main framework contracts behind the Trellis reference AI SDR. It is written for GTM engineers and developers extending the system with coding agents or direct code changes.
 
 ## Mental Model
 
-An AI SDR is a stateful workflow made from a few composable parts:
+An AI SDR deployment is composed from a small set of explicit parts:
 
 ```text
 signals -> prospects -> threads -> skills -> providers -> MCP tools
 ```
 
-Those parts should be explicit enough that a coding agent can safely modify, extend, test, and deploy them.
+Each part is designed to be inspectable, testable, and replaceable.
 
-## Current Config Surface
+## Configuration Surface
 
-The root [ai-sdr.config.ts](../ai-sdr.config.ts) file describes this deployment as a framework-style app:
+The root [ai-sdr.config.ts](../ai-sdr.config.ts) file describes a deployment in framework terms:
 
 - knowledge files
 - tracked skills
 - provider modules
 - campaigns
 - required environment variables
-
-This is intentionally thin today. Over time it should evolve from descriptive metadata into the runtime composition layer for the framework.
 
 The config surface is schema-backed in [src/framework/index.ts](../src/framework/index.ts):
 
@@ -40,20 +34,22 @@ defineAiSdr
 validateAiSdrConfigReferences
 ```
 
-That matters because future CLI commands and coding agents need a runtime-verifiable shape, not only TypeScript hints.
+Use this file as the primary composition point when changing providers, enabling modules, or preparing a deployment for automation.
 
-Current provider modules are defined in [src/framework/builtin-modules.ts](../src/framework/builtin-modules.ts). Each module can bundle:
+Current provider modules are defined in [src/framework/builtin-modules.ts](../src/framework/builtin-modules.ts). A module can bundle:
 
 - provider definitions
 - provider keys
 - capability IDs
-- normalized framework contracts
-- env vars
+- normalized contracts
+- environment variables
 - docs
-- future smoke checks
-- package names for future extraction
+- smoke checks
+- package names for extracted providers
 
-That is the beginning of the `ai-sdr add <capability> <provider>` shape.
+## Capability Model
+
+The CLI and framework use capability IDs to describe what a provider supplies.
 
 MVP capability IDs:
 
@@ -72,9 +68,9 @@ observability
 compliance
 ```
 
-Platform capabilities such as `database` and `mcp` are also modeled because a self-hosted SDR needs durable state and a tool surface. They are not GTM motions by themselves, but they should still be packages.
+Platform capabilities such as `database` and `mcp` are modeled separately because a self-hosted SDR needs durable state and an operator tool surface.
 
-The default agent-native stack uses Convex as `state` and Rivet as `runtime`. See [Agent-Native Architecture](agent-native-architecture.md).
+The default stack uses Convex as `state` and Rivet as `runtime`. See [Agent-Native Architecture](agent-native-architecture.md).
 
 Contract examples:
 
@@ -93,11 +89,11 @@ runtime.actor.v1
 runtime.sandbox.v1
 ```
 
-This lets a future Salesforce, HubSpot, or Nango-backed module say exactly which normalized surfaces it supports.
+These contracts let different providers implement the same workflow surface without leaking vendor-specific behavior into the core app.
 
 ## Signals
 
-Signals are normalized events that start or update a GTM workflow.
+Signals are normalized events that start or update SDR workflows.
 
 Examples:
 
@@ -120,28 +116,26 @@ signalWebhookPayloadSchema
 providerSignalSchema
 ```
 
-The generic webhook path uses the same contract as provider adapters, so new sources can be added without inventing a new ingestion shape every time.
+The generic webhook path and provider adapters share the same contract so new sources can be added without defining a new ingest shape each time.
 
 ## Providers
 
-Providers are swappable integrations.
+Providers are swappable integrations behind the main workflow surfaces.
 
 Examples:
 
 - CRM: Attio, HubSpot, Salesforce, Twenty
-- Email: AgentMail, Gmail, Outlook, custom SMTP/API
+- Email: AgentMail, Gmail, Outlook, custom SMTP or API
 - State: Convex by default, Neon/Postgres as a lower-level database adapter
 - Database: Neon Postgres, Supabase Postgres, RDS Postgres, self-hosted Postgres
-- Search: Parallel, Firecrawl, search APIs, browser/sandbox tools
-- Extract: Parallel, Firecrawl, browser/sandbox tools
+- Search: Parallel, Firecrawl, search APIs, browser or sandbox tools
+- Extract: Parallel, Firecrawl, browser or sandbox tools
 - Enrichment: Parallel, Prospeo, Clay, custom data providers
 - Discovery: Apify, first-party sources, custom webhooks
-- Runtime: Rivet actors, local development, Vercel Sandbox, another cloud code harness
+- Runtime: Rivet actors, local development, Vercel Sandbox, other cloud code harnesses
 - Model: Vercel AI Gateway, OpenAI, Anthropic, OpenRouter, local models
 
 The early executable contracts live in [src/framework/provider-contracts.ts](../src/framework/provider-contracts.ts).
-
-CRM normalization is covered separately in [CRM Normalization](crm-normalization.md). That layer keeps Salesforce, HubSpot, Twenty, Attio, and Nango-backed adapters from leaking vendor-specific shapes into the core SDR workflow.
 
 Current contract examples:
 
@@ -156,7 +150,7 @@ CrmProvider
 HandoffProvider
 ```
 
-Existing adapters are starting to implement these contracts directly. That creates a path toward packages such as:
+These contracts support package extraction for providers such as:
 
 ```text
 @ai-sdr/attio
@@ -170,7 +164,9 @@ Existing adapters are starting to implement these contracts directly. That creat
 @ai-sdr/twenty
 ```
 
-Current MVP package targets:
+### CLI Mapping
+
+Current package targets:
 
 | Command | Package | Capabilities |
 | --- | --- | --- |
@@ -188,46 +184,31 @@ Current MVP package targets:
 | `ai-sdr add handoff slack` | `@ai-sdr/slack` | `handoff` |
 | `ai-sdr add mcp trellis-mcp` | `@ai-sdr/mcp` | `mcp` |
 
-Provider packages can satisfy more than one capability. The CLI should install by capability/provider pair, while the package remains provider-owned:
+Provider packages can satisfy more than one capability. The CLI installs by capability and provider pair while the underlying package remains provider-owned.
 
-- `ai-sdr add search parallel` installs `@ai-sdr/parallel`.
-- `ai-sdr add extract parallel` also installs `@ai-sdr/parallel`.
-- `ai-sdr add enrichment parallel` also installs `@ai-sdr/parallel`.
-- `ai-sdr add search firecrawl` installs `@ai-sdr/firecrawl`.
-- `ai-sdr add extract firecrawl` also installs `@ai-sdr/firecrawl`.
-- `ai-sdr add enrichment firecrawl` also installs `@ai-sdr/firecrawl`.
-- Convex maps to `state` and should own canonical reactive SDR state.
-- Neon maps to `database` and satisfies the current Postgres state contract through `DATABASE_URL`.
-- Rivet maps to `runtime.actor.v1` and owns active agent orchestration.
-- Vercel Sandbox maps to `runtime.sandbox.v1` and owns cloud code-harness turns.
-
-`research` remains a CLI alias for search/extract/enrichment so `ai-sdr add research parallel` can still work, but manifests should use the granular capability IDs.
+`research` remains a CLI alias for search, extract, and enrichment, but manifests should use the granular capability IDs.
 
 ## Minimum Runnable Stack
 
-The reference app has two composition profiles:
+The reference app currently has two composition profiles:
 
 | Profile | Purpose |
 | --- | --- |
-| `minimum` | Ingest one signal, research it, run model/runtime work, persist state, and expose MCP tools. |
-| `productionParity` | Recreate the current Trellis behavior: state, source, research, enrichment, runtime actors, sandbox harness, model gateway, email, CRM, handoff, and MCP. |
+| `minimum` | Ingest one signal, research it, run model and runtime work, persist state, and expose MCP tools. |
+| `productionParity` | Run the full reference workflow: state, source, research, enrichment, runtime actors, sandbox harness, model gateway, email, CRM, handoff, and MCP. |
 
-Run:
+Verification commands:
 
 ```bash
 npm run ai-sdr -- check
 npm run doctor
 ```
 
-This makes modularity concrete. A package can be removed, but the configured stack must still satisfy the selected profile's capabilities and contracts.
-
-MCP tools are indexed separately in [MCP Capability Index](mcp-capability-index.md). The module manifest should be able to compile provider MCP definitions into sandbox `.mcp.json`.
+Use these checks after changing provider composition or preparing a deployment profile.
 
 ## Skills
 
-Skills are the agent's operating judgment.
-
-Today they live under `skills/`:
+Skills encode agent behavior and judgment. Current skills live under `skills/`:
 
 - `icp-qualification`
 - `research-brief`
@@ -236,68 +217,40 @@ Today they live under `skills/`:
 - `reply-policy`
 - `handoff-policy`
 
-In the framework direction, skills should become composable modules that a GTM engineer can add, remove, version, and test.
-
-Example future commands:
-
-```bash
-npx ai-sdr add skill product-routing
-npx ai-sdr add skill enterprise-compliance
-npx ai-sdr add skill founder-led-copy
-```
+Developers can treat skills as a composable surface for company-specific qualification, drafting, reply handling, or routing logic.
 
 ## MCP Tools
 
-The first-party MCP server is the control surface for operators and agents.
+The first-party MCP server is the operator and agent control surface.
 
-It lets a coding agent inspect and manipulate the live SDR system through typed tools instead of guessing against a database or dashboard.
-
-Important tool groups:
+Primary tool groups:
 
 - pipeline inspection
-- lead/thread inspection
+- lead and thread inspection
 - research and qualification
-- mail preview/send/reply
+- mail preview, send, and reply
 - CRM sync
 - runtime flags
 - discovery controls
 - handoff
 
-This is a major differentiator: a GTM engineer can use Codex or Claude Code to operate and extend the SDR through the same typed interface the system exposes to agents.
+This interface allows external agents to inspect and control the live SDR system through typed tools instead of direct database or dashboard coupling.
 
-## How A GTM Engineer Should Use This
+## Extend The Framework
 
-The intended workflow:
+Typical developer workflow:
 
-1. Clone or scaffold an AI SDR project.
-2. Describe the company's ICP and product in `knowledge/`.
-3. Add providers for the actual stack.
-4. Add skills that encode the company's judgment.
-5. Run `npm run doctor`.
-6. Run in `NO_SENDS_MODE=true`.
-7. Feed real signals into the system.
-8. Inspect outcomes through MCP and the dashboard.
-9. Iterate with Codex or Claude Code.
-10. Only enable sends after the workflow is proven.
+1. scaffold or clone an AI SDR project
+2. define product and ICP context in `knowledge/`
+3. add providers for the target stack
+4. add or modify skills
+5. run `npm run doctor`
+6. test in `NO_SENDS_MODE=true`
+7. feed real or test signals into the system
+8. inspect behavior through MCP and the dashboard
+9. iterate on providers, contracts, or skills
 
-Future ideal:
-
-```bash
-npx create-ai-sdr@latest profound-sdr
-cd profound-sdr
-npx ai-sdr add source hubspot
-npx ai-sdr add crm attio
-npx ai-sdr add email agentmail
-npx ai-sdr add state convex
-npx ai-sdr add search parallel
-npx ai-sdr add extract firecrawl
-npx ai-sdr add enrichment parallel
-npx ai-sdr add database neon
-npx ai-sdr add skill product-routing
-npx ai-sdr doctor
-```
-
-The current repo has a local prototype for this CLI shape:
+Current local CLI examples:
 
 ```bash
 npm run ai-sdr -- modules
@@ -308,20 +261,18 @@ npm run ai-sdr -- add extract firecrawl
 npm run ai-sdr -- add database neon
 ```
 
-For now, `add` prints an install plan rather than mutating files.
+## Deployment Boundary
 
-## Current Boundary Between App And Framework
-
-Current app-specific code:
+App-specific code currently includes:
 
 - database repository
 - dashboard
-- Trellis-specific MCP tool implementation
-- current product knowledge
-- current skills
-- current provider instantiation
+- Trellis MCP tool implementations
+- product knowledge
+- deployment-specific skills
+- provider instantiation
 
-Emerging framework code:
+Framework code currently includes:
 
 - `src/framework/index.ts`
 - `src/framework/signals.ts`
@@ -329,10 +280,4 @@ Emerging framework code:
 - `ai-sdr.config.ts`
 - `scripts/doctor.ts`
 
-The next step is to keep moving stable contracts into `src/framework/` while leaving customer- or deployment-specific behavior in the app layer.
-
-## Design Rule
-
-Anything a future `npx ai-sdr add <thing>` command would need should become a typed contract, schema, test, or config entry.
-
-That is the path from a single working Trellis repo to an open-source framework for agentic GTM.
+When extending or deploying Trellis, keep reusable contracts in `src/framework/` and keep customer-specific behavior in the app layer.

@@ -85,4 +85,4 @@ The guided user experience should sit on top of this repo, not inside an interac
 
 Start here:
 
-- [examples/ai-sdr/README.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/examples/ai-sdr/README.md)
+- [examples/ai-sdr/README.md](examples/ai-sdr/README.md)

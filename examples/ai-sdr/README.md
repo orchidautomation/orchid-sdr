@@ -1,25 +1,19 @@
 # Trellis AI SDR Example
 
-This directory is the reference AI SDR app built on top of Trellis.
+This directory contains the Trellis reference AI SDR application. It demonstrates how to compose signal ingestion, research, qualification, state management, dashboard operations, and MCP access into one deployment.
 
-Developed by Orchid Labs.
-
-`trellis` is the underlying agent-native GTM framework. This example shows one composed workflow: signal-driven AI SDR.
-
-The example app skill pack is runtime-only. Setup and deployment guidance lives in docs and generated setup checklists, not in `examples/ai-sdr/skills/`.
-
-It wakes up on a schedule, finds leads from public signals, researches the person and company, qualifies them against `knowledge/icp.md`, writes operational state to Convex, and can optionally draft, send, and track outreach.
+The example skill pack is runtime-only. Setup and deployment guidance lives in the repo docs and generated setup checklists, not in `examples/ai-sdr/skills/`.
 
 ## What It Does
 
-- runs hourly weekday discovery with Rivet actors
+- runs scheduled discovery with Rivet actors
 - ingests signals from Apify or any normalized webhook source
 - researches the source post, person, company, and company news
 - qualifies leads against the repo knowledge pack
-- writes the full audit trail to Convex
-- exposes the system through a dashboard and a remote MCP server
-- enforces quiet hours in the campaign's local IANA timezone
-- can auto-sync outbound accounts into Attio and promote CRM stages on replies
+- writes the workflow audit trail to Convex
+- exposes the system through a dashboard and remote MCP server
+- enforces quiet hours in each campaign's local IANA timezone
+- can sync outbound accounts into Attio and update CRM stages on replies
 - can optionally send and reply through AgentMail
 
 ## Data Flow
@@ -82,7 +76,7 @@ It wakes up on a schedule, finds leads from public signals, researches the perso
                 v                                    v
         +---------------+                    +------------------+
         | Dashboard     |                    | MCP server       |
-        | /dashboard    |                    | /mcp/trellis  |
+        | /dashboard    |                    | /mcp/trellis     |
         +---------------+                    +------------------+
                                   |
                                   | optional
@@ -108,17 +102,15 @@ It wakes up on a schedule, finds leads from public signals, researches the perso
 - `GET /healthz`
   Liveness check.
 
-## Quick Start
+## Run It
 
-If you want a new working reference app scaffold from this repo:
+To scaffold a new reference app from this repo:
 
 ```bash
 npm run ai-sdr -- init ../trellis-core --name trellis-core
 ```
 
-That now gives you the base Trellis runtime by default.
-
-Then add providers and sources incrementally:
+Add providers incrementally as needed:
 
 ```bash
 npm run ai-sdr -- add source apify --apply
@@ -126,31 +118,7 @@ npm run ai-sdr -- add deep-research parallel --apply
 npm run ai-sdr -- add enrichment prospeo --apply
 ```
 
-The generated project includes:
-
-- `TRELLIS_SETUP.md` with the exact first-boot checklist for that scaffold
-- `packages/` with the extracted local `@ai-sdr/*` workspace packages
-- a workspace-backed `package.json` so the generated app installs and runs as its own local Trellis workspace
-
-The CLI is now explicit by default. Choose lanes with flags:
-
-```bash
-npm run ai-sdr -- init ../trellis-custom --name trellis-custom --with-discovery --with-deep-research --with-enrichment
-```
-
-The guided onboarding experience should live in a Trellis plugin built on Pluxx, not inside the CLI itself.
-
-When a plugin or coding agent is driving setup, prefer the machine-readable contract:
-
-```bash
-npm run ai-sdr -- init ../trellis-core --name trellis-core --json
-npm run doctor -- --json
-npm run ai-sdr -- connect source apify --json
-npm run ai-sdr -- deploy local --json
-npm run ai-sdr -- mcp claude-code --local --write --json
-```
-
-For the current repo itself:
+For the current repo:
 
 1. Install dependencies.
 
@@ -158,9 +126,9 @@ For the current repo itself:
 npm install
 ```
 
-2. Copy env values into `.env`.
+2. Copy environment values into `.env`.
 
-At minimum you usually want:
+Minimum values for a local boot:
 
 - `CONVEX_URL`
 - `HANDOFF_WEBHOOK_SECRET`
@@ -179,74 +147,73 @@ npm run dev
 http://localhost:3000/dashboard
 ```
 
-If you want the full runtime, add provider keys such as Convex, Apify, Parallel, Firecrawl, Vercel AI Gateway, AgentMail, and Attio. Neon remains available only as an optional SQL compatibility module, not part of the default boot path. When Attio is configured, the first outbound can auto-create or update the company and contact, and classified replies can automatically promote the Attio stage.
+For a fuller runtime, add provider keys such as Convex, Apify, Parallel, Firecrawl, Vercel AI Gateway, AgentMail, and Attio. Neon remains optional as a SQL compatibility module and is not part of the default boot path.
 
-The shortest honest vendor path to see value is:
-
-- base runtime
-  - `Convex`
-  - `Vercel` for Sandbox and AI Gateway
-  - `Firecrawl`
-  - `Rivet`
-- then add lanes
-  - `Apify` for discovery
-  - `Parallel` for deep research
-  - `Prospeo` for enrichment
-  - `AgentMail` for outbound
-  - `Attio` for CRM sync
-  - `Slack` for handoff
-
-The current auth model is token/password based, not Vercel OAuth:
+### Auth And Runtime Notes
 
 - dashboard login uses `DASHBOARD_PASSWORD`, or falls back to `TRELLIS_SANDBOX_TOKEN`
-- remote MCP uses bearer token `TRELLIS_MCP_TOKEN`, or falls back to `TRELLIS_SANDBOX_TOKEN`
+- remote MCP uses `TRELLIS_MCP_TOKEN`, or falls back to `TRELLIS_SANDBOX_TOKEN`
 - deployed MCP URL is `${APP_URL}/mcp/trellis`
 - if `APP_URL` is unset on Vercel, the app falls back to `https://$VERCEL_URL`
+- campaign quiet hours are evaluated in the campaign's local timezone
+- discovery runs once per hour on weekdays by default
+- LinkedIn discovery fetches up to 50 posts per run by default
 
-For Claude Code local setup:
+For Claude Code local MCP setup:
 
 ```bash
 npm run ai-sdr -- mcp claude-code --local --write
 ```
 
-Campaign quiet hours are evaluated in the campaign's local timezone. New campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE` and you can update a live campaign later through the remote MCP tool `control.setCampaignTimezone`.
+## Extend It
 
-Parallel Search MCP is mounted into sandbox turns by default using `https://search.parallel.ai/mcp`. If you set `PARALLEL_API_KEY`, the sandbox adds bearer auth and also mounts Parallel Task MCP at `https://task-mcp.parallel.ai/mcp` for async deep research and enrichment.
+One deployment can run multiple campaigns with different:
 
-By default, discovery runs once per hour on weekdays only, and LinkedIn discovery will fetch up to 50 posts per run.
+- ICP slices
+- discovery sources
+- sender identities
+- outreach strategies
+- timezones and quiet-hour windows
 
-## Multiple Campaigns
+Keep a single deployed control plane when the campaigns share the same product and knowledge pack. Use separate deployments when the knowledge files or tracked skills differ materially.
 
-One deployment can run multiple campaigns.
-
-That is the right model when you want multiple outbound agents for the same product, for example:
-
-- different ICP slices
-- different discovery sources
-- different sender identities
-- different outreach strategies
-- different timezones and quiet-hour windows
-
-In that setup, keep one deployed control plane and create multiple campaigns inside it.
-
-Separate deploys are safer when the underlying product or knowledge pack is different, because the current `knowledge/` files and tracked `skills/` are still repo-global rather than campaign-scoped.
-
-## Example Layout
+### Project Layout
 
 - `src/`
   API, actors, orchestration, adapters, MCP server, and dashboard.
 - `ai-sdr.config.ts`
-  The app blueprint for knowledge, skills, modules, providers, and bindings.
+  App blueprint for knowledge, skills, modules, providers, and bindings.
 - `knowledge/`
-  Product context that feeds qualification, research, and drafting.
+  Product context used by qualification, research, and drafting.
 - `skills/`
-  Runtime AI SDR behavior only: qualification, research, copy, reply policy, and handoff policy.
+  Runtime AI SDR behavior: qualification, research, copy, reply policy, and handoff policy.
 - `scripts/`
-  Local operational commands such as `doctor`, `discovery-tick`, `migrate`, and probes.
+  Operational commands such as `doctor`, `discovery-tick`, `migrate`, and probes.
 - `convex/`
   State-plane schema and repository integration.
 - `tests/`
   App-level verification.
+
+## Deploy It
+
+A minimum deployment typically includes:
+
+- Convex
+- Vercel Sandbox
+- Vercel AI Gateway
+- Firecrawl
+- Rivet
+
+Optional deployment modules:
+
+- Apify for discovery
+- Parallel for deep research
+- Prospeo for enrichment
+- AgentMail for outbound
+- Attio for CRM sync
+- Slack for handoff
+
+For hosted deployment, set `APP_URL` explicitly, verify the webhook routes against the deployed hostname, and keep `NO_SENDS_MODE=true` until the workflow has been reviewed end to end.
 
 ## Read Next
 

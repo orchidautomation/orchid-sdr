@@ -30,12 +30,12 @@ PlayKit is positioned as a Clay-native expertise layer for GTM engineers, RevOps
 
 The relevant source files are:
 
-- [README.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/README.md:1)
-- [docs/agent-native-architecture.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/docs/agent-native-architecture.md:1)
-- [docs/framework-primitives.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/docs/framework-primitives.md:1)
-- [knowledge/product.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/examples/ai-sdr/knowledge/product.md:1)
-- [knowledge/icp.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/examples/ai-sdr/knowledge/icp.md:1)
-- [knowledge/usp.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/examples/ai-sdr/knowledge/usp.md:1)
+- [README.md](../README.md)
+- [docs/agent-native-architecture.md](agent-native-architecture.md)
+- [docs/framework-primitives.md](framework-primitives.md)
+- [knowledge/product.md](../examples/ai-sdr/knowledge/product.md)
+- [knowledge/icp.md](../examples/ai-sdr/knowledge/icp.md)
+- [knowledge/usp.md](../examples/ai-sdr/knowledge/usp.md)
 
 ## Workflow Shape
 
@@ -51,8 +51,8 @@ The repo primarily runs many short or medium-length turns that:
 
 The key stages are visible in:
 
-- [src/orchestration/prospect-workflow.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/examples/ai-sdr/src/orchestration/prospect-workflow.ts:498)
-- [src/orchestration/discovery-coordinator.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/examples/ai-sdr/src/orchestration/discovery-coordinator.ts:928)
+- [src/orchestration/prospect-workflow.ts](../examples/ai-sdr/src/orchestration/prospect-workflow.ts)
+- [src/orchestration/discovery-coordinator.ts](../examples/ai-sdr/src/orchestration/discovery-coordinator.ts)
 
 That means model selection should optimize for:
 
@@ -67,8 +67,8 @@ That means model selection should optimize for:
 
 Today the repo uses `moonshotai/kimi-k2.6` in both main lanes:
 
-- structured object generation in [src/services/ai-service.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/examples/ai-sdr/src/services/ai-service.ts:59)
-- sandbox turns in [src/orchestration/sandbox-broker.ts](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/examples/ai-sdr/src/orchestration/sandbox-broker.ts:22)
+- structured object generation in [src/services/ai-service.ts](../examples/ai-sdr/src/services/ai-service.ts)
+- sandbox turns in [src/orchestration/sandbox-broker.ts](../examples/ai-sdr/src/orchestration/sandbox-broker.ts)
 
 This is simple, but too blunt for the actual workflow shape.
 
