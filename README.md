@@ -104,17 +104,36 @@ docs/                product, deployment, and architecture docs
 
 ## Fastest Ways To See It
 
-### 1. Read the reference app
+### 1. Run one concrete AI SDR demo
+
+If you want the least confusing path, do not start by scaffolding a custom app.
+
+Start with the reference AI SDR already in this repo:
+
+1. fill the minimum env for the reference app
+2. keep `NO_SENDS_MODE=true`
+3. deploy the app
+4. verify `/healthz` and `/dashboard`
+5. connect remote MCP
+6. ingest one signal
+7. review state, research, and drafts before enabling any send lane
+
+Use these docs in this order:
+
+- [docs/getting-started.md](docs/getting-started.md)
+- [docs/ai-sdr-go-live.md](docs/ai-sdr-go-live.md)
+- [examples/ai-sdr/README.md](examples/ai-sdr/README.md)
+
+### 2. Read the reference app
 
 Start here:
 
 - [examples/ai-sdr/README.md](examples/ai-sdr/README.md)
 - [docs/ownership-model.md](docs/ownership-model.md)
 - [docs/turnkey-roadmap.md](docs/turnkey-roadmap.md)
-- [docs/ai-sdr-go-live.md](docs/ai-sdr-go-live.md)
 - [docs/extraction-plan.md](docs/extraction-plan.md)
 
-### 2. Scaffold a new Trellis app
+### 3. Scaffold a new Trellis app
 
 ```bash
 npm run ai-sdr -- init ../my-trellis-agent --name my-trellis-agent --json
@@ -170,6 +189,38 @@ npm test
 npm run ai-sdr -- modules --json
 npm run ai-sdr -- check --json
 ```
+
+## Minimum Demo Stack
+
+For one safe hosted AI SDR demo, the minimum practical stack is:
+
+```text
+Convex            state plane
+Rivet             actor runtime
+Vercel Sandbox    isolated agent execution
+Vercel AI Gateway model routing
+Firecrawl         search + extract
+```
+
+Useful next providers for a fuller demo:
+
+```text
+Apify      discovery
+Prospeo    enrichment
+Attio      CRM sync
+AgentMail  outbound + replies
+Slack      handoff
+```
+
+Keep `NO_SENDS_MODE=true` until you have verified:
+
+- `/healthz`
+- `/dashboard`
+- remote MCP
+- one ingested signal
+- one persisted prospect thread
+- one research brief
+- one draft, if outbound is enabled
 
 ## Why This Exists
 

@@ -3,11 +3,22 @@
 This guide covers the Trellis reference AI SDR from a product and implementation perspective:
 
 - what Trellis includes
-- which runtime profiles are available
+- which core and optional lanes are available
 - what accounts and environment variables are required
 - how to run the app locally
 - how to extend the stack
 - how to deploy it
+
+If you are trying to get one demo live, use this order:
+
+1. fill the core env
+2. keep `NO_SENDS_MODE=true`
+3. run `npm run doctor`
+4. deploy the app
+5. verify `/healthz` and `/dashboard`
+6. connect remote MCP
+7. ingest one known signal
+8. verify state, research, and draft output before enabling any send lane
 
 ## What Trellis Is
 
@@ -45,13 +56,11 @@ Optional capabilities:
 - AgentMail outbound and reply handling
 - Slack handoff
 
-## Runtime Profiles
+## Recommended Demo Shape
 
-Profiles are onboarding presets for the reference app. They define the starting provider set for local evaluation and deployment.
+For one credible demo, do not start with every optional lane.
 
-### `core`
-
-`core` is the minimum runnable Trellis stack. It includes:
+Start with:
 
 - normalized signal ingest
 - Firecrawl for search and extraction
@@ -61,37 +70,21 @@ Profiles are onboarding presets for the reference app. They define the starting 
 - Vercel AI Gateway for model routing
 - the first-party MCP server
 
-It does not include discovery, deep research, enrichment, CRM sync, outbound email, or Slack handoff by default.
+Then add only what you plan to show:
 
-Use `core` when you want to verify:
+- `Apify` for scheduled discovery
+- `Prospeo` for enrichment
+- `Attio` for CRM sync
+- `AgentMail` for outbound and replies
+- `Slack` for handoff
 
-- the app boots
-- the dashboard loads
-- MCP is reachable
-- Convex, Rivet, Vercel, and Firecrawl are wired correctly
-- manual signals can move through the pipeline
+The safest first demo keeps `NO_SENDS_MODE=true` and proves:
 
-### `starter`
-
-`starter` includes everything in `core`, plus:
-
-- Apify discovery
-- Parallel deep research and monitoring
-- Prospeo enrichment
-
-It still excludes CRM sync, outbound email, and Slack handoff.
-
-Use `starter` when you want the full research and qualification workflow without enabling CRM mutation or outbound sending.
-
-### `production`
-
-`production` includes everything in `starter`, plus:
-
-- Attio CRM sync
-- AgentMail outbound and reply handling
-- Slack handoff
-
-Use `production` when you want the reference deployment shape with the full current AI SDR workflow.
+- one signal entered
+- one thread persisted
+- one research brief exists
+- one draft exists, if outbound is enabled
+- MCP and dashboard agree on state
 
 ### Model Routing
 
@@ -182,9 +175,7 @@ Recommended:
 - `TRELLIS_MCP_TOKEN`
 - `DASHBOARD_PASSWORD`
 
-### Additional Dependencies By Profile
-
-#### `starter`
+### Additional Dependencies By Optional Lane
 
 - `Apify`
   - `APIFY_TOKEN`
@@ -195,9 +186,6 @@ Recommended:
   - `PARALLEL_API_KEY`
 - `Prospeo`
   - `PROSPEO_API_KEY`
-
-#### `production`
-
 - `Attio`
   - `ATTIO_API_KEY`
 - `AgentMail`
@@ -277,17 +265,16 @@ Set `APP_URL` explicitly for deployed environments. On Vercel, the app falls bac
 
 For a new deployment:
 
-1. scaffold `core`
+1. start from the current reference AI SDR
 2. connect Convex, Vercel, Firecrawl, and Rivet
 3. set `NO_SENDS_MODE=true`
 4. run `npm run doctor`
-5. open the dashboard and verify MCP reachability
-6. add discovery, deep research, and enrichment
-7. fill the new environment variables
-8. run another `npm run doctor`
-9. run a probe or discovery tick
-10. inspect leads and workflow state
-11. add CRM sync and outbound email only after the pipeline is stable
+5. deploy or run locally
+6. open the dashboard and verify `/healthz`
+7. connect MCP and verify read-only tools first
+8. send one known signal into `/webhooks/signals`
+9. inspect leads and workflow state
+10. add discovery, enrichment, CRM, and outbound only after the pipeline is stable
 
 ## Extend The System
 
@@ -328,7 +315,7 @@ When an integration should become part of the framework:
 
 ## Deploy It
 
-`core` is the minimum deployment stack:
+The minimum deployment stack is:
 
 - Convex
 - Vercel Sandbox

@@ -1,8 +1,8 @@
 # AI SDR Go-Live
 
-This is the explicit path for getting the reference AI SDR live.
+This is the canonical path for getting one Trellis AI SDR demo live with the least confusion.
 
-Use this when you do not want a general self-hosting document. Use this when you want the shortest credible path from repo to a running deployment.
+Use this when you want one safe hosted deployment, one MCP connection, and one ingested signal before enabling any autonomous behavior.
 
 ## Goal
 
@@ -13,6 +13,12 @@ Get the reference AI SDR to a deployed state where:
 - remote MCP works
 - discovery or warm inbound can enter the system
 - sends are still safe by default
+
+This document assumes:
+
+- you are using the reference app in `examples/ai-sdr/`
+- you are not building a custom Trellis app yet
+- you are proving one demo path, not every optional lane
 
 ## Deployment Mode
 
@@ -29,6 +35,20 @@ The first production proof should be:
 - real ingestion
 - reviewable state and drafts
 - outbound still blocked until verified
+
+## Demo Order
+
+Follow this order exactly:
+
+1. fill core env
+2. run `npm run doctor`
+3. deploy the app
+4. verify `/healthz`
+5. log into `/dashboard`
+6. connect remote MCP
+7. ingest one signal
+8. verify state, research, and draft output
+9. only then enable discovery cadence, CRM writes, or email sends
 
 ## Minimum Stack
 
@@ -63,23 +83,43 @@ cp .env.example .env
 
 ## 2. Set Minimum Env
 
-At minimum, set:
+Treat the env block in three groups.
+
+### Core app identity and auth
+
+Required:
 
 ```bash
 APP_URL=https://your-app.example.com
-CONVEX_URL=https://your-deployment.convex.cloud
-NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
 HANDOFF_WEBHOOK_SECRET=<long-random-secret>
 TRELLIS_SANDBOX_TOKEN=<long-random-secret>
 TRELLIS_MCP_TOKEN=<long-random-secret>
 DASHBOARD_PASSWORD=<long-random-password>
 NO_SENDS_MODE=true
 DEFAULT_CAMPAIGN_TIMEZONE=America/New_York
-FIRECRAWL_API_KEY=<your-firecrawl-key>
+```
+
+### Core runtime
+
+Required:
+
+```bash
+CONVEX_URL=https://your-deployment.convex.cloud
+NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
 RIVET_ENDPOINT=<your-rivet-endpoint>
 RIVET_TOKEN=<your-rivet-token>
+```
+
+### Core research and model routing
+
+Required:
+
+```bash
+FIRECRAWL_API_KEY=<your-firecrawl-key>
 AI_GATEWAY_API_KEY=<your-gateway-key>
 ```
+
+### Sandbox auth
 
 If using Vercel Sandbox, also set either:
 
@@ -95,6 +135,8 @@ VERCEL_TEAM_ID=<team-id>
 VERCEL_PROJECT_ID=<project-id>
 ```
 
+Do not start with discovery, CRM, Slack, or email env unless you are actually planning to demo those lanes.
+
 ## 3. Verify Local Readiness
 
 ```bash
@@ -103,7 +145,7 @@ npm test
 npm run doctor
 ```
 
-Do not deploy until `doctor` is green enough for the lanes you intend to use.
+Do not deploy until `doctor` is green for the lanes you intend to demo.
 
 ## 4. Customize The Knowledge Pack
 
@@ -124,6 +166,8 @@ Then review:
 - `examples/ai-sdr/skills/sdr-copy`
 - `examples/ai-sdr/skills/reply-policy`
 - `examples/ai-sdr/skills/handoff-policy`
+
+Do this before live ingestion. Otherwise the demo will run against placeholder ICP and product context.
 
 ## 5. Deploy The App
 
@@ -167,6 +211,8 @@ Verify remote MCP against:
 https://your-app.example.com/mcp/trellis
 ```
 
+The dashboard must work before you connect MCP. If `/dashboard` is not healthy yet, do not debug through MCP first.
+
 ## 7. Connect Remote MCP
 
 Use this shape:
@@ -191,6 +237,8 @@ Start with read-only tools:
 - `runtime.flags`
 - `knowledge.search`
 
+Do not start by invoking write-heavy tools. First prove that the control plane can read consistent state.
+
 ## 8. Wire Ingestion
 
 ### Warm inbound or custom signals
@@ -198,6 +246,8 @@ Start with read-only tools:
 ```text
 POST https://your-app.example.com/webhooks/signals?secret=<SIGNAL_WEBHOOK_SECRET>
 ```
+
+This is the safest first live demo path. Use one known, hand-crafted normalized signal before enabling any discovery scheduler.
 
 ### Apify discovery
 
@@ -227,6 +277,7 @@ The first real test should be:
 4. confirm research brief exists
 5. confirm draft exists if that lane is enabled
 6. confirm MCP and dashboard show the same state
+7. confirm no email or CRM mutation escaped the safety rails
 
 Only after that should you turn on:
 
@@ -258,3 +309,19 @@ The AI SDR is live when:
 - state persists correctly
 - drafts or actions are reviewable
 - sends remain controlled until you intentionally enable them
+
+## What Still Commonly Blocks A Demo
+
+These are the remaining practical blockers once the code is in place:
+
+1. missing or mismatched core env
+   - `APP_URL`
+   - `CONVEX_URL`
+   - `RIVET_ENDPOINT`
+   - `RIVET_TOKEN`
+   - `FIRECRAWL_API_KEY`
+   - `AI_GATEWAY_API_KEY`
+2. deploying before `doctor` is clean enough
+3. connecting MCP before the dashboard and health checks are healthy
+4. enabling discovery before manual signal ingest is proven
+5. turning off `NO_SENDS_MODE` too early

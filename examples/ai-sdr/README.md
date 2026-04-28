@@ -44,6 +44,25 @@ That is the shortest path to understanding:
 - what this example composes
 - what is still too custom today
 
+## Fastest Demo Path
+
+If your goal is one credible demo with the least confusion, use this order:
+
+1. fill `.env` for the current reference app
+2. keep `NO_SENDS_MODE=true`
+3. run `npm run doctor`
+4. deploy the app
+5. verify `/healthz` and `/dashboard`
+6. connect remote MCP to `${APP_URL}/mcp/trellis`
+7. ingest one signal through `/webhooks/signals` or `/webhooks/apify`
+8. inspect the resulting thread in the dashboard and through MCP
+
+Use these docs in sequence:
+
+1. [../../docs/getting-started.md](../../docs/getting-started.md)
+2. [../../docs/ai-sdr-go-live.md](../../docs/ai-sdr-go-live.md)
+3. [../../docs/new-user-guide.md](../../docs/new-user-guide.md)
+
 ## What It Does
 
 - runs scheduled discovery with Rivet actors
@@ -215,6 +234,40 @@ That is the important nuance:
 
 ## Run It
 
+The shortest safe local path is:
+
+```bash
+npm install
+cp .env.example .env
+npm run doctor
+npm run dev
+```
+
+Minimum values for a real runtime:
+
+- `APP_URL`
+- `CONVEX_URL`
+- `NEXT_PUBLIC_CONVEX_URL`
+- `TRELLIS_SANDBOX_TOKEN`
+- `HANDOFF_WEBHOOK_SECRET`
+- `RIVET_ENDPOINT`
+- `RIVET_TOKEN`
+- `FIRECRAWL_API_KEY`
+- `AI_GATEWAY_API_KEY` or `VERCEL_AI_GATEWAY_KEY`
+- `NO_SENDS_MODE=true`
+
+If you only need boot verification before wiring Convex, use smoke mode instead of guessing:
+
+```bash
+export TRELLIS_LOCAL_SMOKE_MODE=true
+export TRELLIS_SANDBOX_TOKEN=local-sandbox-token
+export HANDOFF_WEBHOOK_SECRET=local-handoff-secret
+npm run doctor
+npm run dev
+```
+
+Smoke mode is only for boot and dashboard checks. It is not a real workflow runtime.
+
 To scaffold a new reference app from this repo:
 
 ```bash
@@ -259,6 +312,21 @@ http://localhost:3000/dashboard
 ```
 
 For a fuller runtime, add provider keys such as Convex, Apify, Parallel, Firecrawl, Vercel AI Gateway, AgentMail, and Attio.
+
+### Canonical Hosted Demo Order
+
+Use this order for one live demo:
+
+1. set core envs and keep `NO_SENDS_MODE=true`
+2. deploy the app and verify `GET ${APP_URL}/healthz`
+3. log into `${APP_URL}/dashboard`
+4. connect remote MCP to `${APP_URL}/mcp/trellis`
+5. send one known signal to `${APP_URL}/webhooks/signals`
+6. confirm the same prospect state appears in:
+   - dashboard
+   - `pipeline.summary`
+   - `knowledge.search` / `lead.*` tools as relevant
+7. only then enable discovery or CRM/email lanes
 
 ### Auth And Runtime Notes
 

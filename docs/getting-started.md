@@ -2,7 +2,64 @@
 
 This is the shortest path to a working Trellis reference app.
 
-## 1. Scaffold
+If your goal is one demo, use the reference AI SDR already in this repo before scaffolding a custom app.
+
+Canonical order:
+
+1. copy `.env.example` to `.env`
+2. fill the minimum core env
+3. keep `NO_SENDS_MODE=true`
+4. run `npm run doctor`
+5. run `npm run dev` or deploy
+6. verify `/dashboard` and `/healthz`
+7. connect MCP
+8. ingest one signal
+
+## 1. Use The Existing Reference App First
+
+From the repo root:
+
+```bash
+npm install
+cp .env.example .env
+```
+
+Minimum core env for a real demo:
+
+- `APP_URL`
+- `CONVEX_URL`
+- `NEXT_PUBLIC_CONVEX_URL`
+- `TRELLIS_SANDBOX_TOKEN`
+- `TRELLIS_MCP_TOKEN`
+- `HANDOFF_WEBHOOK_SECRET`
+- `RIVET_ENDPOINT`
+- `RIVET_TOKEN`
+- `FIRECRAWL_API_KEY`
+- `AI_GATEWAY_API_KEY` or `VERCEL_AI_GATEWAY_KEY`
+- `NO_SENDS_MODE=true`
+
+Then run:
+
+```bash
+npm run typecheck
+npm test
+npm run doctor
+npm run dev
+```
+
+If you only want a boot check before wiring Convex, use smoke mode:
+
+```bash
+export TRELLIS_LOCAL_SMOKE_MODE=true
+export TRELLIS_SANDBOX_TOKEN=local-sandbox-token
+export HANDOFF_WEBHOOK_SECRET=local-handoff-secret
+npm run doctor
+npm run dev
+```
+
+Smoke mode is only for boot and dashboard checks.
+
+## 2. Scaffold
 
 ```bash
 npm run ai-sdr -- init ../trellis-core --name trellis-core
@@ -35,7 +92,7 @@ npm run ai-sdr -- deploy local --json
 npm run ai-sdr -- mcp claude-code --local --write --json
 ```
 
-## 2. Install
+## 3. Install
 
 ```bash
 cd <your-target-directory>
@@ -43,7 +100,7 @@ npm install
 cp .env.example .env
 ```
 
-## 3. Fill the minimum env
+## 4. Fill the minimum env
 
 At minimum:
 
@@ -55,7 +112,7 @@ At minimum:
 
 If the scaffolded lanes include additional providers, fill those after the core env is working.
 
-## 3.5. Which accounts do you really need?
+## 5. Which accounts do you really need?
 
 To simply boot the app safely, the required env block is enough.
 
@@ -76,7 +133,7 @@ To actually feel the product as a new user:
 
 That is the current happy path. Vercel OAuth is not required for the scaffolded app.
 
-## 4. Verify
+## 6. Verify
 
 ```bash
 npm run typecheck
@@ -97,7 +154,7 @@ npm run dev
 
 Smoke mode boots the dashboard and health check with in-memory repository/state fallbacks. It is not a full workflow runtime.
 
-## 5. Open the operator surface
+## 7. Open the operator surface
 
 ```text
 http://localhost:3000/dashboard
@@ -109,7 +166,9 @@ To wire the first-party MCP into Claude Code locally:
 npm run ai-sdr -- mcp claude-code --local --write
 ```
 
-## 5.5. How auth and URLs work
+For a hosted demo, connect remote MCP only after the app is reachable at `${APP_URL}` and `/dashboard` is healthy.
+
+## 8. How auth and URLs work
 
 - dashboard login:
   - uses `DASHBOARD_PASSWORD`
@@ -128,14 +187,14 @@ npm run ai-sdr -- mcp claude-code --local --write
   - `${APP_URL}/webhooks/signals`
   - `${APP_URL}/webhooks/agentmail`
 
-## 6. Use the generated checklist
+## 9. Use the generated checklist
 
 Every scaffolded project includes:
 
 - `TRELLIS_SETUP.md`
 - `packages/` with the local `@ai-sdr/*` workspace packages used by the scaffold
 
-That file is the profile-specific onboarding checklist. Start there before enabling discovery, CRM, or outbound email.
+That file is the app-specific onboarding checklist. Start there before enabling discovery, CRM, or outbound email.
 
 Helpful follow-up commands:
 
@@ -145,9 +204,11 @@ npm run ai-sdr -- deploy local
 npm run ai-sdr -- mcp claude-code --local --write
 ```
 
-## 7. Stay safe on first boot
+## 10. Stay safe on first boot
 
 - keep `NO_SENDS_MODE=true`
 - confirm `/healthz` returns 200
 - confirm dashboard flags resolve
+- connect MCP only after dashboard and health checks are healthy
 - ingest one normalized signal before enabling live discovery
+- confirm the same thread state is visible in the dashboard and through MCP
