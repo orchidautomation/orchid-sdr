@@ -1,8 +1,28 @@
 # Trellis AI SDR Example
 
-This directory contains the Trellis reference AI SDR application. It demonstrates how to compose signal ingestion, research, qualification, state management, dashboard operations, and MCP access into one deployment.
+This directory contains the reference AI SDR built with Trellis.
+
+It is not the framework itself. It is one example of what Trellis can compose when you combine:
+
+- signals
+- research
+- qualification
+- state
+- skills
+- MCP control
+- optional CRM and outbound lanes
 
 The example skill pack is runtime-only. Setup and deployment guidance lives in the repo docs and generated setup checklists, not in `examples/ai-sdr/skills/`.
+
+## Why This Example Exists
+
+AI SDR is the first reference workflow because it exercises the full Trellis shape:
+
+```text
+signal -> research -> qualify -> persist -> inspect -> sync -> send -> handoff
+```
+
+If that path is composable and reliable, the same framework can power other GTM systems too.
 
 ## What It Does
 
@@ -15,6 +35,21 @@ The example skill pack is runtime-only. Setup and deployment guidance lives in t
 - enforces quiet hours in each campaign's local IANA timezone
 - can sync outbound accounts into Attio and update CRM stages on replies
 - can optionally send and reply through AgentMail
+
+## What Problem It Solves
+
+Most "AI SDR" systems either:
+
+- lock you into one opaque workflow
+- or leave you stitching together too many brittle tools by hand
+
+This example shows a different approach:
+
+- explicit workflow stages
+- typed provider surfaces
+- repo-managed knowledge and skills
+- remote MCP control
+- durable state and audit history
 
 ## Data Flow
 
@@ -165,6 +200,13 @@ For Claude Code local MCP setup:
 npm run ai-sdr -- mcp claude-code --local --write
 ```
 
+For guided setup across hosts, use the Trellis plugin:
+
+- [Claude Code installer](https://github.com/orchidautomation/trellis-plugin/releases/latest/download/install-claude-code.sh)
+- [Cursor installer](https://github.com/orchidautomation/trellis-plugin/releases/latest/download/install-cursor.sh)
+- [Codex installer](https://github.com/orchidautomation/trellis-plugin/releases/latest/download/install-codex.sh)
+- [OpenCode installer](https://github.com/orchidautomation/trellis-plugin/releases/latest/download/install-opencode.sh)
+
 ## Extend It
 
 One deployment can run multiple campaigns with different:
@@ -214,6 +256,13 @@ Optional deployment modules:
 - Slack for handoff
 
 For hosted deployment, set `APP_URL` explicitly, verify the webhook routes against the deployed hostname, and keep `NO_SENDS_MODE=true` until the workflow has been reviewed end to end.
+
+## Remember The Boundary
+
+- `Trellis` = framework
+- `examples/ai-sdr` = reference app
+
+This example matters because it proves the framework can drive a real GTM workflow, not because Trellis is limited to SDR.
 
 ## Read Next
 
