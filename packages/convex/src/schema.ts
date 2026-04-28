@@ -22,7 +22,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_id", ["id"])
+    .index("by_campaign_id", ["id"])
     .index("by_status", ["status"]),
 
   controlFlags: defineTable({
@@ -39,7 +39,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_id", ["id"])
+    .index("by_account_id", ["id"])
     .index("by_domain", ["domain"]),
 
   signals: defineTable({
@@ -65,7 +65,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
   })
-    .index("by_id", ["id"])
+    .index("by_signal_id", ["id"])
     .index("by_campaign", ["campaignId"])
     .index("by_source_source_ref", ["source", "sourceRef"])
     .index("by_provider_source_ref", ["provider", "source", "sourceRef"])
@@ -98,7 +98,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_id", ["id"])
+    .index("by_prospect_id", ["id"])
     .index("by_campaign", ["campaignId"])
     .index("by_source_signal", ["sourceSignalId"])
     .index("by_campaign_linkedin", ["campaignId", "linkedinUrl"])
@@ -123,7 +123,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_id", ["id"])
+    .index("by_thread_id", ["id"])
     .index("by_prospect", ["prospectId"])
     .index("by_provider_thread", ["providerThreadId"])
     .index("by_campaign_status", ["campaignId", "status"])
@@ -141,7 +141,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_id", ["id"])
+    .index("by_contact_method_id", ["id"])
     .index("by_prospect_kind", ["prospectId", "kind"])
     .index("by_prospect_kind_value", ["prospectId", "kind", "value"]),
 
@@ -155,7 +155,7 @@ export default defineSchema({
     metadata: v.any(),
     createdAt: v.number(),
   })
-    .index("by_id", ["id"])
+    .index("by_research_brief_id", ["id"])
     .index("by_prospect", ["prospectId"])
     .index("by_created_at", ["createdAt"]),
 
@@ -172,7 +172,7 @@ export default defineSchema({
     metadata: v.any(),
     createdAt: v.number(),
   })
-    .index("by_id", ["id"])
+    .index("by_message_id", ["id"])
     .index("by_thread", ["threadId"])
     .index("by_thread_direction", ["threadId", "direction"])
     .index("by_provider_message", ["providerMessageId"])
@@ -189,7 +189,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_id", ["id"])
+    .index("by_provider_run_id", ["id"])
     .index("by_created_at", ["createdAt"])
     .index("by_provider", ["provider"]),
 
@@ -231,7 +231,7 @@ export default defineSchema({
     payload: v.any(),
     createdAt: v.number(),
   })
-    .index("by_id", ["id"])
+    .index("by_audit_event_id", ["id"])
     .index("by_entity", ["entityType", "entityId"])
     .index("by_created_at", ["createdAt"]),
 
@@ -247,7 +247,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_id", ["id"])
+    .index("by_handoff_id", ["id"])
     .index("by_thread", ["threadId"])
     .index("by_campaign_status", ["campaignId", "status"])
     .index("by_created_at", ["createdAt"]),

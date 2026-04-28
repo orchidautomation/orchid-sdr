@@ -9,6 +9,7 @@
  */
 
 import type * as aiSdrState from "../aiSdrState.js";
+import type * as repository from "../repository.js";
 
 import type {
   ApiFromModules,
@@ -18,6 +19,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   aiSdrState: typeof aiSdrState;
+  repository: typeof repository;
 }>;
 
 /**

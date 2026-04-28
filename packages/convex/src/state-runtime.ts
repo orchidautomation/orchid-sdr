@@ -30,7 +30,7 @@ export const recordSignal = mutation({
     if (args.localSignalId) {
       const existingByLocalId = await ctx.db
         .query("signals")
-        .withIndex("by_id", (q: any) => q.eq("id", args.localSignalId))
+        .withIndex("by_signal_id", (q: any) => q.eq("id", args.localSignalId))
         .unique();
 
       if (existingByLocalId) {

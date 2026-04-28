@@ -78,19 +78,19 @@ function toIso(value: number | null | undefined) {
 }
 
 async function getCampaignDocById(ctx: any, id: string) {
-  return ctx.db.query("campaigns").withIndex("by_id", (q: any) => q.eq("id", id)).unique();
+  return ctx.db.query("campaigns").withIndex("by_campaign_id", (q: any) => q.eq("id", id)).unique();
 }
 
 async function getSignalDocById(ctx: any, id: string) {
-  return ctx.db.query("signals").withIndex("by_id", (q: any) => q.eq("id", id)).unique();
+  return ctx.db.query("signals").withIndex("by_signal_id", (q: any) => q.eq("id", id)).unique();
 }
 
 async function getProspectDocById(ctx: any, id: string) {
-  return ctx.db.query("prospects").withIndex("by_id", (q: any) => q.eq("id", id)).unique();
+  return ctx.db.query("prospects").withIndex("by_prospect_id", (q: any) => q.eq("id", id)).unique();
 }
 
 async function getThreadDocById(ctx: any, id: string) {
-  return ctx.db.query("threads").withIndex("by_id", (q: any) => q.eq("id", id)).unique();
+  return ctx.db.query("threads").withIndex("by_thread_id", (q: any) => q.eq("id", id)).unique();
 }
 
 async function getThreadDocByProspectId(ctx: any, prospectId: string) {
@@ -595,7 +595,7 @@ export const updateProviderRun = mutation({
     responsePayload: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db.query("providerRuns").withIndex("by_id", (q: any) => q.eq("id", args.id)).unique();
+    const existing = await ctx.db.query("providerRuns").withIndex("by_provider_run_id", (q: any) => q.eq("id", args.id)).unique();
     if (!existing) {
       throw new Error(`provider run ${args.id} not found`);
     }
@@ -1202,7 +1202,7 @@ export const markHandoffStatus = mutation({
     status: v.string(),
   },
   handler: async (ctx, args) => {
-    const handoff = await ctx.db.query("handoffs").withIndex("by_id", (q: any) => q.eq("id", args.handoffId)).unique();
+    const handoff = await ctx.db.query("handoffs").withIndex("by_handoff_id", (q: any) => q.eq("id", args.handoffId)).unique();
     if (!handoff) {
       throw new Error(`handoff ${args.handoffId} not found`);
     }
