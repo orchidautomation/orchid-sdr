@@ -42,28 +42,44 @@ That means you can compose different systems from the same substrate:
 - expansion and renewal flows
 - competitor monitoring
 - pipeline intelligence
+- GTM analytics and recommendation systems
+- internal GTM copilots
 
 ## Mental Model
 
 ```text
-                    +----------------------+
-                    |      knowledge       |
-                    |  product / ICP / USP |
-                    +----------+-----------+
-                               |
-                               v
-signals --> normalize --> research --> qualify --> act --> persist --> inspect
-   |                            |          |         |         |          |
-   |                            |          |         |         |          |
-   v                            v          v         v         v          v
-webhooks                   search/extract  skills   email     state      MCP
-Apify                      Firecrawl       policy   CRM       Convex     dashboard
-manual sources             Parallel        copy     handoff   Rivet      agents
+                         +----------------------+
+                         |      knowledge       |
+                         |  product / ICP / USP |
+                         +----------+-----------+
+                                    |
+                                    v
+inputs --> resolve --> research --> reason --> act --> persist --> inspect
+  |           |            |           |         |         |          |
+  |           |            |           |         |         |          |
+  v           v            v           v         v         v          v
+signals    identity    search/extract skills   email     state      MCP
+CRM data   accounts    browser        policy   CRM       Convex     dashboard
+docs       people      retrieval      models   handoff   Rivet      agents
+warehouse  context     enrichment     rules    updates   history    copilots
 ```
 
 The important point is not "AI SDR."
 
 The important point is that GTM workflows are assembled from clear parts that can be inspected, tested, swapped, and operated.
+
+Trellis should support both:
+
+- execution loops
+  - capture context
+  - reason about it
+  - take constrained action
+  - persist state
+- intelligence loops
+  - ingest activity
+  - normalize entities and outcomes
+  - compute recommendations
+  - expose answers through MCP
 
 ## What Lives Here
 
@@ -159,8 +175,9 @@ Trellis is for teams that want:
 - durable state
 - MCP-first operations
 - deployable workflows with guardrails
+- a reusable substrate for many GTM applications
 
-The reference AI SDR is just the first concrete example.
+The reference AI SDR is the first concrete example, not the boundary of the framework.
 
 ## Read Next
 
