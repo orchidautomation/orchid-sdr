@@ -552,24 +552,25 @@ describe("TrellisMcpToolService operator tools", () => {
 
     expect(repository.getDashboardSummary).toHaveBeenCalled();
     expect(result).toMatchObject({
-      summary: {
-        qualifiedLeads: 3,
-        activeThreads: 2,
-      },
-      activeThreads: [
-        {
-          fullName: "Ada Lovelace",
+      text: expect.stringContaining("Pipeline summary: 3 qualified leads"),
+      structuredContent: {
+        summary: {
+          qualifiedLeads: 3,
+          activeThreads: 2,
         },
-      ],
-      discovery: {
-        linkedin_public_post: {
-          state: {
-            lastStatus: "running",
+        activeThreads: [
+          {
+            name: "Ada Lovelace",
+          },
+        ],
+        discovery: {
+          linkedin_public_post: {
+            status: "running",
           },
         },
       },
     });
-    expect((result as any).headline).toContain("3 qualified leads");
+    expect((result as any).structuredContent.headline).toContain("3 qualified leads");
   });
 
   it("queues a manual discovery tick", async () => {

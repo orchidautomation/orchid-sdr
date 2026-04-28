@@ -10,12 +10,10 @@ describe("ai-sdr mcp config helpers", () => {
     })).toEqual({
       mcpServers: {
         "trellis": {
-          transport: {
-            type: "http",
-            url: "http://localhost:3000/mcp/trellis",
-            headers: {
-              Authorization: "Bearer dev-token",
-            },
+          type: "http",
+          url: "http://localhost:3000/mcp/trellis",
+          headers: {
+            Authorization: "Bearer dev-token",
           },
         },
       },
@@ -53,12 +51,10 @@ describe("ai-sdr mcp config helpers", () => {
           },
         },
         "trellis": {
-          transport: {
-            type: "http",
-            url: "http://localhost:3000/mcp/trellis",
-            headers: {
-              Authorization: "Bearer dev-token",
-            },
+          type: "http",
+          url: "http://localhost:3000/mcp/trellis",
+          headers: {
+            Authorization: "Bearer dev-token",
           },
         },
       },

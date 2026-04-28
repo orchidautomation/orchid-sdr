@@ -10,10 +10,29 @@ export interface DefaultSdrMcpContext {
   mcpTools: McpToolHandler;
 }
 
+interface PresentedToolResult {
+  text: string;
+  structuredContent?: Record<string, unknown>;
+}
+
+function isPresentedToolResult(value: unknown): value is PresentedToolResult {
+  return Boolean(
+    value
+      && typeof value === "object"
+      && !Array.isArray(value)
+      && typeof (value as PresentedToolResult).text === "string",
+  );
+}
+
 function toToolResult(result: unknown) {
-  const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
-  const structuredContent =
-    result && typeof result === "object" && !Array.isArray(result)
+  const text = isPresentedToolResult(result)
+    ? result.text
+    : typeof result === "string"
+      ? result
+      : JSON.stringify(result, null, 2);
+  const structuredContent = isPresentedToolResult(result)
+    ? (result.structuredContent ?? { text: result.text })
+    : result && typeof result === "object" && !Array.isArray(result)
       ? (result as Record<string, unknown>)
       : { result };
   return {

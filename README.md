@@ -121,17 +121,24 @@ Start with the reference AI SDR already in this repo:
 Useful commands:
 
 ```bash
-npm run demo:smoke
-npm run demo:check
+npm run ai-sdr:demo:smoke
+npm run ai-sdr:demo:check
 ```
 
-- `demo:smoke`
+- `ai-sdr:demo:smoke`
   - starts the reference AI SDR in local smoke mode
   - verifies `/healthz`, dashboard auth/state, `/mcp/trellis`, and one safe signal ingest
   - keeps `NO_SENDS_MODE=true`, so the flow stops safely without outbound
-- `demo:check`
+- `ai-sdr:demo:check`
   - runs against an already-running local or deployed app
   - adds one `/webhooks/signals` ingest check and verifies dashboard visibility
+
+The shorter aliases still exist:
+
+```bash
+npm run demo:smoke
+npm run demo:check
+```
 
 Use these docs in this order:
 

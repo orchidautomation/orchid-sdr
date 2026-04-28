@@ -1,10 +1,8 @@
 export type ClaudeCodeMcpTransport = {
-  transport: {
-    type: "http";
-    url: string;
-    headers: {
-      Authorization: string;
-    };
+  type: "http";
+  url: string;
+  headers: {
+    Authorization: string;
   };
 };
 
@@ -21,12 +19,10 @@ export function buildClaudeCodeMcpConfig(input: {
   return {
     mcpServers: {
       [serverName]: {
-        transport: {
-          type: "http",
-          url: input.url,
-          headers: {
-            Authorization: `Bearer ${input.token}`,
-          },
+        type: "http",
+        url: input.url,
+        headers: {
+          Authorization: `Bearer ${input.token}`,
         },
       },
     },

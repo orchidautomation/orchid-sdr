@@ -60,20 +60,27 @@ If your goal is one credible demo with the least confusion, use this order:
 Concrete commands:
 
 ```bash
-npm run demo:smoke
-npm run demo:check
+npm run ai-sdr:demo:smoke
+npm run ai-sdr:demo:check
 ```
 
-- `demo:smoke`
+- `ai-sdr:demo:smoke`
   - local safe end-to-end verification
   - checks `/healthz`, dashboard auth/state, `/mcp/trellis`, and one safe `/webhooks/signals` ingest
   - keeps `NO_SENDS_MODE=true`, so the demo stops safely without outbound
-- `demo:check`
+- `ai-sdr:demo:check`
   - checks a running local or deployed app
   - verifies `/healthz`
   - logs into `/dashboard`
   - probes `/mcp/trellis` with bearer auth
   - posts one signal to `/webhooks/signals`
+
+The shorter aliases still exist:
+
+```bash
+npm run demo:smoke
+npm run demo:check
+```
   - confirms dashboard state reflects the ingest when the downstream workflow is configured
 
 Use these docs in sequence:

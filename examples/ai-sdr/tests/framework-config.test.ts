@@ -15,6 +15,7 @@ import {
   defaultTrellisModules,
   defineAiSdr,
   providersFromModules,
+  resolveMcpExposure,
   resolveProviderForCapability,
   validateAiSdrConfigReferences,
 } from "@ai-sdr/framework";
@@ -81,7 +82,7 @@ describe("AI SDR framework config helpers", () => {
     ]);
   });
 
-  it("collects MCP server env and derives app-surface env from webhooks and MCP exposure", () => {
+  it("collects MCP server env and derives app-surface env from webhooks and resolved MCP exposure", () => {
     const config = defineAiSdr({
       name: "test-sdr",
       knowledge: {
@@ -104,9 +105,16 @@ describe("AI SDR framework config helpers", () => {
           ],
         },
       ],
-      mcp: {
-        toolGroups: ["runtime"],
-      },
+      capabilityBindings: [
+        {
+          capabilityId: "runtime",
+          providerId: "rivet",
+        },
+        {
+          capabilityId: "mcp",
+          providerId: "trellis-mcp",
+        },
+      ],
       webhooks: [
         {
           id: "incoming",
@@ -177,6 +185,97 @@ describe("AI SDR framework config helpers", () => {
         description: "Optional bearer token for remote Trellis MCP access.",
       },
     ]);
+  });
+
+  it("derives default MCP tool groups from capabilities and applies source-aware exclusions", () => {
+    const config = defineAiSdr({
+      name: "derived-mcp-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      capabilityBindings: [
+        {
+          capabilityId: "mcp",
+          providerId: "trellis-mcp",
+        },
+        {
+          capabilityId: "runtime",
+          providerId: "rivet",
+        },
+        {
+          capabilityId: "crm",
+          providerId: "attio",
+        },
+        {
+          capabilityId: "email",
+          providerId: "agentmail",
+        },
+      ],
+    });
+
+    expect(resolveMcpExposure(config)).toEqual({
+      toolGroups: [
+        "knowledge",
+        "lead",
+        "pipeline",
+        "thread",
+        "runtime",
+        "control",
+        "crm",
+        "email",
+        "mail",
+      ],
+      includeTools: undefined,
+      excludeTools: [
+        "runtime.discovery",
+        "runtime.discoveryHealth",
+        "control.runDiscovery",
+      ],
+    });
+  });
+
+  it("lets manifest overrides extend derived MCP exposure", () => {
+    const config = defineAiSdr({
+      name: "override-mcp-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      capabilityBindings: [
+        {
+          capabilityId: "mcp",
+          providerId: "trellis-mcp",
+        },
+        {
+          capabilityId: "runtime",
+          providerId: "rivet",
+        },
+      ],
+      mcp: {
+        toolGroups: ["handoff"],
+        includeTools: ["runtime.discoveryHealth"],
+        excludeTools: ["runtime.sandboxJobs"],
+      },
+    });
+
+    expect(resolveMcpExposure(config)).toEqual({
+      toolGroups: [
+        "knowledge",
+        "lead",
+        "pipeline",
+        "thread",
+        "runtime",
+        "control",
+        "handoff",
+      ],
+      includeTools: ["runtime.discoveryHealth"],
+      excludeTools: [
+        "runtime.sandboxJobs",
+        "runtime.discovery",
+        "control.runDiscovery",
+      ],
+    });
   });
 
   it("exposes a runtime schema for framework configs", () => {

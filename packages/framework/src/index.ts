@@ -275,6 +275,92 @@ export function defineAiSdr(config: AiSdrConfig): AiSdrConfig {
   return aiSdrConfigSchema.parse(config);
 }
 
+const defaultCapabilityDrivenMcpToolGroups = [
+  "knowledge",
+  "lead",
+  "pipeline",
+  "thread",
+] as const;
+
+const capabilityToMcpToolGroups: Partial<Record<AiSdrCapabilityId, string[]>> = {
+  crm: ["crm"],
+  email: ["email", "mail"],
+  enrichment: ["email"],
+  extract: ["research"],
+  handoff: ["handoff"],
+  runtime: ["runtime", "control"],
+  search: ["research"],
+  source: ["runtime", "control"],
+};
+
+const capabilityToDefaultExcludedTools: Partial<Record<AiSdrCapabilityId, string[]>> = {
+  runtime: [],
+  source: [],
+};
+
+const sourceRequiredTools = [
+  "runtime.discovery",
+  "runtime.discoveryHealth",
+  "control.runDiscovery",
+] as const;
+
+export function resolveMcpExposure(config: AiSdrConfig): AiSdrMcpExposure {
+  const includeTools = new Set<string>(config.mcp?.includeTools ?? []);
+  const excludeTools = new Set<string>(config.mcp?.excludeTools ?? []);
+
+  const capabilities = new Set<AiSdrCapabilityId>();
+  for (const binding of config.capabilityBindings ?? []) {
+    capabilities.add(binding.capabilityId);
+  }
+  for (const module of config.modules ?? []) {
+    for (const capabilityId of module.capabilityIds ?? []) {
+      capabilities.add(capabilityId);
+    }
+  }
+
+  const explicitManifestExposure = Boolean(
+    (config.mcp?.toolGroups?.length ?? 0) > 0
+    || includeTools.size > 0
+    || excludeTools.size > 0,
+  );
+  const hasMcpCapability = capabilities.has("mcp");
+
+  if (!hasMcpCapability && !explicitManifestExposure) {
+    return {};
+  }
+
+  const toolGroups = new Set<string>(defaultCapabilityDrivenMcpToolGroups);
+
+  for (const capabilityId of capabilities) {
+    for (const group of capabilityToMcpToolGroups[capabilityId] ?? []) {
+      toolGroups.add(group);
+    }
+    for (const toolName of capabilityToDefaultExcludedTools[capabilityId] ?? []) {
+      excludeTools.add(toolName);
+    }
+  }
+
+  if (!capabilities.has("source")) {
+    for (const toolName of sourceRequiredTools) {
+      excludeTools.add(toolName);
+    }
+  }
+
+  for (const group of config.mcp?.toolGroups ?? []) {
+    toolGroups.add(group);
+  }
+
+  for (const toolName of includeTools) {
+    excludeTools.delete(toolName);
+  }
+
+  return {
+    toolGroups: [...toolGroups],
+    includeTools: includeTools.size > 0 ? [...includeTools] : undefined,
+    excludeTools: excludeTools.size > 0 ? [...excludeTools] : undefined,
+  };
+}
+
 export function collectConfigEnv(config: AiSdrConfig): AiSdrEnvVar[] {
   const seen = new Map<string, AiSdrEnvVar>();
 
@@ -332,13 +418,11 @@ export function collectWebhookEnv(config: AiSdrConfig): AiSdrEnvVar[] {
 export function collectAppSurfaceEnv(config: AiSdrConfig): AiSdrEnvVar[] {
   const envVars: AiSdrEnvVar[] = [];
   const hasWebhooks = collectWebhookDefinitions(config).length > 0;
+  const resolvedMcpExposure = resolveMcpExposure(config);
   const hasMcpExposure = Boolean(
-    config.mcp
-    && (
-      (config.mcp.toolGroups?.length ?? 0) > 0
-      || (config.mcp.includeTools?.length ?? 0) > 0
-      || (config.mcp.excludeTools?.length ?? 0) > 0
-    ),
+    (resolvedMcpExposure.toolGroups?.length ?? 0) > 0
+    || (resolvedMcpExposure.includeTools?.length ?? 0) > 0
+    || (resolvedMcpExposure.excludeTools?.length ?? 0) > 0,
   );
 
   if (hasWebhooks || hasMcpExposure) {

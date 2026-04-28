@@ -13,6 +13,7 @@ async function main() {
     ? Number(process.env.PORT)
     : await resolveAvailablePort();
   const baseUrl = `http://127.0.0.1:${port}`;
+  console.log("Running the AI SDR reference app in local smoke mode.");
   const child = spawn(
     path.resolve(process.cwd(), "node_modules/.bin/tsx"),
     ["examples/ai-sdr/src/index.ts"],

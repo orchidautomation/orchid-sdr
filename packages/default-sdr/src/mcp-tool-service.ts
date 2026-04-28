@@ -1,5 +1,7 @@
 import type {
+  DashboardActiveThreadRow,
   DashboardProspectRow,
+  DashboardQualifiedLeadRow,
   ProspectSnapshot,
   TrellisRepositoryPort,
 } from "./repository-contracts.js";
@@ -37,6 +39,11 @@ export interface DefaultSdrMcpToolContext {
 
 export interface DefaultSdrMcpToolDependencies {
   getActorClient(): DefaultSdrActorClient;
+}
+
+interface PresentedToolResult {
+  text: string;
+  structuredContent?: Record<string, unknown>;
 }
 
 export class DefaultSdrMcpToolService<Context extends DefaultSdrMcpToolContext> {
@@ -240,6 +247,159 @@ export class DefaultSdrMcpToolService<Context extends DefaultSdrMcpToolContext> 
     }));
   }
 
+  protected compactDiscoveryState(snapshot: Record<string, any> | null) {
+    if (!snapshot) {
+      return null;
+    }
+
+    const state = snapshot.state ?? {};
+    const recentRun = Array.isArray(snapshot.runs) && snapshot.runs.length > 0 ? snapshot.runs[0] : null;
+
+    return {
+      initialized: Boolean(state.initialized),
+      status: state.lastStatus ?? "idle",
+      termCount: Array.isArray(snapshot.terms) ? snapshot.terms.length : 0,
+      lastTerm: state.lastTerm ?? null,
+      lastTickAt: state.lastTickAt ?? null,
+      nextTickAt: state.nextTickAt ?? null,
+      recentRun: recentRun
+        ? {
+            status: recentRun.status ?? null,
+            startedAt: recentRun.startedAt ?? null,
+            completedAt: recentRun.completedAt ?? null,
+            requestTerm: recentRun.requestTerm ?? null,
+            yieldedSignals: recentRun.yieldedSignals ?? null,
+            error: recentRun.error ?? null,
+          }
+        : null,
+    };
+  }
+
+  protected summarizeActiveThread(thread: DashboardActiveThreadRow) {
+    return {
+      threadId: thread.threadId,
+      prospectId: thread.prospectId,
+      name: thread.fullName,
+      company: thread.company,
+      title: thread.title,
+      stage: thread.stage,
+      status: thread.status,
+      qualificationReason: thread.qualificationReason,
+      linkedinUrl: thread.linkedinUrl,
+      updatedAt: thread.updatedAt,
+    };
+  }
+
+  protected summarizeQualifiedLead(lead: DashboardQualifiedLeadRow) {
+    return {
+      prospectId: lead.prospectId,
+      name: lead.fullName,
+      company: lead.company,
+      title: lead.title,
+      qualificationReason: lead.qualificationReason,
+      qualificationSummary: lead.qualification?.summary ?? null,
+      threadStatus: lead.threadStatus,
+      researchConfidence: lead.researchConfidence,
+      email: lead.email,
+      emailConfidence: lead.emailConfidence,
+      updatedAt: lead.updatedAt,
+    };
+  }
+
+  protected summarizeProviderRun(run: Record<string, any>) {
+    return {
+      provider: run.provider ?? null,
+      status: run.status ?? null,
+      source: run.source ?? null,
+      requestTerm: run.requestTerm ?? null,
+      startedAt: run.startedAt ?? null,
+      completedAt: run.completedAt ?? null,
+      error: run.error ?? null,
+    };
+  }
+
+  protected summarizeAuditEvent(event: Record<string, any>) {
+    return {
+      entityType: event.entityType ?? null,
+      entityId: event.entityId ?? null,
+      eventName: event.eventName ?? null,
+      createdAt: event.createdAt ?? null,
+    };
+  }
+
+  protected formatPipelineSummaryText(input: {
+    headline: string;
+    summary: {
+      signals: number;
+      prospects: number;
+      qualifiedLeads: number;
+      activeThreads: number;
+      pausedThreads: number;
+      providerRuns24h: number;
+      noSendsMode?: boolean;
+      globalKillSwitch?: boolean;
+    };
+    discovery: {
+      linkedin_public_post: Record<string, any> | null;
+      x_public_post: Record<string, any> | null;
+    };
+    activeThreads: DashboardActiveThreadRow[];
+    providerRuns: Array<Record<string, any>>;
+    workflowFeed: Array<Record<string, any>>;
+  }) {
+    const lines = [
+      `Pipeline summary: ${input.headline}`,
+      "",
+      `Counts`,
+      `- Signals: ${input.summary.signals}`,
+      `- Prospects: ${input.summary.prospects}`,
+      `- Qualified leads: ${input.summary.qualifiedLeads}`,
+      `- Active threads: ${input.summary.activeThreads}`,
+      `- Paused threads: ${input.summary.pausedThreads}`,
+      `- Provider runs (24h): ${input.summary.providerRuns24h}`,
+      `- No-sends mode: ${input.summary.noSendsMode ? "ON" : "OFF"}`,
+      `- Kill switch: ${input.summary.globalKillSwitch ? "ON" : "OFF"}`,
+      "",
+      `Discovery`,
+      `- LinkedIn public post: ${input.discovery.linkedin_public_post?.status ?? "idle"}${input.discovery.linkedin_public_post?.lastTerm ? ` (last term: ${input.discovery.linkedin_public_post.lastTerm})` : ""}`,
+      `- X public post: ${input.discovery.x_public_post?.status ?? "idle"}${input.discovery.x_public_post?.lastTerm ? ` (last term: ${input.discovery.x_public_post.lastTerm})` : ""}`,
+      "",
+      `Top threads`,
+    ];
+
+    if (input.activeThreads.length === 0) {
+      lines.push("- None");
+    } else {
+      for (const thread of input.activeThreads.slice(0, 5)) {
+        lines.push(
+          `- ${thread.fullName} @ ${thread.company} | ${thread.stage} | ${thread.status} | ${thread.qualificationReason ?? "No qualification reason"}`,
+        );
+      }
+    }
+
+    lines.push("", "Recent provider runs");
+    if (input.providerRuns.length === 0) {
+      lines.push("- None");
+    } else {
+      for (const run of input.providerRuns.slice(0, 3)) {
+        lines.push(
+          `- ${run.provider ?? "unknown"} | ${run.status ?? "unknown"}${run.requestTerm ? ` | term: ${run.requestTerm}` : ""}${run.error ? ` | error: ${run.error}` : ""}`,
+        );
+      }
+    }
+
+    lines.push("", "Recent workflow events");
+    if (input.workflowFeed.length === 0) {
+      lines.push("- None");
+    } else {
+      for (const event of input.workflowFeed.slice(0, 5)) {
+        lines.push(`- ${event.eventName ?? "unknown"} on ${event.entityType ?? "entity"} ${event.entityId ?? ""}`.trim());
+      }
+    }
+
+    return lines.join("\n");
+  }
+
   private async handlePipelineSummary(args: Record<string, unknown>) {
     const limit = this.readLimit(args.limit, 5, 20);
     const [{ snapshots: discovery }, summary, activeThreads, qualifiedLeads, providerRuns, workflowFeed, recentProspects] =
@@ -253,24 +413,56 @@ export class DefaultSdrMcpToolService<Context extends DefaultSdrMcpToolContext> 
         this.context.repository.listRecentProspects(limit),
       ]);
 
-    return {
+    const headline = [
+      `${summary.qualifiedLeads} qualified leads`,
+      `${summary.activeThreads} active threads`,
+      `${summary.pausedThreads} paused threads`,
+      `${summary.providerRuns24h} provider runs in the last 24h`,
+    ].join(", ");
+
+    const compactDiscovery = {
+      linkedin_public_post: this.compactDiscoveryState(discovery.linkedin_public_post as Record<string, any> | null),
+      x_public_post: this.compactDiscoveryState(discovery.x_public_post as Record<string, any> | null),
+    };
+
+    const compactThreads = activeThreads.map((thread) => this.summarizeActiveThread(thread));
+    const compactQualifiedLeads = qualifiedLeads.map((lead) => this.summarizeQualifiedLead(lead));
+    const compactProviderRuns = providerRuns.map((run) => this.summarizeProviderRun(run as Record<string, any>));
+    const compactWorkflowFeed = workflowFeed.map((event) => this.summarizeAuditEvent(event as Record<string, any>));
+    const compactRecentProspects = recentProspects.map((prospect) => ({
+      prospectId: prospect.id,
+      fullName: prospect.fullName,
+      company: prospect.company,
+      title: prospect.title,
+      stage: prospect.stage,
+      status: prospect.status,
+      updatedAt: prospect.updatedAt,
+    }));
+
+    const structuredContent = {
       generatedAt: new Date().toISOString(),
-      headline: [
-        `${summary.qualifiedLeads} qualified leads`,
-        `${summary.activeThreads} active threads`,
-        `${summary.pausedThreads} paused threads`,
-        `${summary.providerRuns24h} provider runs in the last 24h`,
-      ].join(", "),
+      headline,
       summary,
-      discovery: {
-        linkedin_public_post: discovery.linkedin_public_post,
-        x_public_post: discovery.x_public_post,
-      },
+      discovery: compactDiscovery,
+      activeThreads: compactThreads,
+      qualifiedLeads: compactQualifiedLeads,
+      providerRuns: compactProviderRuns,
+      workflowFeed: compactWorkflowFeed,
+      recentProspects: compactRecentProspects,
+    };
+
+    const text = this.formatPipelineSummaryText({
+      headline,
+      summary,
+      discovery: compactDiscovery,
       activeThreads,
-      qualifiedLeads,
-      providerRuns,
-      workflowFeed,
-      recentProspects,
+      providerRuns: compactProviderRuns,
+      workflowFeed: compactWorkflowFeed,
+    });
+
+    return {
+      text,
+      structuredContent,
     };
   }
 

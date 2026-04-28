@@ -135,7 +135,8 @@ describe("framework scaffold profiles", () => {
     expect(configModule).toContain('const selectedModuleIds =');
     expect(configModule).toContain('"compositionTargets": [');
     expect(configModule).toContain('"name": scaffoldName');
-    expect(configModule).toContain('"mcp": {');
+    expect(configModule).not.toContain('"mcp": {');
+    expect(configModule).toContain('"capabilityId": "mcp"');
     expect(configModule).not.toContain('./src/framework/index.js');
     expect(envExample).toContain("CONVEX_URL=https://your-deployment.convex.cloud");
     expect(envExample).toContain("FIRECRAWL_API_KEY=");

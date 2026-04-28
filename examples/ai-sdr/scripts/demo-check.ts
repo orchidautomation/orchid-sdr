@@ -81,6 +81,8 @@ async function main() {
     skipIngest: args.values["skip-ingest"],
   });
 
+  console.log("Checking the AI SDR reference app.");
+
   for (const step of result.steps) {
     const prefix =
       step.status === "ok"

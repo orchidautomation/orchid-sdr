@@ -68,21 +68,6 @@ export default defineAiSdr({
   ],
   modules,
   providers: providersFromModules(modules),
-  mcp: {
-    toolGroups: [
-      "knowledge",
-      "lead",
-      "crm",
-      "email",
-      "research",
-      "pipeline",
-      "runtime",
-      "thread",
-      "control",
-      "mail",
-      "handoff",
-    ],
-  },
   capabilityBindings: [
     {
       capabilityId: "state",

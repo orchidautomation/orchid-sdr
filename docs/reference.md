@@ -230,12 +230,10 @@ Example remote MCP config:
 {
   "mcpServers": {
     "trellis": {
-      "transport": {
-        "type": "http",
-        "url": "https://your-app.example.com/mcp/trellis",
-        "headers": {
-          "Authorization": "Bearer ${TRELLIS_MCP_TOKEN}"
-        }
+      "type": "http",
+      "url": "https://your-app.example.com/mcp/trellis",
+      "headers": {
+        "Authorization": "Bearer ${TRELLIS_MCP_TOKEN}"
       }
     }
   }
