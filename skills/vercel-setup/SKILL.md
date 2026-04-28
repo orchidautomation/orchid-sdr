@@ -1,3 +1,8 @@
+---
+name: "vercel-setup"
+description: "Configure Vercel deployment, Sandbox auth, and AI Gateway for a Trellis app."
+---
+
 # Trellis Vercel Setup
 
 Use this skill when a Trellis project needs Vercel configured for Sandbox auth, AI Gateway, or deployment.
@@ -37,13 +42,17 @@ For deployment:
 3. Confirm `vercel-sandbox` and `vercel-ai-gateway` are selected in `ai-sdr.config.ts`.
 4. Configure Sandbox auth first.
 5. Configure AI Gateway auth second.
-6. Confirm `APP_URL` is correct for the environment:
+6. If this project is being deployed through Vercel CLI:
+   - `vercel login`
+   - `vercel`
+   - `vercel --prod` for production
+7. Confirm `APP_URL` is correct for the environment:
    - local: `http://localhost:3000`
    - deployed: explicit HTTPS origin
-7. Run:
+8. Run:
    - `npm run doctor`
    - `npm run sandbox:probe`
-8. Verify:
+9. Verify:
    - dashboard is healthy
    - sandbox probe succeeds
    - MCP URL is derived correctly from `APP_URL`
@@ -71,6 +80,7 @@ That keeps the app self-hostable instead of Vercel-locked.
 - Vercel environment variables only apply to new deployments after changes; redeploy after env updates
 - `VERCEL_URL` is a system environment variable when system env exposure is enabled
 - explicit `APP_URL` is still cleaner than relying on implicit deployment URL behavior
+- if the repo is connected to Vercel, every push to the connected branch creates a deployment automatically
 
 ## Failure Rules
 

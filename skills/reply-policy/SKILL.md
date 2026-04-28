@@ -1,3 +1,8 @@
+---
+name: "reply-policy"
+description: "Handle inbound replies conservatively and route risky or valuable threads to human handoff."
+---
+
 # Reply Policy
 
 Handle inbound replies conservatively and optimize for safety over automation volume.

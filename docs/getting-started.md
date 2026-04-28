@@ -5,10 +5,10 @@ This is the shortest path to a working Trellis reference app.
 ## 1. Scaffold
 
 ```bash
-npm run ai-sdr -- init
+npm run ai-sdr -- init ../trellis-core --name trellis-core
 ```
 
-That command now scaffolds the base Trellis runtime by default.
+That command scaffolds the base Trellis runtime by default.
 
 After boot, add capabilities incrementally:
 
@@ -18,10 +18,21 @@ npm run ai-sdr -- add deep-research parallel --apply
 npm run ai-sdr -- add enrichment prospeo --apply
 ```
 
-If you want to skip the wizard and choose lanes directly:
+Choose lanes directly with flags:
 
 ```bash
 npm run ai-sdr -- init ../trellis-core-plus --name trellis-core-plus --with-discovery --with-deep-research
+```
+
+The CLI no longer owns a guided wizard. The intended guided onboarding surface is a Trellis plugin built on Pluxx.
+When an agent or plugin is driving setup, use the JSON contract:
+
+```bash
+npm run ai-sdr -- init ../trellis-core --name trellis-core --json
+npm run doctor -- --json
+npm run ai-sdr -- connect source apify --json
+npm run ai-sdr -- deploy local --json
+npm run ai-sdr -- mcp claude-code --local --write --json
 ```
 
 ## 2. Install

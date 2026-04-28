@@ -1,3 +1,8 @@
+---
+name: "research-brief"
+description: "Turn raw signal, profile, company, and news context into a concise Trellis research brief."
+---
+
 # Research Brief
 
 Produce research briefs that are useful for qualification, copywriting, and handoff.

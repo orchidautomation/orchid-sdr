@@ -53,7 +53,7 @@ What is **not** true yet:
 
 ## How To Run It Today
 
-This is how it works **right now**, before the packaging/wizard work is finished:
+This is how it works **right now**, before the packaging/plugin onboarding work is finished:
 
 1. install dependencies
 
@@ -163,7 +163,7 @@ Important:
 - [x] added a first-pass getting-started guide in `docs/getting-started.md`
 - [x] added a tracked `skills/setup-and-verify` skill for first-boot agent guidance
 - [x] make `init` generate workspace-backed package dependencies and copy local `packages/`
-- [x] make `init` work as an interactive local wizard when you omit the target directory
+- [x] decide that guided onboarding should move out of the CLI and into a Pluxx-based Trellis plugin
 
 ## What Still Needs To Be Done
 
@@ -199,34 +199,24 @@ Important:
 
 - [ ] publish the scaffold flow as a real `npx ai-sdr init` experience
 - [x] generate a new project from a template instead of expecting repo surgery
-- [x] support at least three profiles:
-  - `core`
-  - `starter`
-  - `production`
-- [x] support current local profiles:
-  - `core`
-  - `starter`
-  - `production`
+- [x] keep the scaffold runtime/profile model internally available where useful
 - [x] keep `demo` as a backward-compatible alias to `core` while removing it from the public UX
 - [ ] add a stricter zero-vendor mock profile if we want a pure no-accounts demo later
-- [ ] wizard should collect:
-  - project/preset name
-  - runtime choice
-  - state/database choice
-- [x] wizard now collects optional module choices for:
-  - discovery
-  - deep research
-  - enrichment
-  - CRM
-  - email
-  - handoff
-- [ ] wizard should generate:
-  - config file
-  - `.env.example`
-  - install checklist
-  - deploy checklist
-  - optional skills/knowledge scaffolding
-- [x] make `init` interactive instead of flag-only
+- [ ] build a Trellis onboarding plugin on top of Pluxx for all 4 host surfaces
+- [ ] make the Pluxx plugin drive:
+  - scaffold/init
+  - env validation
+  - provider setup
+  - MCP install
+  - deploy guidance
+  - first-run verification
+- [ ] add machine-readable CLI output for the plugin layer:
+  - `init --json`
+  - `doctor --json`
+  - `connect --json`
+  - `deploy --json`
+  - `mcp --json`
+- [ ] have the plugin handle the guided flow instead of the CLI owning prompts
 - [ ] split `init` into product presets as the framework grows beyond AI SDR
 
 ## P0: Finish The State Plane Migration
@@ -286,7 +276,7 @@ Example target behavior:
   - local development
   - self-hosted customer deployment
   - Vercel + Rivet + Convex default deployment
-- [ ] add automated secret/env validation for the wizard path
+- [ ] add automated secret/env validation for the plugin-driven onboarding path
 - [ ] add generated examples for:
   - `ai-sdr`
   - `inbound-router`
@@ -304,7 +294,7 @@ Example target behavior:
   - Parallel
   - Attio
   - AgentMail
-- [ ] decide how much provisioning the wizard should automate vs document
+- [ ] decide how much provisioning the Pluxx onboarding plugin should automate vs document
 - [ ] add one happy-path “best stack” deploy flow for the default opinionated setup
 
 ## P1: Operational Confidence Still Needed
@@ -355,7 +345,7 @@ Example target behavior:
 ## Decisions Already Made
 
 - [x] internal contracts stay precise
-- [x] public CLI/wizard labels stay simple
+- [x] public CLI/plugin labels stay simple
 - [x] Firecrawl is the default search/extract provider
 - [x] Parallel is the default deep-research/monitor provider
 - [x] Prospeo is the default enrichment provider
@@ -363,13 +353,13 @@ Example target behavior:
 - [x] `Trellis` is the product name direction
 - [x] `useTrellis.dev` is good enough as the current domain
 
-## Short Answer: Do We Still Need The CLI Wizard?
+## Short Answer: Do We Still Need A Guided Onboarding Layer?
 
-Yes.
+Yes, but not in the CLI.
 
 Right now the system is powerful, but still too repo-native.
 
-Without the wizard, a new user still has to understand:
+Without a guided layer, a new user still has to understand:
 
 - env setup
 - provider selection
@@ -380,14 +370,14 @@ Without the wizard, a new user still has to understand:
 
 That is too much friction for the product shape you want.
 
-`npx ai-sdr init` or a broader future `trellis` CLI is still one of the highest-value missing pieces.
+The right answer is a Trellis plugin built on Pluxx that drives the CLI and host-native setup flows.
 
 ## Short Answer: What Still Blocks "Packages And Stuff"?
 
 The biggest blockers are:
 
 1. real workspace/package extraction
-2. real scaffold/init wizard
+2. real plugin-driven onboarding
 3. full Convex state-plane migration
 4. fully config-driven reference app wiring
 5. smoother provisioning/deploy UX

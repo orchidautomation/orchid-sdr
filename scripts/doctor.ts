@@ -26,6 +26,7 @@ type Check = {
 };
 
 const strictEnv = process.argv.includes("--strict-env");
+const jsonOutput = process.argv.includes("--json") || process.argv.includes("--format=json");
 const root = process.cwd();
 const readinessCoveredEnv = new Set([
   "CONVEX_URL",
@@ -46,13 +47,30 @@ await checkEnvExample();
 checkRuntimeEnv();
 checkRuntimeReadiness();
 
-for (const check of checks) {
-  const icon = check.ok ? "ok" : check.severity;
-  const suffix = check.detail ? ` - ${check.detail}` : "";
-  console.log(`${icon}: ${check.label}${suffix}`);
-}
+if (jsonOutput) {
+  const fixNext = collectFixNext();
+  console.log(JSON.stringify({
+    ok: checks.every((check) => check.ok || check.severity !== "error"),
+    strictEnv,
+    checks,
+    fixNext: {
+      groups: {
+        boot: fixNext.grouped.get("boot") ?? [],
+        discovery: fixNext.grouped.get("discovery") ?? [],
+        optional: fixNext.grouped.get("optional") ?? [],
+      },
+      hasSmokeHint: fixNext.hasSmokeHint,
+    },
+  }, null, 2));
+} else {
+  for (const check of checks) {
+    const icon = check.ok ? "ok" : check.severity;
+    const suffix = check.detail ? ` - ${check.detail}` : "";
+    console.log(`${icon}: ${check.label}${suffix}`);
+  }
 
-printFixNextBlock();
+  printFixNextBlock();
+}
 
 const errors = checks.filter((check) => !check.ok && check.severity === "error");
 if (errors.length > 0) {
@@ -212,23 +230,7 @@ function checkRuntimeReadiness() {
 }
 
 function printFixNextBlock() {
-  const grouped = new Map<NonNullable<Check["fixGroup"]>, string[]>();
-
-  for (const check of checks) {
-    if (check.ok || !check.fixGroup || !check.envNames?.length) {
-      continue;
-    }
-
-    const existing = grouped.get(check.fixGroup) ?? [];
-    const rendered = check.envNames.join(" or ");
-    if (!existing.includes(rendered)) {
-      existing.push(rendered);
-    }
-    grouped.set(check.fixGroup, existing);
-  }
-
-  const hasSmokeHint = process.env.TRELLIS_LOCAL_SMOKE_MODE !== "true"
-    && checks.some((check) => check.label === "boot readiness: Convex state plane URL" && !check.ok);
+  const { grouped, hasSmokeHint } = collectFixNext();
 
   if (grouped.size === 0 && !hasSmokeHint) {
     return;
@@ -247,6 +249,28 @@ function printFixNextBlock() {
     console.log("    - ORCHID_SDR_SANDBOX_TOKEN=<local-dev-token>");
     console.log("    - HANDOFF_WEBHOOK_SECRET=<local-dev-secret>");
   }
+}
+
+function collectFixNext() {
+  const grouped = new Map<NonNullable<Check["fixGroup"]>, string[]>();
+
+  for (const check of checks) {
+    if (check.ok || !check.fixGroup || !check.envNames?.length) {
+      continue;
+    }
+
+    const existing = grouped.get(check.fixGroup) ?? [];
+    const rendered = check.envNames.join(" or ");
+    if (!existing.includes(rendered)) {
+      existing.push(rendered);
+    }
+    grouped.set(check.fixGroup, existing);
+  }
+
+  const hasSmokeHint = process.env.TRELLIS_LOCAL_SMOKE_MODE !== "true"
+    && checks.some((check) => check.label === "boot readiness: Convex state plane URL" && !check.ok);
+
+  return { grouped, hasSmokeHint };
 }
 
 function printFixGroup(

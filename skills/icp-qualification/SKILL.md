@@ -1,3 +1,8 @@
+---
+name: "icp-qualification"
+description: "Qualify people and companies against the active Trellis ICP using signal, profile, and company evidence."
+---
+
 # ICP Qualification
 
 Run this pipeline every time you decide whether a lead matches the current ICP in `knowledge/icp.md`.

@@ -1,3 +1,8 @@
+---
+name: "convex-setup"
+description: "Configure Convex for Trellis local boot, agent mode, and deployment."
+---
+
 # Trellis Convex Setup
 
 Use this skill when a Trellis project needs Convex configured for local boot or deployment.
@@ -37,6 +42,7 @@ Sometimes also needed:
    - selected modules include `convex`
 4. If local development is the goal:
    - run `npx convex dev`
+   - for cloud coding agents, prefer `CONVEX_AGENT_MODE=anonymous npx convex dev`
    - or use an existing deployment URL
 5. Make sure:
    - `CONVEX_URL` is valid for the Node runtime
@@ -60,6 +66,9 @@ Sometimes also needed:
 
 - local development does not require a deploy key if you are using interactive CLI login or anonymous local development
 - `CONVEX_DEPLOY_KEY` is mainly for CI/non-interactive deploys
+- `npx convex dev` creates the `convex/` directory and `.env.local` with `CONVEX_DEPLOYMENT`
+- production deploys use `npx convex deploy`
+- for cloud coding agents, `CONVEX_AGENT_MODE=anonymous` avoids colliding with a developer's personal dev environment
 - Convex provides `CONVEX_CLOUD_URL` and `CONVEX_SITE_URL` inside its own function environment
 
 ## Failure Rules

@@ -1,7 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
 
@@ -29,13 +28,13 @@ import {
   resolveInitModuleIds,
 } from "../../framework/src/scaffold.js";
 import { buildClaudeCodeMcpConfig, mergeClaudeCodeMcpConfig } from "./mcp-config.js";
-import { promptMultiSelect } from "./tty-prompts.js";
 
 const [command, ...commandArgs] = process.argv.slice(2);
 const parsedCliArgs = parseCliArgs(commandArgs);
 const arg = parsedCliArgs.positionals[0];
 const providerArg = parsedCliArgs.positionals[1];
 const cliFlags = parsedCliArgs.flags;
+const jsonOutput = isJsonOutput(cliFlags);
 const scriptRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const SCAFFOLD_COPY_ENTRIES = [
   ".dockerignore",
@@ -94,7 +93,15 @@ async function main() {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(message);
+    if (jsonOutput) {
+      console.error(JSON.stringify({
+        ok: false,
+        command: command ?? "help",
+        error: message,
+      }, null, 2));
+    } else {
+      console.error(message);
+    }
     process.exitCode = 1;
   }
 }
@@ -113,7 +120,8 @@ function printHelp() {
   npm run ai-sdr -- mcp claude-code [--local|--remote] [--write]
   npm run ai-sdr -- add <module-id>
   npm run ai-sdr -- add <capability> <provider>
-  npm run ai-sdr -- init [target-dir] [--name my-app]
+  npm run ai-sdr -- init <target-dir> [--name my-app]
+  npm run ai-sdr -- <command> --json
 
 Examples:
 
@@ -137,14 +145,19 @@ Examples:
   npm run ai-sdr -- add handoff slack
   npm run ai-sdr -- connect source apify
   npm run ai-sdr -- deploy vercel
+  npm run ai-sdr -- deploy vercel --json
   npm run ai-sdr -- mcp claude-code --local --write
-  npm run ai-sdr -- init
-  npm run ai-sdr -- init ../trellis-core-plus --with-discovery --with-deep-research
+  npm run ai-sdr -- mcp claude-code --local --write --json
+  npm run ai-sdr -- init ../trellis-core --name trellis-core
+  npm run ai-sdr -- init ../trellis-core --name trellis-core --json
+  npm run ai-sdr -- init ../trellis-core-plus --name trellis-core-plus --with-discovery --with-deep-research
 
 Simple labels stay short in the CLI: search, extract, deep-research, monitor, enrichment.
 The alias "research" resolves to the full research contract family.
 
-Init now scaffolds the bare minimum core runtime by default.
+Init is now a deterministic scaffold command, not an interactive wizard.
+Use explicit lane flags or the future Pluxx-guided onboarding plugin.
+Use --json when a plugin or coding agent is orchestrating the setup.
 Use add ... --apply to layer in new providers and sources after boot.
 Apply mode works on scaffold-generated workspaces.`);
 }
@@ -264,6 +277,26 @@ function printAddPlan(moduleId: string | undefined) {
 
 function handleConnectCommand(moduleId: string | undefined) {
   if (!moduleId) {
+    const guides = [
+      "npm run ai-sdr -- connect source apify",
+      "npm run ai-sdr -- connect search firecrawl",
+      "npm run ai-sdr -- connect deep-research parallel",
+      "npm run ai-sdr -- connect enrichment prospeo",
+      "npm run ai-sdr -- connect crm attio",
+      "npm run ai-sdr -- connect email agentmail",
+      "npm run ai-sdr -- connect handoff slack",
+      "npm run ai-sdr -- connect mcp orchid-mcp",
+    ];
+    if (jsonOutput) {
+      emitJson({
+        ok: true,
+        command: "connect",
+        mode: "help",
+        guides,
+        notes: ["Use --apply if you also want to add the module to a scaffolded workspace first."],
+      });
+      return;
+    }
     console.log(`Connection guides:
 
   npm run ai-sdr -- connect source apify
@@ -288,9 +321,26 @@ Use --apply if you also want to add the module to a scaffolded workspace first.`
     throw new Error(`Unknown module or provider capability: ${requested}`);
   }
 
-  if (cliFlags.apply === true || cliFlags.write === true) {
-    applyModuleToScaffold(module);
-    console.log("");
+  const applyResult = cliFlags.apply === true || cliFlags.write === true
+    ? applyModuleToScaffold(module)
+    : null;
+  if (applyResult) {
+    if (!jsonOutput) {
+      console.log("");
+    }
+  }
+
+  if (jsonOutput) {
+    const plan = buildModuleInstallPlan(module, {
+      installedModuleIds: (config.modules ?? []).map((item) => item.id),
+    });
+    emitJson({
+      ok: true,
+      command: "connect",
+      apply: applyResult,
+      module: summarizeInstallPlan(plan),
+    });
+    return;
   }
 
   printConnectionGuide(module);
@@ -301,6 +351,36 @@ function handleDeployCommand(target: string | undefined) {
 
   switch (resolvedTarget) {
     case "local":
+      if (jsonOutput) {
+        emitJson({
+          ok: true,
+          command: "deploy",
+          target: "local",
+          steps: [
+            "npm install",
+            "cp .env.example .env",
+            "npm run doctor",
+            "npm run dev",
+          ],
+          smokeMode: {
+            env: {
+              TRELLIS_LOCAL_SMOKE_MODE: "true",
+              ORCHID_SDR_SANDBOX_TOKEN: "local-sandbox-token",
+              HANDOFF_WEBHOOK_SECRET: "local-handoff-secret",
+              DASHBOARD_PASSWORD: "dev",
+              DISCOVERY_LINKEDIN_ENABLED: "false",
+            },
+            steps: [
+              "npm run doctor",
+              "npm run dev",
+            ],
+          },
+          urls: {
+            dashboard: "http://localhost:3000/dashboard",
+          },
+        });
+        return;
+      }
       console.log(`Local deploy path:
 
   1. npm install
@@ -321,6 +401,30 @@ Smoke-mode boot only:
 Then open http://localhost:3000/dashboard`);
       return;
     case "vercel":
+      if (jsonOutput) {
+        emitJson({
+          ok: true,
+          command: "deploy",
+          target: "vercel",
+          requiredEnv: [
+            "APP_URL",
+            "CONVEX_URL or NEXT_PUBLIC_CONVEX_URL",
+            "ORCHID_SDR_SANDBOX_TOKEN",
+            "HANDOFF_WEBHOOK_SECRET",
+            "Vercel sandbox / AI Gateway credentials",
+            "RIVET_ENDPOINT when running on Vercel with remote Rivet",
+          ],
+          steps: [
+            "boot locally first",
+            "run npm run doctor until boot blockers are clear",
+            "set hosted env vars in Vercel",
+            "deploy",
+            "verify /healthz, /dashboard, and /mcp/orchid-sdr",
+            "only then wire discovery webhooks and live providers",
+          ],
+        });
+        return;
+      }
       console.log(`Vercel deploy path:
 
 Required before deploy:
@@ -341,6 +445,28 @@ Recommended sequence:
       return;
     case "self-hosted":
     case "selfhosted":
+      if (jsonOutput) {
+        emitJson({
+          ok: true,
+          command: "deploy",
+          target: "self-hosted",
+          required: [
+            "public HTTPS APP_URL",
+            "Node 22+",
+            "reachable provider APIs",
+            "reachable webhook paths for enabled providers",
+          ],
+          steps: [
+            "npm install",
+            "npm run build",
+            "set production env vars",
+            "npm run doctor",
+            "npm run start",
+            "verify /healthz, /dashboard, and /mcp/orchid-sdr",
+          ],
+        });
+        return;
+      }
       console.log(`Self-hosted deploy path:
 
 Required:
@@ -416,6 +542,47 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
   await writeFile(path.join(targetDir, "README.md"), renderScaffoldReadme(appName, targetDir, spec));
   await writeFile(path.join(targetDir, "TRELLIS_SETUP.md"), renderScaffoldSetupChecklist(spec));
 
+  const nextSteps = [
+    `cd ${targetDir}`,
+    "npm install",
+    "cp .env.example .env",
+    "npm run typecheck",
+    "npm test",
+    "npm run doctor",
+    "npm run dev",
+    "open TRELLIS_SETUP.md",
+  ];
+
+  if (jsonOutput) {
+    emitJson({
+      ok: true,
+      command: "init",
+      targetDir,
+      appName,
+      packageName,
+      profile,
+      selection: {
+        id: spec.selection.id,
+        displayName: spec.selection.displayName,
+        description: spec.selection.description,
+      },
+      modules: spec.selectedModules.map((module) => ({
+        id: module.id,
+        displayName: module.displayName,
+        packageName: module.packageName ?? null,
+      })),
+      filesWritten: [
+        "package.json",
+        "ai-sdr.config.ts",
+        ".env.example",
+        "README.md",
+        "TRELLIS_SETUP.md",
+      ],
+      nextSteps,
+    });
+    return;
+  }
+
   console.log(`Initialized ${appName} in ${targetDir}`);
   console.log(`Scaffold: ${spec.selection.displayName}`);
   console.log(`Composition targets: ${(spec.config.compositionTargets ?? []).join(", ")}`);
@@ -436,104 +603,41 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
 }
 
 async function resolveInitInput(targetArg: string | undefined, flags: Record<string, string | boolean>) {
-  const shouldPrompt = !targetArg || flags.interactive === true || flags.wizard === true;
-  if (!shouldPrompt) {
-    const profile = String(flags.profile ?? "core");
-    const resolvedTargetArg = targetArg;
-    const appName = String(flags.name ?? path.basename(path.resolve(process.cwd(), resolvedTargetArg)));
-    return {
-      targetDirArg: resolvedTargetArg,
-      profile,
-      appName,
-      moduleIds: resolveInitModuleIds(profile, resolveModuleChoiceFlags(flags)),
-    };
-  }
-
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (flags.interactive === true || flags.wizard === true) {
     throw new Error(
-      "Interactive init requires a TTY. Re-run with a target directory, for example: npm run ai-sdr -- init ../trellis-core",
+      "Interactive init has been removed. Use a Pluxx-guided Trellis onboarding plugin or run init with explicit flags, for example: npm run ai-sdr -- init ../trellis-ai-sdr --name trellis-ai-sdr --with-discovery --with-deep-research --with-enrichment",
     );
   }
 
-  return await promptForInit({
-    targetArg,
-    profile: typeof flags.profile === "string" ? flags.profile : undefined,
-    name: typeof flags.name === "string" ? flags.name : undefined,
-    ...resolveModuleChoiceFlags(flags),
-  });
-}
+  if (!targetArg) {
+    throw new Error(
+      "Missing target directory. Run init explicitly, for example: npm run ai-sdr -- init ../trellis-core --name trellis-core. Guided onboarding should happen through the Trellis Pluxx plugin.",
+    );
+  }
 
-async function promptForInit(input: {
-  targetArg?: string;
-  profile?: string;
-  name?: string;
-  include?: string[];
-  exclude?: string[];
-}) {
-  const baseProfile = resolveInitProfile("core");
-  const initiallySelectedOptionalModuleIds = aiSdrInitModuleChoices
-    .filter((choice) =>
-      resolveInitModuleIds(baseProfile.id, {
-        include: input.include,
-        exclude: input.exclude,
-      }).includes(choice.moduleId),
-    )
-    .map((choice) => choice.moduleId);
-  console.log("Trellis init wizard");
-  console.log("");
-  const selectedOptionalModuleIds = await promptMultiSelect({
-    message: "Choose optional GTM lanes",
-    hint: "up/down move, Space selects, Enter continues, a selects all",
-    initialValues: initiallySelectedOptionalModuleIds,
-    options: aiSdrInitModuleChoices.map((choice) => ({
-      value: choice.moduleId,
-      label: `${choice.displayName} (${choice.id})`,
-      hint: choice.description,
-    })),
-  });
-  const selectedModuleIds = resolveInitModuleIds(baseProfile.id, {
-    include: selectedOptionalModuleIds,
-  });
-
+  const profile = String(flags.profile ?? "core");
+  const resolvedTargetArg = targetArg;
+  const appName = String(flags.name ?? path.basename(path.resolve(process.cwd(), resolvedTargetArg)));
+  const moduleIds = resolveInitModuleIds(profile, resolveModuleChoiceFlags(flags));
   const selection = describeScaffoldSelection({
-    profile: baseProfile,
-    selectedModuleIds,
-  });
-  console.log("Selected lanes:");
-  for (const selectedLane of summarizeOptionalModuleChoices(selectedModuleIds)) {
-    console.log(`  - ${selectedLane}`);
-  }
-  console.log("");
-
-  const readline = createInterface({
-    input: process.stdin,
-    output: process.stdout,
+    profile: resolveInitProfile(profile),
+    selectedModuleIds: moduleIds,
   });
 
-  try {
-    const defaultTarget = input.targetArg ?? `../${selection.defaultDirectoryName}`;
-    const targetAnswer = await readline.question(`Target directory (${defaultTarget}): `);
-    const resolvedTargetArg = (targetAnswer.trim() || defaultTarget).trim();
-    const defaultName = input.name ?? path.basename(path.resolve(process.cwd(), resolvedTargetArg));
-    const nameAnswer = await readline.question(`Project name (${defaultName}): `);
-    const appName = (nameAnswer.trim() || defaultName).trim();
-
+  if (!jsonOutput) {
+    console.log(`Scaffold target: ${resolvedTargetArg}`);
+    console.log(`App name: ${appName}`);
+    printList("Optional lanes", summarizeOptionalModuleChoices(moduleIds));
+    console.log(`Resulting scaffold: ${selection.displayName}`);
     console.log("");
-    console.log(`Scaffold: ${selection.displayName}`);
-    console.log(`Target:   ${resolvedTargetArg}`);
-    console.log(`Name:     ${appName}`);
-    printList("Optional lanes", summarizeOptionalModuleChoices(selectedModuleIds));
-    console.log("");
-
-    return {
-      targetDirArg: resolvedTargetArg,
-      profile: baseProfile.id,
-      appName,
-      moduleIds: selectedModuleIds,
-    };
-  } finally {
-    readline.close();
   }
+
+  return {
+    targetDirArg: resolvedTargetArg,
+    profile,
+    appName,
+    moduleIds,
+  };
 }
 
 function resolveModuleChoiceFlags(flags: Record<string, string | boolean>) {
@@ -587,6 +691,25 @@ function printConnectionGuide(module: AiSdrModuleDefinition) {
   printList("Next steps", plan.nextSteps);
 }
 
+function summarizeInstallPlan(plan: ReturnType<typeof buildModuleInstallPlan>) {
+  return {
+    moduleId: plan.moduleId,
+    displayName: plan.displayName,
+    packageName: plan.packageName ?? null,
+    status: plan.alreadyInstalled ? "installed" : "available",
+    providerKey: plan.providerKey ?? null,
+    capabilityIds: plan.capabilityIds,
+    contracts: plan.contracts,
+    providers: plan.providers,
+    mcpServers: plan.mcpServers,
+    mcpTools: plan.mcpTools,
+    envVars: plan.envVars,
+    docs: plan.docs,
+    smokeChecks: plan.smokeChecks,
+    nextSteps: plan.nextSteps,
+  };
+}
+
 async function handleClaudeCodeMcp(flags: Record<string, string | boolean>) {
   if (flags.local === true && flags.remote === true) {
     throw new Error("Choose either --local or --remote, not both.");
@@ -599,16 +722,23 @@ async function handleClaudeCodeMcp(flags: Record<string, string | boolean>) {
   const token = typeof flags.token === "string"
     ? flags.token
     : (process.env.ORCHID_SDR_MCP_TOKEN ?? process.env.ORCHID_SDR_SANDBOX_TOKEN ?? "REPLACE_ME");
+  const tokenSource = typeof flags.token === "string"
+    ? "flag"
+    : (process.env.ORCHID_SDR_MCP_TOKEN ? "ORCHID_SDR_MCP_TOKEN"
+      : (process.env.ORCHID_SDR_SANDBOX_TOKEN ? "ORCHID_SDR_SANDBOX_TOKEN" : "placeholder"));
   const serverName = typeof flags.name === "string" ? flags.name : "orchid-sdr";
-  const configJson = JSON.stringify(
-    buildClaudeCodeMcpConfig({
-      serverName,
-      url,
-      token,
-    }),
-    null,
-    2,
-  );
+  const builtConfig = buildClaudeCodeMcpConfig({
+    serverName,
+    url,
+    token,
+  });
+  const displayConfig = buildClaudeCodeMcpConfig({
+    serverName,
+    url,
+    token: token === "REPLACE_ME" ? token : "<redacted>",
+  });
+  const configJson = JSON.stringify(displayConfig, null, 2);
+  let wrotePath: string | null = null;
 
   if (flags.write === true) {
     const targetPath = path.resolve(process.cwd(), typeof flags.path === "string" ? flags.path : ".mcp.json");
@@ -628,8 +758,31 @@ async function handleClaudeCodeMcp(flags: Record<string, string | boolean>) {
       token,
     });
     await writeFile(targetPath, merged);
-    console.log(`Wrote Claude Code MCP config to ${targetPath}`);
-    console.log("");
+    wrotePath = targetPath;
+    if (!jsonOutput) {
+      console.log(`Wrote Claude Code MCP config to ${targetPath}`);
+      console.log("");
+    }
+  }
+
+  if (jsonOutput) {
+    emitJson({
+      ok: true,
+      command: "mcp",
+      subcommand: "claude-code",
+      mode: useRemote ? "remote" : "local",
+      serverName,
+      url,
+      tokenSource,
+      wrotePath,
+      config: displayConfig,
+      nextSteps: [
+        "Start Trellis locally or deploy it",
+        "Make sure the bearer token matches ORCHID_SDR_MCP_TOKEN or ORCHID_SDR_SANDBOX_TOKEN",
+        "Reload MCP servers in the host",
+      ],
+    });
+    return;
   }
 
   console.log(configJson);
@@ -665,17 +818,47 @@ function applyModuleToScaffold(module: AiSdrModuleDefinition) {
   writeFileSyncSafe(path.join(process.cwd(), "TRELLIS_SETUP.md"), renderScaffoldSetupChecklist(spec));
   writeFileSyncSafe(path.join(process.cwd(), "README.md"), renderScaffoldReadme(metadata.scaffoldName, process.cwd(), spec));
 
+  const updatedFiles = [
+    "ai-sdr.config.ts",
+    ".env.example",
+    "TRELLIS_SETUP.md",
+    "README.md",
+  ];
+
+  if (jsonOutput) {
+    return {
+      moduleId: module.id,
+      scaffoldConfigPath,
+      updatedFiles,
+      nextSteps: [
+        "Fill any new env vars from .env.example",
+        "npm run ai-sdr -- check",
+        "npm run doctor",
+      ],
+    };
+  }
+
   console.log(`Applied module "${module.id}" to ${scaffoldConfigPath}`);
   console.log("Updated:");
-  console.log("  - ai-sdr.config.ts");
-  console.log("  - .env.example");
-  console.log("  - TRELLIS_SETUP.md");
-  console.log("  - README.md");
+  for (const file of updatedFiles) {
+    console.log(`  - ${file}`);
+  }
   console.log("");
   console.log("Next steps:");
   console.log("  1. Fill any new env vars from .env.example");
   console.log("  2. npm run ai-sdr -- check");
   console.log("  3. npm run doctor");
+
+  return {
+    moduleId: module.id,
+    scaffoldConfigPath,
+    updatedFiles,
+    nextSteps: [
+      "Fill any new env vars from .env.example",
+      "npm run ai-sdr -- check",
+      "npm run doctor",
+    ],
+  };
 }
 
 function parseScaffoldConfigMetadata(source: string) {
@@ -778,6 +961,14 @@ function parseCliArgs(values: string[]) {
   }
 
   return { flags, positionals };
+}
+
+function isJsonOutput(flags: Record<string, string | boolean>) {
+  return flags.json === true || flags.format === "json";
+}
+
+function emitJson(value: unknown) {
+  console.log(JSON.stringify(value, null, 2));
 }
 
 async function ensureEmptyDirectory(targetDir: string) {

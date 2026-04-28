@@ -107,7 +107,7 @@ It wakes up on a schedule, finds leads from public signals, researches the perso
 If you want a new working reference app scaffold from this repo:
 
 ```bash
-npm run ai-sdr -- init
+npm run ai-sdr -- init ../trellis-core --name trellis-core
 ```
 
 That now gives you the base Trellis runtime by default.
@@ -125,12 +125,23 @@ The generated project includes:
 - `TRELLIS_SETUP.md` with the exact first-boot checklist for that scaffold
 - `packages/` with the extracted local `@ai-sdr/*` workspace packages
 - a workspace-backed `package.json` so the generated app installs and runs as its own local Trellis workspace
-- optional module prompts for discovery, deep research, enrichment, CRM, outbound email, and handoff when you use the wizard path
 
-If you want to skip the wizard and choose lanes explicitly:
+The CLI is now explicit by default. Choose lanes with flags:
 
 ```bash
 npm run ai-sdr -- init ../trellis-custom --name trellis-custom --with-discovery --with-deep-research --with-enrichment
+```
+
+The guided onboarding experience should live in a Trellis plugin built on Pluxx, not inside the CLI itself.
+
+When a plugin or coding agent is driving setup, prefer the machine-readable contract:
+
+```bash
+npm run ai-sdr -- init ../trellis-core --name trellis-core --json
+npm run doctor -- --json
+npm run ai-sdr -- connect source apify --json
+npm run ai-sdr -- deploy local --json
+npm run ai-sdr -- mcp claude-code --local --write --json
 ```
 
 For the current repo itself:

@@ -1,3 +1,8 @@
+---
+name: "handoff-policy"
+description: "Determine when a Trellis thread should escalate from automation to a human."
+---
+
 # Handoff Policy
 
 Trigger handoff when the thread becomes commercially important, strategically interesting, or ambiguous enough that a human should take over.

@@ -1,3 +1,8 @@
+---
+name: "research-checks"
+description: "Validate identity coherence, evidence quality, and fact-vs-inference before Trellis uses research."
+---
+
 # Research Checks
 
 Run these checks before returning a research brief or using research to write copy.

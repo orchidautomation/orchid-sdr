@@ -1,3 +1,8 @@
+---
+name: "sdr-copy"
+description: "Write grounded outbound and reply copy from Trellis research without hype or fake personalization."
+---
+
 # SDR Copy
 
 Write outbound and reply copy like a sharp operator who actually did the research.

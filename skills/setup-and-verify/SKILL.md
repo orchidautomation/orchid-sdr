@@ -1,3 +1,8 @@
+---
+name: "setup-and-verify"
+description: "Boot and verify a freshly scaffolded Trellis app with the minimum safe runtime configuration."
+---
+
 # Trellis Setup And Verify
 
 Use this skill when you need to get a freshly scaffolded Trellis app running without guessing through the setup.
@@ -10,14 +15,15 @@ Take a new Trellis project from scaffolded files to a verified local boot with t
 
 1. Read `TRELLIS_SETUP.md` first.
 2. Read `.env.example` and identify the required env values.
-3. Confirm the selected profile in `ai-sdr.config.ts`.
-4. Use `README.md` to understand whether this scaffold is `core`, `starter`, or `production`.
+3. Confirm the selected modules and lanes in `ai-sdr.config.ts`.
+4. Use `README.md` and `TRELLIS_SETUP.md` to understand which optional lanes were scaffolded.
 5. Fill only the minimum required env values first.
 6. Run:
    - `npm install`
    - `npm run typecheck`
    - `npm test`
-   - `npm run doctor`
+   - `npm run doctor -- --json` if a plugin or agent is driving setup
+   - `npm run doctor` if a human is reading the output directly
 7. Start the app with `npm run dev`.
 8. Verify:
    - `GET /healthz`
