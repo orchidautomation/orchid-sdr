@@ -61,7 +61,7 @@ async function bootstrapDiscoveryActors() {
   const client = getActorClient();
 
   if (context.config.DISCOVERY_LINKEDIN_ENABLED) {
-    const actor = client.discoveryCoordinator.getOrCreate([campaign.id, "linkedin_public_post"]);
+    const actor = client.discoveryCoordinator.getOrCreate([campaign.id, "linkedin_public_post"]) as any;
     await actor.initialize({
       campaignId: campaign.id,
       source: "linkedin_public_post",
@@ -73,7 +73,7 @@ async function bootstrapDiscoveryActors() {
   }
 
   if (context.config.DISCOVERY_X_ENABLED) {
-    const actor = client.discoveryCoordinator.getOrCreate([campaign.id, "x_public_post"]);
+    const actor = client.discoveryCoordinator.getOrCreate([campaign.id, "x_public_post"]) as any;
     await actor.initialize({
       campaignId: campaign.id,
       source: "x_public_post",

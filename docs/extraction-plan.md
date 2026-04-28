@@ -45,8 +45,36 @@ That package would own:
 - default smoke repository
 - default actor topology
 - default webhook and MCP bootstrap for the reference SDR app
+- default dashboard shell and dashboard state caching helpers
 
 This keeps the framework generic while still shipping a turnkey default SDR model.
+
+## Current Extraction Status
+
+Already moved into shared packages:
+
+- `packages/convex/`
+  - default Convex schema
+  - generic state mutations
+- `packages/default-sdr/`
+  - default SDR domain types
+  - repository contracts
+  - Convex HTTP repository client
+  - local smoke repository
+  - default actor registry
+  - default webhook bootstrap
+  - default MCP server bootstrap
+  - default dashboard shell
+  - dashboard auth and cache helpers
+
+Still primarily app-owned:
+
+- `examples/ai-sdr/src/services/runtime-context.ts`
+- `examples/ai-sdr/src/services/runtime-bootstrap.ts`
+- `examples/ai-sdr/src/services/mcp-tools.ts`
+- `examples/ai-sdr/src/orchestration/discovery-coordinator.ts`
+- `examples/ai-sdr/src/orchestration/prospect-workflow.ts`
+- `examples/ai-sdr/src/server.ts`
 
 ## Extraction Buckets
 
@@ -54,11 +82,8 @@ This keeps the framework generic while still shipping a turnkey default SDR mode
 
 Current custom surfaces:
 
-- `examples/ai-sdr/convex/schema.ts`
 - `examples/ai-sdr/convex/repository.ts`
 - `examples/ai-sdr/src/repository.ts`
-- `examples/ai-sdr/src/repository-convex.ts`
-- `examples/ai-sdr/src/repository-local-smoke.ts`
 
 Extraction target:
 
@@ -82,7 +107,6 @@ What should remain configurable:
 
 Current custom surfaces:
 
-- `examples/ai-sdr/src/registry.ts`
 - `examples/ai-sdr/src/index.ts`
 - `examples/ai-sdr/src/services/runtime-bootstrap.ts`
 - `examples/ai-sdr/src/services/runtime-context.ts`
@@ -110,9 +134,9 @@ What should remain configurable:
 
 Current custom surfaces:
 
-- `examples/ai-sdr/src/orchestration/webhook-handlers.ts`
 - `examples/ai-sdr/src/services/webhook-security.ts`
-- webhook parts of `examples/ai-sdr/src/server.ts`
+- app-specific handler functions in `examples/ai-sdr/src/orchestration/webhook-handlers.ts`
+- app-specific route composition in `examples/ai-sdr/src/server.ts`
 
 Extraction target:
 
@@ -163,7 +187,6 @@ What should remain configurable:
 
 Current custom surfaces:
 
-- `examples/ai-sdr/src/mcp/server-factory.ts`
 - `examples/ai-sdr/src/mcp/trellis-server.ts`
 - parts of `examples/ai-sdr/src/services/mcp-tools.ts`
 
@@ -188,7 +211,6 @@ What should remain configurable:
 
 Current custom surfaces:
 
-- `examples/ai-sdr/src/dashboard/page.ts`
 - parts of `examples/ai-sdr/src/server.ts`
 
 Extraction target:
@@ -214,7 +236,6 @@ Current custom surfaces:
 
 - `examples/ai-sdr/scripts/doctor.ts`
 - `examples/ai-sdr/scripts/discovery-tick.ts`
-- `examples/ai-sdr/scripts/migrate.ts`
 - `examples/ai-sdr/scripts/sandbox-probe.ts`
 - `examples/ai-sdr/scripts/linkedin_post_chain_probe.py`
 

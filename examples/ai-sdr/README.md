@@ -104,9 +104,10 @@ This is the current working implementation of the AI SDR behavior.
 
 - `convex/schema.ts`
 - `convex/repository.ts`
-- `src/repository*.ts`
+- `packages/default-sdr/`
+- `packages/convex/`
 
-This is the part we most likely want to push further down into Trellis over time.
+This is the substrate Trellis now owns by default for the reference SDR shape.
 
 The extraction is already underway:
 
@@ -117,10 +118,14 @@ The extraction is already underway:
   - repository contracts
   - Convex HTTP repository client
   - local smoke repository
+  - actor registry
+  - webhook bootstrap
+  - MCP bootstrap
+  - dashboard shell and dashboard cache helpers
 
 That is the important nuance:
 
-> the app is already strongly composed, but the substrate is not fully extracted yet
+> the app is already strongly composed, and Trellis now owns most of the default SDR substrate underneath it
 
 ## Data Flow
 

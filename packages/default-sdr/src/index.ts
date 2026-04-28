@@ -3,3 +3,8 @@ export * from "./repository-contracts.js";
 export * from "./repository-factory.js";
 export * from "./convex-repository.js";
 export * from "./local-smoke-repository.js";
+export * from "./mcp-server.js";
+export * from "./webhook-bootstrap.js";
+export * from "./dashboard-bootstrap.js";
+export * from "./dashboard-shell.js";
+export * from "./actor-registry.js";

@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
@@ -21,23 +19,27 @@ import {
 } from "./orchestration/webhook-handlers.js";
 import { runSandboxTurn } from "./orchestration/sandbox-broker.js";
 import { getAutomationPauseReason } from "./orchestration/workflow-control.js";
+import {
+  calculateDurationMs,
+  createDashboardStateController,
+  getDashboardPassword as resolveDashboardPassword,
+  hashDashboardPassword as hashDefaultDashboardPassword,
+  isDashboardAuthenticated as checkDashboardAuthenticated,
+  isSecureRequest,
+  withFallback,
+} from "../../../packages/default-sdr/src/dashboard-bootstrap.js";
+import { mountDefaultSdrWebhookRoutes } from "../../../packages/default-sdr/src/webhook-bootstrap.js";
 
-const DASHBOARD_CACHE_STALE_AFTER_MS = 8_000;
-const DASHBOARD_CACHE_MAX_AGE_MS = 5 * 60_000;
-const DASHBOARD_RUNTIME_CACHE_STALE_AFTER_MS = 15_000;
 const DASHBOARD_RUNTIME_TIMEOUT_MS = 1_200;
-
-let cachedDashboardCoreState: Awaited<ReturnType<typeof buildDashboardCoreState>> | null = null;
-let cachedDashboardCoreStateAt = 0;
-let dashboardCoreStateRefreshPromise: Promise<Awaited<ReturnType<typeof buildDashboardCoreState>>> | null = null;
-let cachedDashboardRuntimeState: Awaited<ReturnType<typeof buildDashboardRuntimeState>> | null = null;
-let cachedDashboardRuntimeStateAt = 0;
-let dashboardRuntimeStateRefreshPromise: Promise<Awaited<ReturnType<typeof buildDashboardRuntimeState>>> | null = null;
 
 export function createApp() {
   const app = new Hono();
   const context = getAppContext();
   const dashboardCookieName = "trellis_dashboard_auth";
+  const dashboardState = createDashboardStateController({
+    buildCoreState: () => buildDashboardCoreState(context),
+    buildRuntimeState: () => buildDashboardRuntimeState(context),
+  });
 
   const workflowDeps = {
     context,
@@ -106,7 +108,7 @@ export function createApp() {
       return c.json({ error: "unauthorized" }, 401);
     }
 
-    return c.json(await getDashboardState(context, {
+    return c.json(await dashboardState.getState({
       forceFresh: c.req.query("fresh") === "1",
     }));
   });
@@ -116,7 +118,7 @@ export function createApp() {
       return c.json({ error: "unauthorized" }, 401);
     }
 
-    return c.json(await getDashboardCoreState(context, {
+    return c.json(await dashboardState.getCoreState({
       forceFresh: c.req.query("fresh") === "1",
     }));
   });
@@ -126,7 +128,7 @@ export function createApp() {
       return c.json({ error: "unauthorized" }, 401);
     }
 
-    return c.json(await getDashboardRuntimeState(context, {
+    return c.json(await dashboardState.getRuntimeState({
       forceFresh: c.req.query("fresh") === "1",
     }));
   });
@@ -152,7 +154,7 @@ export function createApp() {
     }
     const source = body.source === "x_public_post" ? "x_public_post" : "linkedin_public_post";
     const client = getActorClient();
-    const actor = client.discoveryCoordinator.getOrCreate([campaign.id, source]);
+    const actor = client.discoveryCoordinator.getOrCreate([campaign.id, source]) as any;
     const result = await actor.enqueueTick({
       reason: "dashboard_manual",
     });
@@ -178,7 +180,7 @@ export function createApp() {
     }
 
     const client = getActorClient();
-    const actor = client.sandboxBroker.getOrCreate();
+    const actor = client.sandboxBroker.getOrCreate() as any;
     const job = await actor.enqueueTurn({
       turnId: `dashboard-firecrawl-probe-${Date.now()}`,
       prospectId: "dashboard",
@@ -205,7 +207,7 @@ export function createApp() {
     const paused = Boolean(body.paused);
     const campaign = await context.repository.ensureDefaultCampaign();
     const client = getActorClient();
-    const actor = client.campaignOps.getOrCreate();
+    const actor = client.campaignOps.getOrCreate() as any;
     const discoverySources = [
       ...(context.config.DISCOVERY_LINKEDIN_ENABLED ? (["linkedin_public_post"] as const) : []),
       ...(context.config.DISCOVERY_X_ENABLED ? (["x_public_post"] as const) : []),
@@ -216,7 +218,7 @@ export function createApp() {
     const pausedDiscoveryResults = paused
       ? await Promise.all(
         discoverySources.map(async (source) => {
-          const coordinator = client.discoveryCoordinator.getOrCreate([campaign.id, source]);
+          const coordinator = client.discoveryCoordinator.getOrCreate([campaign.id, source]) as any;
           const pauseResult = await coordinator.pauseAutomation({
             campaignId: campaign.id,
             source,
@@ -232,7 +234,7 @@ export function createApp() {
       ? []
       : await Promise.all(
         discoverySources.map(async (source) => {
-          const coordinator = client.discoveryCoordinator.getOrCreate([campaign.id, source]);
+          const coordinator = client.discoveryCoordinator.getOrCreate([campaign.id, source]) as any;
           const resumeResult = await coordinator.initialize({
             campaignId: campaign.id,
             source,
@@ -274,181 +276,36 @@ export function createApp() {
     }
   });
 
-  app.post("/webhooks/apify", async (c) => {
-    const rawBody = await c.req.text();
-    const expected = context.config.APIFY_WEBHOOK_SECRET;
-    const provided = c.req.header("x-trellis-webhook-secret") ?? c.req.query("secret");
-    if (!context.security.verifySharedSecretHeader(provided ?? null, expected)) {
-      return c.json({ error: "invalid secret" }, 401);
-    }
-
-    const json = JSON.parse(rawBody) as {
-      eventType: string;
-      source?: string;
-      term?: string;
-      campaignId?: string;
-      metadata?: Record<string, unknown>;
-      resource?: {
-        actorRunId?: string;
-        id?: string;
-        defaultDatasetId?: string;
-      };
-    };
-
-    if (!json.eventType.includes("SUCCEEDED")) {
-      return c.json({
-        ok: true,
-        ignored: true,
-        reason: `unsupported event type ${json.eventType}`,
-      });
-    }
-
-    const source =
-      json.source === "x_public_post" || json.source === "linkedin_public_post"
-        ? json.source
-        : "linkedin_public_post";
-    const actorRunId = json.resource?.actorRunId ?? json.resource?.id ?? "";
-    if (!actorRunId) {
-      return c.json({ error: "missing actorRunId" }, 400);
-    }
-    const campaign = json.campaignId ?? (await context.repository.ensureDefaultCampaign()).id;
-    const client = getActorClient();
-    const actor = client.discoveryCoordinator.getOrCreate([campaign, source]);
-    const result = await actor.handleApifyRunCompleted({
-      actorRunId,
-      defaultDatasetId: json.resource?.defaultDatasetId ?? null,
-      source,
-      campaignId: campaign,
-      term: json.term ?? null,
-      metadata: json.metadata ?? {},
-    });
-    return c.json(result);
-  });
-
-  app.post("/webhooks/signals", async (c) => {
-    const rawBody = await c.req.text();
-    const expected = context.config.SIGNAL_WEBHOOK_SECRET ?? context.config.APIFY_WEBHOOK_SECRET;
-    const provided = c.req.header("x-trellis-webhook-secret") ?? c.req.query("secret");
-    if (!context.security.verifySharedSecretHeader(provided ?? null, expected)) {
-      return c.json({ error: "invalid secret" }, 401);
-    }
-
-    let json: Record<string, unknown>;
-    try {
-      json = JSON.parse(rawBody) as Record<string, unknown>;
-    } catch {
-      return c.json({ error: "invalid json" }, 400);
-    }
-
-    const result = await handleSignalWebhook(workflowDeps, {
-      provider: readString(json, ["provider"]) ?? "webhook",
-      source: readString(json, ["source"]) ?? "other",
-      campaignId: readString(json, ["campaignId", "campaign_id"]) ?? undefined,
-      externalId: readString(json, ["externalId", "external_id", "runId", "run_id"]) ?? null,
-      term: readString(json, ["term", "query", "keyword"]) ?? null,
-      metadata: (json.metadata && typeof json.metadata === "object" && !Array.isArray(json.metadata))
-        ? json.metadata as Record<string, unknown>
-        : {},
-      signal: (json.signal && typeof json.signal === "object" && !Array.isArray(json.signal))
-        ? json.signal as Record<string, unknown>
-        : undefined,
-      signals: Array.isArray(json.signals)
-        ? json.signals.filter((value): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value)))
-        : undefined,
-    });
-
-    return c.json(result);
-  });
-
-  app.post("/webhooks/agentmail", async (c) => {
-    const rawBody = await c.req.text();
-    const headers = {
-      "svix-id": c.req.header("svix-id"),
-      "svix-timestamp": c.req.header("svix-timestamp"),
-      "svix-signature": c.req.header("svix-signature"),
-    };
-    if (!context.security.verifyAgentMailWebhook(rawBody, headers)) {
-      return c.json({ error: "invalid signature" }, 401);
-    }
-
-    const json = JSON.parse(rawBody) as Record<string, unknown>;
-    const eventType = readString(json, ["event_type", "type"]) ?? "";
-    const message = (json.message && typeof json.message === "object" ? json.message : {}) as Record<string, unknown>;
-    const thread = (json.thread && typeof json.thread === "object" ? json.thread : {}) as Record<string, unknown>;
-    const payload = (json.payload && typeof json.payload === "object" ? json.payload : {}) as Record<string, unknown>;
-    const inboxId =
-      readString(message, ["inbox_id", "inboxId"])
-      ?? readString(thread, ["inbox_id", "inboxId"])
-      ?? readString(payload, ["inboxId", "inbox_id"]);
-    const threadId =
-      readString(message, ["thread_id", "threadId"])
-      ?? readString(thread, ["thread_id", "threadId"])
-      ?? readString(json, ["threadId", "thread_id"])
-      ?? readString(payload, ["threadId", "thread_id"]);
-    const messageId =
-      readString(message, ["message_id", "messageId"])
-      ?? readString(json, ["messageId", "message_id"])
-      ?? readString(payload, ["messageId", "message_id"]);
-    let bodyText =
-      readString(message, ["text", "extracted_text", "preview"])
-      ?? readString(json, ["bodyText", "body_text", "text"])
-      ?? readString(payload, ["bodyText", "body_text", "text"]);
-
-    if (!bodyText && inboxId && messageId && context.providers.email?.isConfigured()) {
-      const fullMessage = await context.providers.email.getMessage(inboxId, messageId).catch(() => null);
-      bodyText = fullMessage?.bodyText ?? null;
-    }
-
-    const result = await handleAgentMailWebhook(workflowDeps, {
-      type: eventType,
-      inboxId,
-      threadId,
-      messageId,
-      subject:
-        readString(message, ["subject"])
-        ?? readString(thread, ["subject"])
-        ?? readString(json, ["subject"])
-        ?? readString(payload, ["subject"]),
-      bodyText,
-      payload: json,
-    });
-
-    return c.json(result ?? { ok: true, ignored: true });
-  });
-
-  app.post("/webhooks/handoff", async (c) => {
-    const rawBody = await c.req.text();
-    const signature = c.req.header("x-trellis-signature");
-    if (!context.security.verifyHandoffSignature(rawBody, signature ?? null)) {
-      return c.json({ error: "invalid signature" }, 401);
-    }
-
-    const json = JSON.parse(rawBody) as {
-      threadId: string;
-      disposition: string;
-      notes?: string;
-      actor?: string;
-    };
-
-    const result = await handleHandoffWebhook(workflowDeps, json);
-    return c.json(result);
+  mountDefaultSdrWebhookRoutes(app, {
+    context: {
+      config: {
+        APIFY_WEBHOOK_SECRET: context.config.APIFY_WEBHOOK_SECRET ?? "",
+        SIGNAL_WEBHOOK_SECRET: context.config.SIGNAL_WEBHOOK_SECRET,
+      },
+      repository: context.repository,
+      security: {
+        verifySharedSecretHeader: context.security.verifySharedSecretHeader,
+        verifyAgentMailWebhook: (rawBody, headers) => context.security.verifyAgentMailWebhook(rawBody, headers as any),
+        verifyHandoffSignature: context.security.verifyHandoffSignature,
+      },
+      providers: context.providers,
+    },
+    handlers: {
+      onApifyRunCompleted: async (payload) => {
+        const client = getActorClient();
+        const actor = client.discoveryCoordinator.getOrCreate([payload.campaignId, payload.source]) as any;
+        return actor.handleApifyRunCompleted(payload);
+      },
+      onSignal: async (payload) => handleSignalWebhook(workflowDeps, payload),
+      onAgentMail: async (payload) => handleAgentMailWebhook(workflowDeps, payload),
+      onHandoff: async (payload) => handleHandoffWebhook(workflowDeps, payload),
+    },
   });
 
   return app;
 }
 
 export default createApp();
-
-function readString(input: Record<string, unknown>, keys: string[]) {
-  for (const key of keys) {
-    const value = input[key];
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
-    }
-  }
-
-  return null;
-}
 
 async function proxyRivetManagerRequest(request: Request) {
   const incomingUrl = new URL(request.url);
@@ -512,16 +369,18 @@ function shouldBypassRuntimeBootstrap(request: Request) {
 }
 
 function getDashboardPassword(context: ReturnType<typeof getAppContext>) {
-  return context.config.DASHBOARD_PASSWORD ?? context.config.TRELLIS_SANDBOX_TOKEN;
+  return resolveDashboardPassword({
+    dashboardPassword: context.config.DASHBOARD_PASSWORD,
+    sandboxToken: context.config.TRELLIS_SANDBOX_TOKEN,
+  });
 }
 
 function hashDashboardPassword(password: string) {
-  return createHash("sha256").update(password).digest("hex");
+  return hashDefaultDashboardPassword(password);
 }
 
 function isDashboardAuthenticated(request: Request, cookieName: string, password: string) {
-  const cookieValue = readCookie(request, cookieName);
-  return cookieValue === hashDashboardPassword(password);
+  return checkDashboardAuthenticated(request, cookieName, password);
 }
 
 async function buildDashboardCoreState(context: ReturnType<typeof getAppContext>) {
@@ -565,7 +424,7 @@ async function buildDashboardCoreState(context: ReturnType<typeof getAppContext>
 async function buildDashboardRuntimeState(context: ReturnType<typeof getAppContext>) {
   const campaign = await context.repository.ensureDefaultCampaign();
   const client = getActorClient();
-  const sandboxActor = client.sandboxBroker.getOrCreate();
+  const sandboxActor = client.sandboxBroker.getOrCreate() as any;
 
   const [
     sandboxJobs,
@@ -576,19 +435,19 @@ async function buildDashboardRuntimeState(context: ReturnType<typeof getAppConte
     xDiscovery,
   ] = await Promise.all([
     withFallback(sandboxActor.listJobs({ limit: 12 }), [], DASHBOARD_RUNTIME_TIMEOUT_MS),
-    withFallback(client.sourceIngest.getOrCreate().getSnapshot(), null, DASHBOARD_RUNTIME_TIMEOUT_MS),
-    withFallback(client.campaignOps.getOrCreate().getSnapshot(), null, DASHBOARD_RUNTIME_TIMEOUT_MS),
-    withFallback(sandboxActor.getSnapshot(), null, DASHBOARD_RUNTIME_TIMEOUT_MS),
+    withFallback((client.sourceIngest.getOrCreate() as any).getSnapshot(), null, DASHBOARD_RUNTIME_TIMEOUT_MS),
+    withFallback((client.campaignOps.getOrCreate() as any).getSnapshot(), null, DASHBOARD_RUNTIME_TIMEOUT_MS),
+    withFallback((sandboxActor as any).getSnapshot(), null, DASHBOARD_RUNTIME_TIMEOUT_MS),
     context.config.DISCOVERY_LINKEDIN_ENABLED
       ? withFallback(
-        client.discoveryCoordinator.getOrCreate([campaign.id, "linkedin_public_post"]).getSnapshot(),
+        (client.discoveryCoordinator.getOrCreate([campaign.id, "linkedin_public_post"]) as any).getSnapshot(),
         null,
         DASHBOARD_RUNTIME_TIMEOUT_MS,
       )
       : Promise.resolve(null),
     context.config.DISCOVERY_X_ENABLED
       ? withFallback(
-        client.discoveryCoordinator.getOrCreate([campaign.id, "x_public_post"]).getSnapshot(),
+        (client.discoveryCoordinator.getOrCreate([campaign.id, "x_public_post"]) as any).getSnapshot(),
         null,
         DASHBOARD_RUNTIME_TIMEOUT_MS,
       )
@@ -608,227 +467,9 @@ async function buildDashboardRuntimeState(context: ReturnType<typeof getAppConte
       linkedin_public_post: linkedinDiscovery,
       x_public_post: xDiscovery,
     },
-    sandboxJobs: sandboxJobs.map((job) => ({
+    sandboxJobs: sandboxJobs.map((job: any) => ({
       ...job,
       durationMs: calculateDurationMs(job.startedAt, job.completedAt),
     })),
   };
-}
-
-async function getDashboardState(
-  context: ReturnType<typeof getAppContext>,
-  options?: {
-    forceFresh?: boolean;
-  },
-) {
-  const [coreState, runtimeState] = await Promise.all([
-    getDashboardCoreState(context, options),
-    getDashboardRuntimeState(context, options),
-  ]);
-
-  return {
-    ...coreState,
-    ...runtimeState,
-    cache: {
-      core: coreState.cache,
-      runtime: runtimeState.cache,
-      servedFromCache: coreState.cache.servedFromCache && runtimeState.cache.servedFromCache,
-      refreshing: coreState.cache.refreshing || runtimeState.cache.refreshing,
-    },
-  };
-}
-
-async function getDashboardCoreState(
-  context: ReturnType<typeof getAppContext>,
-  options?: {
-    forceFresh?: boolean;
-  },
-) {
-  const now = Date.now();
-  const forceFresh = options?.forceFresh === true;
-  const cacheAgeMs = cachedDashboardCoreState ? now - cachedDashboardCoreStateAt : null;
-  const cacheIsUsable = cachedDashboardCoreState !== null
-    && cacheAgeMs !== null
-    && cacheAgeMs <= DASHBOARD_CACHE_MAX_AGE_MS;
-  const cacheIsFresh = cacheIsUsable && cacheAgeMs <= DASHBOARD_CACHE_STALE_AFTER_MS;
-
-  if (forceFresh || !cacheIsUsable) {
-    const freshState = await refreshDashboardCoreState(context);
-    return {
-      ...freshState,
-      cache: {
-        servedFromCache: false,
-        ageMs: 0,
-        refreshing: false,
-      },
-    };
-  }
-
-  if (cacheIsFresh) {
-    return {
-      ...cachedDashboardCoreState,
-      cache: {
-        servedFromCache: true,
-        ageMs: cacheAgeMs,
-        refreshing: false,
-      },
-    };
-  }
-
-  void refreshDashboardCoreState(context).catch(() => {});
-
-  return {
-    ...cachedDashboardCoreState,
-    cache: {
-      servedFromCache: true,
-      ageMs: cacheAgeMs,
-      refreshing: true,
-    },
-  };
-}
-
-async function getDashboardRuntimeState(
-  context: ReturnType<typeof getAppContext>,
-  options?: {
-    forceFresh?: boolean;
-  },
-) {
-  const now = Date.now();
-  const forceFresh = options?.forceFresh === true;
-  const cacheAgeMs = cachedDashboardRuntimeState ? now - cachedDashboardRuntimeStateAt : null;
-  const cacheIsUsable = cachedDashboardRuntimeState !== null
-    && cacheAgeMs !== null
-    && cacheAgeMs <= DASHBOARD_CACHE_MAX_AGE_MS;
-  const cacheIsFresh = cacheIsUsable && cacheAgeMs <= DASHBOARD_RUNTIME_CACHE_STALE_AFTER_MS;
-
-  if (forceFresh || !cacheIsUsable) {
-    const freshState = await refreshDashboardRuntimeState(context);
-    return {
-      ...freshState,
-      cache: {
-        servedFromCache: false,
-        ageMs: 0,
-        refreshing: false,
-      },
-    };
-  }
-
-  if (cacheIsFresh) {
-    return {
-      ...cachedDashboardRuntimeState,
-      cache: {
-        servedFromCache: true,
-        ageMs: cacheAgeMs,
-        refreshing: false,
-      },
-    };
-  }
-
-  void refreshDashboardRuntimeState(context).catch(() => {});
-
-  return {
-    ...cachedDashboardRuntimeState,
-    cache: {
-      servedFromCache: true,
-      ageMs: cacheAgeMs,
-      refreshing: true,
-    },
-  };
-}
-
-function refreshDashboardCoreState(context: ReturnType<typeof getAppContext>) {
-  if (dashboardCoreStateRefreshPromise) {
-    return dashboardCoreStateRefreshPromise;
-  }
-
-  dashboardCoreStateRefreshPromise = buildDashboardCoreState(context)
-    .then((state) => {
-      cachedDashboardCoreState = state;
-      cachedDashboardCoreStateAt = Date.now();
-      return state;
-    })
-    .finally(() => {
-      dashboardCoreStateRefreshPromise = null;
-    });
-
-  return dashboardCoreStateRefreshPromise;
-}
-
-function refreshDashboardRuntimeState(context: ReturnType<typeof getAppContext>) {
-  if (dashboardRuntimeStateRefreshPromise) {
-    return dashboardRuntimeStateRefreshPromise;
-  }
-
-  dashboardRuntimeStateRefreshPromise = buildDashboardRuntimeState(context)
-    .then((state) => {
-      cachedDashboardRuntimeState = state;
-      cachedDashboardRuntimeStateAt = Date.now();
-      return state;
-    })
-    .finally(() => {
-      dashboardRuntimeStateRefreshPromise = null;
-    });
-
-  return dashboardRuntimeStateRefreshPromise;
-}
-
-async function withFallback<T>(input: T | PromiseLike<T>, fallback: Awaited<T>, timeoutMs: number) {
-  const promise = Promise.resolve(input);
-  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<Awaited<T>>((resolve) => {
-        timeoutHandle = setTimeout(() => resolve(fallback), timeoutMs);
-      }),
-    ]);
-  } catch {
-    return fallback;
-  } finally {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-    }
-  }
-}
-
-function isSecureRequest(request: Request) {
-  const forwardedProto = request.headers.get("x-forwarded-proto");
-  if (forwardedProto) {
-    return forwardedProto.includes("https");
-  }
-
-  return request.url.startsWith("https://");
-}
-
-function calculateDurationMs(startedAt: number | null, completedAt: number | null) {
-  if (startedAt === null) {
-    return null;
-  }
-
-  const end = completedAt ?? Date.now();
-  return Math.max(0, end - startedAt);
-}
-
-function readCookie(request: Request, key: string) {
-  const cookieHeader = request.headers.get("cookie");
-  if (!cookieHeader) {
-    return undefined;
-  }
-
-  for (const chunk of cookieHeader.split(";")) {
-    const separatorIndex = chunk.indexOf("=");
-    if (separatorIndex === -1) {
-      continue;
-    }
-
-    const name = chunk.slice(0, separatorIndex).trim();
-    if (name !== key) {
-      continue;
-    }
-
-    return decodeURIComponent(chunk.slice(separatorIndex + 1).trim());
-  }
-
-  return undefined;
 }

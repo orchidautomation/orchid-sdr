@@ -3,7 +3,25 @@ import { createClient } from "rivetkit/client";
 import { getConfig } from "../config.js";
 import { registry } from "../registry.js";
 
-let cachedClient: ReturnType<typeof createClient<typeof registry>> | null = null;
+type TrellisActorClient = ReturnType<typeof createClient<typeof registry>> & {
+  sourceIngest: {
+    getOrCreate(): any;
+  };
+  prospectThread: {
+    getOrCreate(key?: unknown): any;
+  };
+  campaignOps: {
+    getOrCreate(key?: unknown): any;
+  };
+  sandboxBroker: {
+    getOrCreate(key?: unknown): any;
+  };
+  discoveryCoordinator: {
+    getOrCreate(key: [string, "linkedin_public_post" | "x_public_post"]): any;
+  };
+};
+
+let cachedClient: TrellisActorClient | null = null;
 
 export function getActorClient() {
   if (cachedClient) {
@@ -22,7 +40,7 @@ export function getActorClient() {
     token: config.token,
     namespace: config.namespace,
     disableMetadataLookup: true,
-  });
+  }) as TrellisActorClient;
 
   return cachedClient;
 }

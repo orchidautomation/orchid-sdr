@@ -117,19 +117,20 @@ export class TrellisMcpToolService {
   private async getDiscoverySnapshots() {
     const campaign = await this.context.repository.ensureDefaultCampaign();
     const client = getActorClient();
+    const discoveryCoordinator = client.discoveryCoordinator as any;
 
     const [linkedin, x] = await Promise.all([
       this.context.config.DISCOVERY_LINKEDIN_ENABLED
-        ? client.discoveryCoordinator
+        ? (discoveryCoordinator
             .getOrCreate([campaign.id, "linkedin_public_post"])
             .getSnapshot()
-            .catch((error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }))
+            .catch((error: unknown) => ({ error: error instanceof Error ? error.message : String(error) })) as Promise<any>)
         : Promise.resolve(null),
       this.context.config.DISCOVERY_X_ENABLED
-        ? client.discoveryCoordinator
+        ? (discoveryCoordinator
             .getOrCreate([campaign.id, "x_public_post"])
             .getSnapshot()
-            .catch((error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }))
+            .catch((error: unknown) => ({ error: error instanceof Error ? error.message : String(error) })) as Promise<any>)
         : Promise.resolve(null),
     ]);
 
@@ -310,11 +311,11 @@ export class TrellisMcpToolService {
 
   private async handleSandboxJobs(args: Record<string, unknown>) {
     const client = getActorClient();
-    const jobs = await client.sandboxBroker.getOrCreate().listJobs({
+    const jobs = await (client.sandboxBroker.getOrCreate() as any).listJobs({
       limit: this.readLimit(args.limit, 12, 100),
     });
 
-    return jobs.map((job) => ({
+    return jobs.map((job: any) => ({
       ...job,
       durationMs: this.durationMs(job.startedAt, job.completedAt),
     }));
@@ -325,10 +326,10 @@ export class TrellisMcpToolService {
     const client = getActorClient();
     const [flags, campaignOps] = await Promise.all([
       this.context.repository.getControlFlags(),
-      client.campaignOps
-        .getOrCreate()
+      ((client.campaignOps
+        .getOrCreate() as any)
         .getSnapshot()
-        .catch((error: unknown) => ({ error: error instanceof Error ? error.message : String(error) })),
+        .catch((error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }))) as Promise<any>,
     ]);
 
     return {
@@ -546,7 +547,7 @@ export class TrellisMcpToolService {
     const campaign = await this.context.repository.ensureDefaultCampaign();
     const client = getActorClient();
     const source = this.readDiscoverySource(args.source);
-    const actor = client.discoveryCoordinator.getOrCreate([campaign.id, source]);
+    const actor = client.discoveryCoordinator.getOrCreate([campaign.id, source]) as any;
     const result = await actor.enqueueTick({
       reason: typeof args.reason === "string" && args.reason.trim().length > 0 ? args.reason : "mcp_manual",
     });
@@ -899,7 +900,7 @@ export class TrellisMcpToolService {
   private async handleSetNoSendsMode(args: Record<string, unknown>) {
     const enabled = Boolean(args.enabled);
     const client = getActorClient();
-    const actor = client.campaignOps.getOrCreate();
+    const actor = client.campaignOps.getOrCreate() as any;
     return actor.setNoSendsMode(enabled);
   }
 

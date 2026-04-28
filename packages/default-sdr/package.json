@@ -10,6 +10,11 @@
     "./repository-contracts": "./src/repository-contracts.ts",
     "./repository-factory": "./src/repository-factory.ts",
     "./convex-repository": "./src/convex-repository.ts",
-    "./local-smoke-repository": "./src/local-smoke-repository.ts"
+    "./local-smoke-repository": "./src/local-smoke-repository.ts",
+    "./mcp-server": "./src/mcp-server.ts",
+    "./webhook-bootstrap": "./src/webhook-bootstrap.ts",
+    "./dashboard-bootstrap": "./src/dashboard-bootstrap.ts",
+    "./dashboard-shell": "./src/dashboard-shell.ts",
+    "./actor-registry": "./src/actor-registry.ts"
   }
 }

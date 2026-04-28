@@ -180,7 +180,7 @@ async function handleDiscoveryCommand(
     endpoint,
     disableMetadataLookup: true,
   });
-  const actor = client.discoveryCoordinator.getOrCreate([campaignId, source]);
+  const actor = client.discoveryCoordinator.getOrCreate([campaignId, source]) as any;
 
   switch (subcommand) {
     case "seed": {
@@ -193,7 +193,7 @@ async function handleDiscoveryCommand(
         source,
         terms: [term],
       });
-      const snapshot = await actor.getSnapshot();
+      const snapshot = await actor.getSnapshot() as any;
       console.log(JSON.stringify({ endpoint, result, latestTerm: snapshot.terms[0] ?? null }, null, 2));
       return;
     }
@@ -210,14 +210,14 @@ async function handleDiscoveryCommand(
         term,
         reason,
       });
-      const snapshot = await actor.getSnapshot();
+      const snapshot = await actor.getSnapshot() as any;
       console.log(JSON.stringify({ endpoint, result, latestRun: snapshot.runs[0] ?? null, state: snapshot.state }, null, 2));
       return;
     }
     case "tick": {
       const reason = String(flags.reason ?? "manual_cli");
       const result = await actor.enqueueTick({ reason });
-      const snapshot = await actor.getSnapshot();
+      const snapshot = await actor.getSnapshot() as any;
       console.log(JSON.stringify({ endpoint, result, latestRun: snapshot.runs[0] ?? null, state: snapshot.state }, null, 2));
       return;
     }

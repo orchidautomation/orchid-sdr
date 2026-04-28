@@ -35,9 +35,9 @@ async function main() {
     disableMetadataLookup: true,
   });
 
-  const actor = client.discoveryCoordinator.getOrCreate([campaignId, source]);
+  const actor = client.discoveryCoordinator.getOrCreate([campaignId, source]) as any;
   const result = await actor.enqueueTick({ reason });
-  const snapshot = await actor.getSnapshot();
+  const snapshot = await actor.getSnapshot() as any;
 
   console.log(
     JSON.stringify(
