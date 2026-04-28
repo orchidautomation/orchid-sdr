@@ -144,6 +144,7 @@ Use these docs in this order:
 
 - [docs/getting-started.md](docs/getting-started.md)
 - [docs/ai-sdr-go-live.md](docs/ai-sdr-go-live.md)
+- [docs/convex-vercel-prod-runbook.md](docs/convex-vercel-prod-runbook.md)
 - [examples/ai-sdr/README.md](examples/ai-sdr/README.md)
 
 ### 2. Read the reference app

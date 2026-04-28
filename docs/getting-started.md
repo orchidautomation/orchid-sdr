@@ -51,6 +51,12 @@ npm run dev
 
 Keep `npx convex dev` running while you do real local development against Convex. Trellis uses the repo-root `convex.json` file to point Convex at the AI SDR functions in `examples/ai-sdr/convex`.
 
+If port `3000` is already in use, either stop the old process or set a new app port:
+
+```bash
+PORT=3001 npm run dev
+```
+
 If you only want a boot check before wiring Convex, use smoke mode:
 
 ```bash

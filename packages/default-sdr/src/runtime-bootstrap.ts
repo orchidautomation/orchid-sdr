@@ -70,6 +70,13 @@ export function createDefaultSdrRuntimeBootstrap(input: {
       return;
     }
 
+    if (!shouldUseRemoteRivetRuntime()) {
+      console.warn(
+        "Skipping automatic discovery actor bootstrap in local Rivet mode. Trigger discovery explicitly after boot when you want to exercise actor workflows.",
+      );
+      return;
+    }
+
     await runNonFatalBootstrapTask("discovery actor bootstrap", bootstrapDiscoveryActors);
   });
 

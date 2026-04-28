@@ -4,6 +4,8 @@ This is the canonical path for getting one Trellis AI SDR demo live with the lea
 
 Use this when you want one safe hosted deployment, one MCP connection, and one ingested signal before enabling any autonomous behavior.
 
+If you specifically want the exact Convex Cloud + Vercel production sequence, use [convex-vercel-prod-runbook.md](./convex-vercel-prod-runbook.md) alongside this document.
+
 ## Goal
 
 Get the reference AI SDR to a deployed state where:

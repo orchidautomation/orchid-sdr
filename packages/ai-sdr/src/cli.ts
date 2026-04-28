@@ -452,15 +452,21 @@ Then open http://localhost:3000/dashboard`);
             "APP_URL",
             "CONVEX_URL or NEXT_PUBLIC_CONVEX_URL",
             "TRELLIS_SANDBOX_TOKEN",
+            "TRELLIS_MCP_TOKEN",
+            "DASHBOARD_PASSWORD",
+            "SIGNAL_WEBHOOK_SECRET",
             "HANDOFF_WEBHOOK_SECRET",
             "Vercel sandbox / AI Gateway credentials",
             "RIVET_ENDPOINT when running on Vercel with remote Rivet",
           ],
           steps: [
+            "use Node 22+",
+            "run npx convex dev from the repo root",
             "boot locally first",
             "run npm run doctor until boot blockers are clear",
+            "run npx convex deploy",
             "set hosted env vars in Vercel",
-            "deploy",
+            "run vercel --prod",
             "verify /healthz, /dashboard, and /mcp/trellis",
             "only then wire discovery webhooks and live providers",
           ],
@@ -473,17 +479,23 @@ Required before deploy:
   - APP_URL
   - CONVEX_URL or NEXT_PUBLIC_CONVEX_URL
   - TRELLIS_SANDBOX_TOKEN
+  - TRELLIS_MCP_TOKEN
+  - DASHBOARD_PASSWORD
+  - SIGNAL_WEBHOOK_SECRET
   - HANDOFF_WEBHOOK_SECRET
   - Vercel sandbox / AI Gateway credentials
   - RIVET_ENDPOINT when running on Vercel with remote Rivet
 
 Recommended sequence:
-  1. boot locally first
-  2. run npm run doctor until boot blockers are clear
-  3. set hosted env vars in Vercel
-  4. deploy
-  5. verify /healthz, /dashboard, and /mcp/trellis
-  6. only then wire discovery webhooks and live providers`);
+  1. use Node 22+
+  2. run npx convex dev from the repo root
+  3. boot locally first
+  4. run npm run doctor until boot blockers are clear
+  5. run npx convex deploy
+  6. set hosted env vars in Vercel
+  7. run vercel --prod
+  8. verify /healthz, /dashboard, and /mcp/trellis
+  9. only then wire discovery webhooks and live providers`);
       return;
     case "self-hosted":
     case "selfhosted":
