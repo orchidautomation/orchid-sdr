@@ -17,7 +17,6 @@ This repo now has two distinct layers:
 packages/           framework + modules + CLI
 examples/ai-sdr/    reference GTM agent app
 docs/               framework and platform docs
-gtm/                positioning and launch docs
 ```
 
 ## What Lives In `examples/ai-sdr`

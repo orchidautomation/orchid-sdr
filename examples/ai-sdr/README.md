@@ -231,46 +231,32 @@ In that setup, keep one deployed control plane and create multiple campaigns ins
 
 Separate deploys are safer when the underlying product or knowledge pack is different, because the current `knowledge/` files and tracked `skills/` are still repo-global rather than campaign-scoped.
 
-## Repo Layout
+## Example Layout
 
 - `src/`
   API, actors, orchestration, adapters, MCP server, and dashboard.
 - `ai-sdr.config.ts`
-  Early typed framework config describing the current deployment as composable knowledge, skills, providers, and campaigns.
+  The app blueprint for knowledge, skills, modules, providers, and bindings.
 - `knowledge/`
   Product context that feeds qualification, research, and drafting.
 - `skills/`
-  Sandbox skill instructions for qualification, research, copy, reply policy, and handoff policy.
-- `docs/reference.md`
-  Full setup, env, MCP, skill, knowledge-pack, Attio, and webhook details.
-- `docs/framework-primitives.md`
-  Emerging modular primitives for GTM engineers building custom AI SDRs with coding agents.
-- `docs/crm-normalization.md`
-  Normalized CRM contracts for Salesforce, HubSpot, Twenty, Attio, and Nango-backed adapters.
-- `docs/self-hosting.md`
-  Clone-and-deploy guide for running Trellis on a customer's own server.
-- `docs/email-providers.md`
-  Email provider guidance for agent-native outbound and why AgentMail is the default fit.
-- `blog/`
-  Long-form posts on the architecture, product thesis, and category.
-- `docs/blog/`
-  Blog and launch writing.
-- `future-ideas/`
-  Longer-horizon product and architecture ideas that are not part of the immediate production checklist.
+  Runtime AI SDR behavior only: qualification, research, copy, reply policy, and handoff policy.
+- `scripts/`
+  Local operational commands such as `doctor`, `discovery-tick`, `migrate`, and probes.
+- `convex/`
+  State-plane schema and repository integration.
+- `tests/`
+  App-level verification.
 
 ## Read Next
 
-- [New User Guide](docs/new-user-guide.md)
-- [Reference](docs/reference.md)
-- [Getting Started](docs/getting-started.md)
-- [Framework Primitives](docs/framework-primitives.md)
-- [CRM Normalization](docs/crm-normalization.md)
-- [Self-Hosting](docs/self-hosting.md)
-- [Email Providers](docs/email-providers.md)
-- [Blog Series](blog/README.md)
-- [Future Ideas](future-ideas/README.md)
-- [The AI SDR Market Is Broken](docs/blog/the-ai-sdr-market-is-broken.md)
-- [LinkedIn Post Draft](docs/blog/linkedin-post-built-an-ai-sdr-in-eight-hours.md)
+- [New User Guide](../../docs/new-user-guide.md)
+- [Reference](../../docs/reference.md)
+- [Getting Started](../../docs/getting-started.md)
+- [Framework Primitives](../../docs/framework-primitives.md)
+- [CRM Normalization](../../docs/crm-normalization.md)
+- [Self-Hosting](../../docs/self-hosting.md)
+- [Email Providers](../../docs/email-providers.md)
 
 ## License
 
