@@ -15,6 +15,8 @@
     "./webhook-bootstrap": "./src/webhook-bootstrap.ts",
     "./dashboard-bootstrap": "./src/dashboard-bootstrap.ts",
     "./dashboard-shell": "./src/dashboard-shell.ts",
-    "./actor-registry": "./src/actor-registry.ts"
+    "./actor-registry": "./src/actor-registry.ts",
+    "./runtime-bindings": "./src/runtime-bindings.ts",
+    "./runtime-bootstrap": "./src/runtime-bootstrap.ts"
   }
 }

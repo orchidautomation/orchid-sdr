@@ -61,7 +61,9 @@ Already moved into shared packages:
   - repository contracts
   - Convex HTTP repository client
   - local smoke repository
+  - provider binding resolution
   - default actor registry
+  - default runtime bootstrap
   - default webhook bootstrap
   - default MCP server bootstrap
   - default dashboard shell
@@ -69,12 +71,17 @@ Already moved into shared packages:
 
 Still primarily app-owned:
 
-- `examples/ai-sdr/src/services/runtime-context.ts`
-- `examples/ai-sdr/src/services/runtime-bootstrap.ts`
 - `examples/ai-sdr/src/services/mcp-tools.ts`
 - `examples/ai-sdr/src/orchestration/discovery-coordinator.ts`
 - `examples/ai-sdr/src/orchestration/prospect-workflow.ts`
 - `examples/ai-sdr/src/server.ts`
+
+Partially extracted but still mixed:
+
+- `examples/ai-sdr/src/services/runtime-context.ts`
+  - app-specific adapters/services still assembled here
+- `examples/ai-sdr/src/services/runtime-bootstrap.ts`
+  - now mostly a thin wrapper over shared default SDR bootstrap
 
 ## Extraction Buckets
 

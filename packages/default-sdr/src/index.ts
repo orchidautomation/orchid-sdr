@@ -8,3 +8,5 @@ export * from "./webhook-bootstrap.js";
 export * from "./dashboard-bootstrap.js";
 export * from "./dashboard-shell.js";
 export * from "./actor-registry.js";
+export * from "./runtime-bindings.js";
+export * from "./runtime-bootstrap.js";

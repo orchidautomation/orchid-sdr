@@ -945,7 +945,7 @@ async function startDiscoveryRunForTerm(
       planner: input.planner,
       reason: input.reason ?? undefined,
     },
-  });
+  }) as { actorRunId: string; defaultDatasetId?: string | null };
   const now = Date.now();
 
   await c.db.execute(

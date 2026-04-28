@@ -608,7 +608,7 @@ async function buildResearchBrief(
       ),
       "",
       "Source page extract:",
-      sourceExtract?.markdown?.slice(0, 6000) || "No extract available.",
+      (sourceExtract as { markdown?: string } | null | undefined)?.markdown?.slice(0, 6000) || "No extract available.",
       "",
       "LinkedIn profile research:",
       JSON.stringify(linkedinProfileResearch, null, 2),
@@ -695,7 +695,7 @@ async function buildResearchBrief(
       ],
       ctaSuggestion: "If useful, I can send a short teardown.",
     },
-    confidence: sourceExtract?.markdown
+    confidence: (sourceExtract as { markdown?: string } | null | undefined)?.markdown
       ? 0.72
       : searchResults.length > 0 || companyNewsResults.length > 0
         ? 0.68
@@ -1154,13 +1154,13 @@ async function qualifyProspect(
       ),
       "",
       "Source post extract:",
-      postExtract?.markdown?.slice(0, 5000) || "No post extract available.",
+      (postExtract as { markdown?: string } | null | undefined)?.markdown?.slice(0, 5000) || "No post extract available.",
       "",
       "Author profile extract:",
-      profileExtract?.markdown?.slice(0, 5000) || "No author profile extract available.",
+      (profileExtract as { markdown?: string } | null | undefined)?.markdown?.slice(0, 5000) || "No author profile extract available.",
       "",
       "Company extract:",
-      companyExtract?.markdown?.slice(0, 5000) || "No company extract available.",
+      (companyExtract as { markdown?: string } | null | undefined)?.markdown?.slice(0, 5000) || "No company extract available.",
     ]),
   );
 
@@ -1198,9 +1198,9 @@ async function qualifyProspect(
   return deps.context.ai.qualifyProspectAgainstIcp({
     icpMarkdown: icpMarkdown ?? "",
     candidate: buildQualificationInput(snapshot, sourceSignal, {
-      sourcePostExtract: postExtract?.markdown ?? null,
-      profileExtract: profileExtract?.markdown ?? null,
-      companyExtract: companyExtract?.markdown ?? null,
+      sourcePostExtract: (postExtract as { markdown?: string } | null | undefined)?.markdown ?? null,
+      profileExtract: (profileExtract as { markdown?: string } | null | undefined)?.markdown ?? null,
+      companyExtract: (companyExtract as { markdown?: string } | null | undefined)?.markdown ?? null,
       profileUrl,
       companyUrl,
     }),

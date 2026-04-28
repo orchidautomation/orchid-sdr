@@ -208,7 +208,18 @@ export async function ingestApifyRun(
   const rawItems = input.datasetId
     ? await discoveryProvider.fetchDatasetItems(input.datasetId, source)
     : [];
-  const normalized = discoveryProvider.normalizeSignals(source, rawItems);
+  const normalized = discoveryProvider.normalizeSignals(source, rawItems) as Array<{
+    sourceRef: string;
+    url: string;
+    authorName: string;
+    authorTitle?: string | null;
+    authorCompany?: string | null;
+    companyDomain?: string | null;
+    topic: string;
+    content: string;
+    metadata: Record<string, unknown>;
+    capturedAt?: number;
+  }>;
 
   return ingestNormalizedSignals(deps, {
     provider: discoveryProvider.providerId,
