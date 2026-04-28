@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema.ts",
-    "./state-runtime": "./src/state-runtime.ts"
+    "./state-runtime": "./src/state-runtime.ts",
+    "./default-sdr-repository": "./src/default-sdr-repository.ts"
   }
 }
