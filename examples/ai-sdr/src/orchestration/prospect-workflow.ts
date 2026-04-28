@@ -7,6 +7,12 @@ import {
   heuristicIcpQualification,
   shouldRejectAtSignalTriage,
 } from "../services/qualification-engine.js";
+import {
+  activateProspectStage,
+  pauseThreadWithAudit,
+  pausedWorkflowOutcome,
+  scheduleFollowupAfterDelay,
+} from "../../../../packages/default-sdr/src/prospect-workflow-helpers.js";
 import type { WorkflowDependencies, WorkflowOutcome } from "./types.js";
 import { getAutomationPauseReason } from "./workflow-control.js";
 
@@ -157,35 +163,28 @@ export async function executeProspectWorkflow(
   const automationPauseReason = getAutomationPauseReason(controlFlags, snapshot.prospect.campaignId);
 
   if (sourceSignal?.source === "linkedin_public_post" && !snapshot.campaign.sourceLinkedinEnabled) {
-    await deps.context.repository.pauseThread(threadId, "linkedin source disabled");
-    await deps.context.repository.appendAuditEvent("thread", threadId, "ThreadPaused", {
-      reason: "linkedin source disabled",
-    });
-    return paused(snapshot, "linkedin source disabled");
+    await pauseThreadWithAudit(deps.context.repository, threadId, "linkedin source disabled");
+    return pausedWorkflowOutcome(snapshot, "linkedin source disabled");
   }
 
   if (automationPauseReason) {
     if (snapshot.thread.status !== "paused" || snapshot.thread.pausedReason !== automationPauseReason) {
-      await deps.context.repository.pauseThread(threadId, automationPauseReason);
-      await deps.context.repository.appendAuditEvent("thread", threadId, "ThreadPaused", {
-        reason: automationPauseReason,
-      });
+      await pauseThreadWithAudit(deps.context.repository, threadId, automationPauseReason);
       snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
     }
 
-    return paused(snapshot, automationPauseReason);
+    return pausedWorkflowOutcome(snapshot, automationPauseReason);
   }
 
   if (needsQualification(snapshot)) {
     const qualification = await qualifyProspect(deps, snapshot);
     await deps.context.repository.applyQualificationAssessment(prospectId, qualification);
     if (!qualification.ok) {
-      await deps.context.repository.pauseThread(threadId, qualification.reason);
-      await deps.context.repository.appendAuditEvent("thread", threadId, "ThreadPaused", {
-        reason: qualification.reason,
+      await pauseThreadWithAudit(deps.context.repository, threadId, qualification.reason);
+      await deps.context.repository.appendAuditEvent("thread", threadId, "QualificationRecorded", {
         qualification,
       });
-      return paused(snapshot, qualification.reason);
+      return pausedWorkflowOutcome(snapshot, qualification.reason);
     }
 
     await setStage(deps, snapshot, "build_research_brief");
@@ -224,24 +223,18 @@ export async function executeProspectWorkflow(
 
   if (controlFlags.noSendsMode) {
     if (snapshot.thread.status !== "paused" || snapshot.thread.pausedReason !== "no sends mode") {
-      await deps.context.repository.pauseThread(threadId, "no sends mode");
-      await deps.context.repository.appendAuditEvent("thread", threadId, "ThreadPaused", {
-        reason: "no sends mode",
-      });
+      await pauseThreadWithAudit(deps.context.repository, threadId, "no sends mode");
       snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
     }
 
-    return paused(snapshot, "no sends mode");
+    return pausedWorkflowOutcome(snapshot, "no sends mode");
   }
 
   if (!snapshot.email) {
     const enrichmentProvider = deps.context.providers.enrichment;
     if (!enrichmentProvider) {
-      await deps.context.repository.pauseThread(threadId, "email enrichment provider unavailable");
-      await deps.context.repository.appendAuditEvent("thread", threadId, "ThreadPaused", {
-        reason: "email enrichment provider unavailable",
-      });
-      return paused(snapshot, "email enrichment provider unavailable");
+      await pauseThreadWithAudit(deps.context.repository, threadId, "email enrichment provider unavailable");
+      return pausedWorkflowOutcome(snapshot, "email enrichment provider unavailable");
     }
 
     const enriched = await deps.context.mcpTools.handleTool("email.enrich", {
@@ -249,11 +242,8 @@ export async function executeProspectWorkflow(
     });
 
     if (!enriched) {
-      await deps.context.repository.pauseThread(threadId, "email enrichment failed");
-      await deps.context.repository.appendAuditEvent("thread", threadId, "ThreadPaused", {
-        reason: "email enrichment failed",
-      });
-      return paused(snapshot, "email enrichment failed");
+      await pauseThreadWithAudit(deps.context.repository, threadId, "email enrichment failed");
+      return pausedWorkflowOutcome(snapshot, "email enrichment failed");
     }
 
     await deps.context.repository.appendAuditEvent("prospect", prospectId, "EmailEnriched", {
@@ -273,13 +263,10 @@ export async function executeProspectWorkflow(
     });
 
     if ((result as { blocked?: boolean }).blocked) {
-      return paused(snapshot, "outbound blocked");
+      return pausedWorkflowOutcome(snapshot, "outbound blocked");
     }
 
-    await deps.context.repository.touchThreadFollowup(
-      threadId,
-      new Date(Date.now() + FOLLOWUP_DELAY_MS).toISOString(),
-    );
+    await scheduleFollowupAfterDelay(deps.context.repository, threadId, FOLLOWUP_DELAY_MS);
 
     return {
       action: "sent",
@@ -301,13 +288,10 @@ export async function executeProspectWorkflow(
       });
 
       if ((result as { blocked?: boolean }).blocked) {
-        return paused(snapshot, "followup blocked");
+        return pausedWorkflowOutcome(snapshot, "followup blocked");
       }
 
-      await deps.context.repository.touchThreadFollowup(
-        threadId,
-        new Date(Date.now() + FOLLOWUP_DELAY_MS).toISOString(),
-      );
+      await scheduleFollowupAfterDelay(deps.context.repository, threadId, FOLLOWUP_DELAY_MS);
 
       return {
         action: "sent",
@@ -322,11 +306,8 @@ export async function executeProspectWorkflow(
   if (latestInbound) {
     const replyClass = snapshot.thread.lastReplyClass;
     if (replyClass && isHardStopReply(replyClass)) {
-      await deps.context.repository.pauseThread(threadId, `thread blocked by ${replyClass}`);
-      await deps.context.repository.appendAuditEvent("thread", threadId, "ThreadPaused", {
-        reason: `thread blocked by ${replyClass}`,
-      });
-      return paused(snapshot, `thread blocked by ${replyClass}`);
+      await pauseThreadWithAudit(deps.context.repository, threadId, `thread blocked by ${replyClass}`);
+      return pausedWorkflowOutcome(snapshot, `thread blocked by ${replyClass}`);
     }
 
     if (replyClass && deps.context.policy.shouldHandoff(replyClass)) {
@@ -357,13 +338,10 @@ export async function executeProspectWorkflow(
     });
 
     if ((result as { blocked?: boolean }).blocked) {
-      return paused(snapshot, "reply blocked");
+      return pausedWorkflowOutcome(snapshot, "reply blocked");
     }
 
-    await deps.context.repository.touchThreadFollowup(
-      threadId,
-      new Date(Date.now() + FOLLOWUP_DELAY_MS).toISOString(),
-    );
+    await scheduleFollowupAfterDelay(deps.context.repository, threadId, FOLLOWUP_DELAY_MS);
 
     return {
       action: "replied",
@@ -437,9 +415,9 @@ export async function processInboundReply(
   await maybePromoteAttioAfterReply(deps, threadRef.prospectId, classification.classification);
 
   if (classification.classification === "unsubscribe" || classification.classification === "bounce") {
-    await deps.context.repository.pauseThread(threadRef.threadId, classification.classification);
-    return {
-      action: "paused",
+      await pauseThreadWithAudit(deps.context.repository, threadRef.threadId, classification.classification);
+      return {
+        action: "paused",
       prospectId: threadRef.prospectId,
       threadId: threadRef.threadId,
       reason: classification.classification,
@@ -1058,17 +1036,10 @@ async function setStage(
   snapshot: ProspectSnapshot,
   stage: ProspectSnapshot["thread"]["stage"],
 ) {
-  await deps.context.repository.updateThreadState({
+  await activateProspectStage(deps.context.repository, {
     threadId: snapshot.thread.id,
-    stage,
-    status: "active",
-    pausedReason: null,
-  });
-  await deps.context.repository.updateProspectState({
     prospectId: snapshot.prospect.prospectId,
     stage,
-    status: "active",
-    pausedReason: null,
   });
 }
 
@@ -1269,15 +1240,6 @@ function isHardStopReply(replyClass: ReplyClass) {
     || replyClass === "bounce"
     || replyClass === "wrong_person"
     || replyClass === "spam_risk";
-}
-
-function paused(snapshot: ProspectSnapshot, reason: string): WorkflowOutcome {
-  return {
-    action: "paused",
-    prospectId: snapshot.prospect.prospectId,
-    threadId: snapshot.thread.id,
-    reason,
-  };
 }
 
 function clampConfidence(value: number | undefined) {

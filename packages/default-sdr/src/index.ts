@@ -13,3 +13,5 @@ export * from "./runtime-bindings.js";
 export * from "./runtime-bootstrap.js";
 export * from "./mcp-tool-service.js";
 export * from "./discovery-coordinator.js";
+export * from "./prospect-workflow-helpers.js";
+export * from "./http-routes.js";

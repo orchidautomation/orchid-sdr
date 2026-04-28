@@ -70,6 +70,9 @@ Already moved into shared packages:
   - default dashboard shell
   - dashboard auth and cache helpers
   - dashboard state builders
+  - dashboard auth/state route shell
+  - MCP HTTP bearer-auth + transport route shell
+  - reusable prospect workflow mechanics
 
 Still primarily app-owned:
 
@@ -88,12 +91,16 @@ Partially extracted but still mixed:
   - now mostly a thin wrapper over shared default SDR bootstrap
 - `examples/ai-sdr/src/server.ts`
   - dashboard state builders now belong to `packages/default-sdr/`
-  - route-level orchestration and auth wiring still live in the app
+  - dashboard auth/state routes and MCP HTTP route now belong to `packages/default-sdr/`
+  - custom operator actions, Rivet proxy wiring, and app-specific webhook handler wiring still live in the app
 - `examples/ai-sdr/src/orchestration/discovery-coordinator.ts`
   - actor shell and state machine now belong to `packages/default-sdr/`
   - the example keeps only a thin dependency-wiring wrapper
 - `examples/ai-sdr/src/orchestration/source-ingest.ts`
   - stays app-level for now because it bridges generic signal normalization into app-specific prospect workflow execution
+- `examples/ai-sdr/src/orchestration/prospect-workflow.ts`
+  - pause/audit, stage activation, and follow-up scheduling now belong to `packages/default-sdr/`
+  - qualification, research, drafting, reply, and handoff judgment still live in the app
 
 ## Extraction Buckets
 
@@ -194,6 +201,8 @@ What should move:
 - retry and failure model
 - sandbox-turn orchestration pattern
 - provider-run recording pattern
+- reusable pause/audit stage mechanics
+- stage activation and follow-up scheduling helpers
 
 What should remain configurable:
 
@@ -223,6 +232,16 @@ Secondary decision:
   - it currently calls directly into `executeProspectWorkflow`, checkpoint shapes, and app-owned audit behavior
 - if we extract it later, the likely home is still `default-sdr`, not core Trellis, and only after the prospect workflow surface is thinner
 
+Tertiary decision:
+
+- `prospect-workflow.ts` is only partly extractable right now
+- the mechanics layer is reusable default SDR substrate
+- the judgment layer remains app-owned
+- that split is the right one because:
+  - pause/audit mechanics repeat across SDR-style apps
+  - stage activation and follow-up scheduling repeat across SDR-style apps
+  - qualification, research, and messaging logic are where the actual app differentiation lives
+
 ## 5. MCP substrate
 
 Current custom surfaces:
@@ -247,6 +266,11 @@ What should remain configurable:
 - custom actions
 - custom read models
 
+Current status:
+
+- standard tool groups now live in `packages/default-sdr/src/mcp-tool-service.ts`
+- MCP HTTP bearer-auth + transport route now lives in `packages/default-sdr/src/http-routes.ts`
+
 ## 6. Dashboard substrate
 
 Current custom surfaces:
@@ -269,6 +293,11 @@ What should remain configurable:
 - app-specific panels
 - custom KPIs
 - workflow-specific controls
+
+Current status:
+
+- dashboard auth/state routes now live in `packages/default-sdr/src/http-routes.ts`
+- the example server still owns the custom operator actions and Rivet runtime glue
 
 ## 7. Operational scripts
 
@@ -316,7 +345,7 @@ If we want the highest leverage path, the next moves should be:
 
 1. thin `prospect-workflow` by carving out reusable default SDR stage helpers
 2. revisit `source-ingest` once the prospect workflow boundary is cleaner
-3. reduce remaining route/action glue in `examples/ai-sdr/src/server.ts`
+3. reduce remaining custom dashboard action glue in `examples/ai-sdr/src/server.ts`
 4. make manifest-driven env requirements first-class so Trellis can derive `.env.example` from selected capabilities
 5. move more operational scripts from the example into Trellis-owned CLI/package surfaces
 

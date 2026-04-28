@@ -1,6 +1,4 @@
 import { Hono } from "hono";
-import { deleteCookie, setCookie } from "hono/cookie";
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
 import { renderDashboardLoginPage, renderDashboardPage } from "./dashboard/page.js";
 import { registry } from "./registry.js";
@@ -22,14 +20,15 @@ import { getAutomationPauseReason } from "./orchestration/workflow-control.js";
 import {
   createDashboardStateController,
   getDashboardPassword as resolveDashboardPassword,
-  hashDashboardPassword as hashDefaultDashboardPassword,
-  isDashboardAuthenticated as checkDashboardAuthenticated,
-  isSecureRequest,
 } from "../../../packages/default-sdr/src/dashboard-bootstrap.js";
 import {
   buildDefaultSdrDashboardCoreState,
   buildDefaultSdrDashboardRuntimeState,
 } from "../../../packages/default-sdr/src/dashboard-state.js";
+import {
+  mountDefaultSdrDashboardRoutes,
+  mountDefaultSdrMcpHttpRoute,
+} from "../../../packages/default-sdr/src/http-routes.js";
 import { mountDefaultSdrWebhookRoutes } from "../../../packages/default-sdr/src/webhook-bootstrap.js";
 import type { DefaultSdrDashboardActorClient } from "../../../packages/default-sdr/src/dashboard-state.js";
 
@@ -62,40 +61,12 @@ export function createApp() {
 
   app.get("/", (c) => c.redirect("/dashboard"));
 
-  app.get("/dashboard", async (c) => {
-    if (!isDashboardAuthenticated(c.req.raw, dashboardCookieName, getDashboardPassword(context))) {
-      return c.html(renderDashboardLoginPage());
-    }
-
-    return c.html(renderDashboardPage());
-  });
-
-  app.post("/dashboard/login", async (c) => {
-    const body = await c.req.parseBody();
-    const password = typeof body.password === "string" ? body.password : "";
-    const expectedPassword = getDashboardPassword(context);
-
-    if (password !== expectedPassword) {
-      return c.html(renderDashboardLoginPage({ error: "Invalid password." }), 401);
-    }
-
-    setCookie(c, dashboardCookieName, hashDashboardPassword(expectedPassword), {
-      httpOnly: true,
-      sameSite: "Lax",
-      path: "/",
-      secure: isSecureRequest(c.req.raw),
-      maxAge: 60 * 60 * 24 * 14,
-    });
-
-    return c.redirect("/dashboard");
-  });
-
-  app.post("/dashboard/logout", (c) => {
-    deleteCookie(c, dashboardCookieName, {
-      path: "/",
-    });
-
-    return c.redirect("/dashboard");
+  const dashboardRoutes = mountDefaultSdrDashboardRoutes(app, {
+    dashboardCookieName,
+    getPassword: () => getDashboardPassword(context),
+    renderLoginPage: renderDashboardLoginPage,
+    renderDashboardPage,
+    dashboardState,
   });
 
   app.get("/healthz", async (c) => {
@@ -107,38 +78,8 @@ export function createApp() {
     });
   });
 
-  app.get("/api/dashboard/state", async (c) => {
-    if (!isDashboardAuthenticated(c.req.raw, dashboardCookieName, getDashboardPassword(context))) {
-      return c.json({ error: "unauthorized" }, 401);
-    }
-
-    return c.json(await dashboardState.getState({
-      forceFresh: c.req.query("fresh") === "1",
-    }));
-  });
-
-  app.get("/api/dashboard/core-state", async (c) => {
-    if (!isDashboardAuthenticated(c.req.raw, dashboardCookieName, getDashboardPassword(context))) {
-      return c.json({ error: "unauthorized" }, 401);
-    }
-
-    return c.json(await dashboardState.getCoreState({
-      forceFresh: c.req.query("fresh") === "1",
-    }));
-  });
-
-  app.get("/api/dashboard/runtime-state", async (c) => {
-    if (!isDashboardAuthenticated(c.req.raw, dashboardCookieName, getDashboardPassword(context))) {
-      return c.json({ error: "unauthorized" }, 401);
-    }
-
-    return c.json(await dashboardState.getRuntimeState({
-      forceFresh: c.req.query("fresh") === "1",
-    }));
-  });
-
   app.post("/api/dashboard/discovery-tick", async (c) => {
-    if (!isDashboardAuthenticated(c.req.raw, dashboardCookieName, getDashboardPassword(context))) {
+    if (!dashboardRoutes.requireAuth(c.req.raw)) {
       return c.json({ error: "unauthorized" }, 401);
     }
     if (context.localSmokeMode) {
@@ -170,7 +111,7 @@ export function createApp() {
   });
 
   app.post("/api/dashboard/sandbox-probe", async (c) => {
-    if (!isDashboardAuthenticated(c.req.raw, dashboardCookieName, getDashboardPassword(context))) {
+    if (!dashboardRoutes.requireAuth(c.req.raw)) {
       return c.json({ error: "unauthorized" }, 401);
     }
 
@@ -201,7 +142,7 @@ export function createApp() {
   });
 
   app.post("/api/dashboard/automation-pause", async (c) => {
-    if (!isDashboardAuthenticated(c.req.raw, dashboardCookieName, getDashboardPassword(context))) {
+    if (!dashboardRoutes.requireAuth(c.req.raw)) {
       return c.json({ error: "unauthorized" }, 401);
     }
 
@@ -260,24 +201,9 @@ export function createApp() {
     });
   });
 
-  app.all("/mcp/trellis", async (c) => {
-    const authorization = c.req.header("authorization");
-    if (authorization !== `Bearer ${context.config.mcpToken}`) {
-      return c.json({ error: "unauthorized" }, 401);
-    }
-
-    const server = createTrellisMcpServer(context);
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true,
-    });
-
-    await server.connect(transport);
-    try {
-      return await transport.handleRequest(c.req.raw);
-    } finally {
-      await server.close();
-    }
+  mountDefaultSdrMcpHttpRoute(app, {
+    bearerToken: context.config.mcpToken,
+    createServer: () => createTrellisMcpServer(context),
   });
 
   mountDefaultSdrWebhookRoutes(app, {
@@ -377,12 +303,4 @@ function getDashboardPassword(context: ReturnType<typeof getAppContext>) {
     dashboardPassword: context.config.DASHBOARD_PASSWORD,
     sandboxToken: context.config.TRELLIS_SANDBOX_TOKEN,
   });
-}
-
-function hashDashboardPassword(password: string) {
-  return hashDefaultDashboardPassword(password);
-}
-
-function isDashboardAuthenticated(request: Request, cookieName: string, password: string) {
-  return checkDashboardAuthenticated(request, cookieName, password);
 }
