@@ -11,12 +11,15 @@ import {
   collectModuleDocs,
   collectSkillPaths,
   evaluateModuleComposition,
+  loadProcessEnvFiles,
   validateAiSdrConfigReferences,
   type AiSdrCompositionProfileId,
   type AiSdrEnvVar,
 } from "@ai-sdr/framework";
 import { getFrameworkRuntimeConfig } from "../src/services/framework-stack.js";
 import { buildRuntimeReadinessChecks } from "../src/services/doctor-readiness.js";
+
+loadProcessEnvFiles();
 
 type Check = {
   label: string;

@@ -188,6 +188,7 @@ export {
   runNonFatalBootstrapTask,
   shouldSkipLocalRuntimeOnVercel,
 } from "./runtime-bootstrap.js";
+export { loadProcessEnvFiles } from "./env-loader.js";
 
 export const aiSdrSandboxStageModelRoutingSchema = z.object({
   discovery: z.string().min(1).optional(),

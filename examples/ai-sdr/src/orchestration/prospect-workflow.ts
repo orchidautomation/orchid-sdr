@@ -500,7 +500,9 @@ async function buildResearchBrief(
     .join(" ");
 
   const [searchResults, companyNewsResults, sourceExtract, knowledgeContext] = await Promise.all([
-    searchQuery ? deps.context.providers.search.search(searchQuery, { limit: 5 }) : Promise.resolve([]),
+    searchQuery
+      ? deps.context.providers.search.search(searchQuery, { limit: 5 }).catch(() => [])
+      : Promise.resolve([]),
     deps.context.providers.extract.searchCompanyNews(
       snapshot.prospect.company,
       snapshot.prospect.companyDomain,

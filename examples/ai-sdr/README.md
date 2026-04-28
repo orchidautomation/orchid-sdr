@@ -57,6 +57,25 @@ If your goal is one credible demo with the least confusion, use this order:
 7. ingest one signal through `/webhooks/signals` or `/webhooks/apify`
 8. inspect the resulting thread in the dashboard and through MCP
 
+Concrete commands:
+
+```bash
+npm run demo:smoke
+npm run demo:check
+```
+
+- `demo:smoke`
+  - local safe end-to-end verification
+  - checks `/healthz`, dashboard auth/state, `/mcp/trellis`, and one safe `/webhooks/signals` ingest
+  - keeps `NO_SENDS_MODE=true`, so the demo stops safely without outbound
+- `demo:check`
+  - checks a running local or deployed app
+  - verifies `/healthz`
+  - logs into `/dashboard`
+  - probes `/mcp/trellis` with bearer auth
+  - posts one signal to `/webhooks/signals`
+  - confirms dashboard state reflects the ingest when the downstream workflow is configured
+
 Use these docs in sequence:
 
 1. [../../docs/getting-started.md](../../docs/getting-started.md)

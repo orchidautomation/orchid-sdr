@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { loadProcessEnvFiles } from "@ai-sdr/framework";
+
+loadProcessEnvFiles();
 
 function csvListWithDefault(defaultValue: string) {
   return z.string().default(defaultValue).transform((value) =>

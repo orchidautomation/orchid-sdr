@@ -1,8 +1,11 @@
 import { parseArgs } from "node:util";
+import { loadProcessEnvFiles } from "@ai-sdr/framework";
 
 import { createClient } from "rivetkit/client";
 
 import { registry } from "../src/registry.js";
+
+loadProcessEnvFiles();
 
 const args = parseArgs({
   options: {

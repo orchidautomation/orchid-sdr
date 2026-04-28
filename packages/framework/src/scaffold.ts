@@ -317,10 +317,10 @@ export function renderScaffoldEnvExample(spec: AiSdrScaffoldSpec) {
     ["PORT", "3000"],
     ["APP_URL", "http://localhost:3000"],
     ["NODE_ENV", "development"],
+    ["NO_SENDS_MODE", "true"],
     ["DASHBOARD_PASSWORD", ""],
     ["CONVEX_URL", "https://your-deployment.convex.cloud"],
     ["NEXT_PUBLIC_CONVEX_URL", "https://your-deployment.convex.cloud"],
-    ["NO_SENDS_MODE", "true"],
     ["DEFAULT_CAMPAIGN_TIMEZONE", "UTC"],
     ["TRELLIS_SANDBOX_TOKEN", "change-me"],
     ["TRELLIS_MCP_TOKEN", ""],
@@ -333,9 +333,50 @@ export function renderScaffoldEnvExample(spec: AiSdrScaffoldSpec) {
     }
   }
 
-  return [...defaults.entries()]
-    .map(([name, value]) => `${name}=${value}`)
-    .join("\n") + "\n";
+  const demoCore = [
+    "PORT",
+    "APP_URL",
+    "NODE_ENV",
+    "NO_SENDS_MODE",
+    "DEFAULT_CAMPAIGN_TIMEZONE",
+    "DASHBOARD_PASSWORD",
+    "TRELLIS_SANDBOX_TOKEN",
+    "TRELLIS_MCP_TOKEN",
+    "CONVEX_URL",
+    "NEXT_PUBLIC_CONVEX_URL",
+    "HANDOFF_WEBHOOK_SECRET",
+  ].filter((name) => defaults.has(name));
+
+  const required = spec.envVars
+    .filter((envVar) => envVar.required && !demoCore.includes(envVar.name))
+    .map((envVar) => envVar.name)
+    .sort();
+
+  const optional = spec.envVars
+    .filter((envVar) => !envVar.required && !demoCore.includes(envVar.name))
+    .map((envVar) => envVar.name)
+    .sort();
+
+  const sections = [
+    "# Core app and safe demo defaults",
+    ...demoCore.map((name) => `${name}=${defaults.get(name) ?? ""}`),
+  ];
+
+  if (required.length > 0) {
+    sections.push("", "# Required for the selected lanes");
+    for (const name of required) {
+      sections.push(`${name}=${defaults.get(name) ?? ""}`);
+    }
+  }
+
+  if (optional.length > 0) {
+    sections.push("", "# Optional until you enable the matching provider or workflow");
+    for (const name of optional) {
+      sections.push(`${name}=${defaults.get(name) ?? ""}`);
+    }
+  }
+
+  return `${sections.join("\n")}\n`;
 }
 
 export function renderScaffoldSetupChecklist(spec: AiSdrScaffoldSpec) {

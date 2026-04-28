@@ -118,6 +118,21 @@ Start with the reference AI SDR already in this repo:
 6. ingest one signal
 7. review state, research, and drafts before enabling any send lane
 
+Useful commands:
+
+```bash
+npm run demo:smoke
+npm run demo:check
+```
+
+- `demo:smoke`
+  - starts the reference AI SDR in local smoke mode
+  - verifies `/healthz`, dashboard auth/state, `/mcp/trellis`, and one safe signal ingest
+  - keeps `NO_SENDS_MODE=true`, so the flow stops safely without outbound
+- `demo:check`
+  - runs against an already-running local or deployed app
+  - adds one `/webhooks/signals` ingest check and verifies dashboard visibility
+
 Use these docs in this order:
 
 - [docs/getting-started.md](docs/getting-started.md)

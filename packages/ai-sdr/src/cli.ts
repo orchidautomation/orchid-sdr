@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import process from "node:process";
 
 import { createClient } from "rivetkit/client";
+import { loadProcessEnvFiles } from "../../framework/src/env-loader.js";
 
 import config from "../../../examples/ai-sdr/ai-sdr.config.js";
 import { registry } from "../../../examples/ai-sdr/src/registry.js";
@@ -28,6 +29,8 @@ import {
   resolveInitModuleIds,
 } from "../../framework/src/scaffold.js";
 import { buildClaudeCodeMcpConfig, mergeClaudeCodeMcpConfig } from "./mcp-config.js";
+
+loadProcessEnvFiles();
 
 const [command, ...commandArgs] = process.argv.slice(2);
 const parsedCliArgs = parseCliArgs(commandArgs);
