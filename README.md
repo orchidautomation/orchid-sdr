@@ -109,6 +109,8 @@ Start here:
 - [examples/ai-sdr/README.md](examples/ai-sdr/README.md)
 - [docs/ownership-model.md](docs/ownership-model.md)
 - [docs/turnkey-roadmap.md](docs/turnkey-roadmap.md)
+- [docs/ai-sdr-go-live.md](docs/ai-sdr-go-live.md)
+- [docs/extraction-plan.md](docs/extraction-plan.md)
 
 ### 2. Scaffold a new Trellis app
 
@@ -186,6 +188,8 @@ The reference AI SDR is the first concrete example, not the boundary of the fram
 - [examples/ai-sdr/README.md](examples/ai-sdr/README.md)
 - [docs/ownership-model.md](docs/ownership-model.md)
 - [docs/turnkey-roadmap.md](docs/turnkey-roadmap.md)
+- [docs/ai-sdr-go-live.md](docs/ai-sdr-go-live.md)
+- [docs/extraction-plan.md](docs/extraction-plan.md)
 - [docs/getting-started.md](docs/getting-started.md)
 - [docs/new-user-guide.md](docs/new-user-guide.md)
 - [docs/framework-primitives.md](docs/framework-primitives.md)

@@ -31,10 +31,12 @@ If you are trying to understand what is framework vs what is app code, read thes
 1. [../../README.md](../../README.md)
 2. [../../docs/ownership-model.md](../../docs/ownership-model.md)
 3. [../../docs/turnkey-roadmap.md](../../docs/turnkey-roadmap.md)
-4. [ai-sdr.config.ts](ai-sdr.config.ts)
-5. [src/registry.ts](src/registry.ts)
-6. [src/orchestration/prospect-workflow.ts](src/orchestration/prospect-workflow.ts)
-7. [convex/schema.ts](convex/schema.ts)
+4. [../../docs/ai-sdr-go-live.md](../../docs/ai-sdr-go-live.md)
+5. [../../docs/extraction-plan.md](../../docs/extraction-plan.md)
+6. [ai-sdr.config.ts](ai-sdr.config.ts)
+7. [src/registry.ts](src/registry.ts)
+8. [src/orchestration/prospect-workflow.ts](src/orchestration/prospect-workflow.ts)
+9. [convex/schema.ts](convex/schema.ts)
 
 That is the shortest path to understanding:
 
@@ -328,6 +330,8 @@ This example matters because it proves the framework can drive a real GTM workfl
 - [New User Guide](../../docs/new-user-guide.md)
 - [Reference](../../docs/reference.md)
 - [Getting Started](../../docs/getting-started.md)
+- [AI SDR Go-Live](../../docs/ai-sdr-go-live.md)
+- [Extraction Plan](../../docs/extraction-plan.md)
 - [Framework Primitives](../../docs/framework-primitives.md)
 - [CRM Normalization](../../docs/crm-normalization.md)
 - [Self-Hosting](../../docs/self-hosting.md)
