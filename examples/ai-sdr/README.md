@@ -60,9 +60,13 @@ If your goal is one credible demo with the least confusion, use this order:
 Concrete commands:
 
 ```bash
+nvm use 22
+npx convex dev
 npm run ai-sdr:demo:smoke
 npm run ai-sdr:demo:check
 ```
+
+For real local development against Convex, keep `npx convex dev` running in one terminal and `npm run dev` in another. Use `TRELLIS_LOCAL_SMOKE_MODE=true` only when you want the in-memory local fallback instead of the Convex-backed runtime.
 
 - `ai-sdr:demo:smoke`
   - local safe end-to-end verification

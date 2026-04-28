@@ -20,6 +20,7 @@ Canonical order:
 From the repo root:
 
 ```bash
+nvm use 22
 npm install
 cp .env.example .env
 ```
@@ -41,11 +42,14 @@ Minimum core env for a real demo:
 Then run:
 
 ```bash
+npx convex dev
 npm run typecheck
 npm test
 npm run doctor
 npm run dev
 ```
+
+Keep `npx convex dev` running while you do real local development against Convex. Trellis uses the repo-root `convex.json` file to point Convex at the AI SDR functions in `examples/ai-sdr/convex`.
 
 If you only want a boot check before wiring Convex, use smoke mode:
 

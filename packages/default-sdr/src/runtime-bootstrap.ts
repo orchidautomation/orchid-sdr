@@ -40,7 +40,7 @@ export function createDefaultSdrRuntimeBootstrap(input: {
 }) {
   const ensureRuntimeBootstrapped = createBootstrapRunner(async () => {
     const context = input.getContext();
-    await context.repository.ensureDefaultCampaign();
+    await ensureDefaultCampaignWithActionableError(context);
 
     if (context.config.NO_SENDS_MODE !== undefined) {
       await context.repository.setControlFlag("no_sends_mode", {
@@ -86,7 +86,7 @@ export function createDefaultSdrRuntimeBootstrap(input: {
 
   async function bootstrapDiscoveryActors() {
     const context = input.getContext();
-    const campaign = await context.repository.ensureDefaultCampaign();
+    const campaign = await ensureDefaultCampaignWithActionableError(context);
     const client = input.getActorClient();
 
     if (context.config.DISCOVERY_LINKEDIN_ENABLED) {
@@ -119,4 +119,22 @@ export function createDefaultSdrRuntimeBootstrap(input: {
     shouldUseRemoteRivetRuntime,
     shouldSkipLocalRivetRuntime,
   };
+}
+
+async function ensureDefaultCampaignWithActionableError(context: DefaultSdrBootstrapContext) {
+  try {
+    return await context.repository.ensureDefaultCampaign();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("repository:ensureDefaultCampaign")) {
+      throw new Error(
+        [
+          "Convex is configured, but the Trellis functions are not synced to that deployment yet.",
+          "Run `npx convex dev` from the repo root so Convex picks up `convex.json` and syncs `examples/ai-sdr/convex`.",
+          "If you only want a local boot check, set `TRELLIS_LOCAL_SMOKE_MODE=true` before `npm run dev`.",
+        ].join(" "),
+      );
+    }
+    throw error;
+  }
 }
