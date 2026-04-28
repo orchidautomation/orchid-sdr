@@ -110,7 +110,7 @@ If you want a new working reference app scaffold from this repo:
 npm run ai-sdr -- init
 ```
 
-That now gives you the bare minimum `core` runtime by default.
+That now gives you the base Trellis runtime by default.
 
 Then add providers and sources incrementally:
 
@@ -122,21 +122,15 @@ npm run ai-sdr -- add enrichment prospeo --apply
 
 The generated project includes:
 
-- `TRELLIS_SETUP.md` with the exact first-boot checklist for that selected profile
+- `TRELLIS_SETUP.md` with the exact first-boot checklist for that scaffold
 - `packages/` with the extracted local `@ai-sdr/*` workspace packages
 - a workspace-backed `package.json` so the generated app installs and runs as its own local Trellis workspace
 - optional module prompts for discovery, deep research, enrichment, CRM, outbound email, and handoff when you use the wizard path
 
-Current shortcut bundles:
-
-- `core` - minimum honest runtime: manual signals, dashboard, MCP, and the full base control plane
-- `starter` - `core` plus discovery, deep research, and enrichment
-- `production` - current production-parity AI SDR stack
-
-If you already know which profile you want, the explicit path still works:
+If you want to skip the wizard and choose lanes explicitly:
 
 ```bash
-npm run ai-sdr -- init ../trellis-starter --profile starter --name trellis-starter
+npm run ai-sdr -- init ../trellis-custom --name trellis-custom --with-discovery --with-deep-research --with-enrichment
 ```
 
 For the current repo itself:
@@ -172,19 +166,18 @@ If you want the full runtime, add provider keys such as Convex, Apify, Parallel,
 
 The shortest honest vendor path to see value is:
 
-- `core`
+- base runtime
   - `Convex`
   - `Vercel` for Sandbox and AI Gateway
   - `Firecrawl`
   - `Rivet`
-- `starter`
-  - add `Apify`
-  - add `Parallel`
-  - add `Prospeo`
-- `production`
-  - add `AgentMail`
-  - add `Attio`
-  - optionally add `Slack`
+- then add lanes
+  - `Apify` for discovery
+  - `Parallel` for deep research
+  - `Prospeo` for enrichment
+  - `AgentMail` for outbound
+  - `Attio` for CRM sync
+  - `Slack` for handoff
 
 The current auth model is token/password based, not Vercel OAuth:
 

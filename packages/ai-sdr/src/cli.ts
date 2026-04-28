@@ -29,6 +29,7 @@ import {
   resolveInitModuleIds,
 } from "../../framework/src/scaffold.js";
 import { buildClaudeCodeMcpConfig, mergeClaudeCodeMcpConfig } from "./mcp-config.js";
+import { promptMultiSelect } from "./tty-prompts.js";
 
 const [command, ...commandArgs] = process.argv.slice(2);
 const parsedCliArgs = parseCliArgs(commandArgs);
@@ -138,7 +139,7 @@ Examples:
   npm run ai-sdr -- deploy vercel
   npm run ai-sdr -- mcp claude-code --local --write
   npm run ai-sdr -- init
-  npm run ai-sdr -- init ../trellis-core-plus --profile core --with-discovery --with-deep-research
+  npm run ai-sdr -- init ../trellis-core-plus --with-discovery --with-deep-research
 
 Simple labels stay short in the CLI: search, extract, deep-research, monitor, enrichment.
 The alias "research" resolves to the full research contract family.
@@ -469,29 +470,47 @@ async function promptForInit(input: {
   include?: string[];
   exclude?: string[];
 }) {
-  const defaultProfile = resolveInitProfile(input.profile ?? "core");
+  const baseProfile = resolveInitProfile("core");
+  const initiallySelectedOptionalModuleIds = aiSdrInitModuleChoices
+    .filter((choice) =>
+      resolveInitModuleIds(baseProfile.id, {
+        include: input.include,
+        exclude: input.exclude,
+      }).includes(choice.moduleId),
+    )
+    .map((choice) => choice.moduleId);
+  console.log("Trellis init wizard");
+  console.log("");
+  const selectedOptionalModuleIds = await promptMultiSelect({
+    message: "Choose optional GTM lanes",
+    hint: "up/down move, Space selects, Enter continues, a selects all",
+    initialValues: initiallySelectedOptionalModuleIds,
+    options: aiSdrInitModuleChoices.map((choice) => ({
+      value: choice.moduleId,
+      label: `${choice.displayName} (${choice.id})`,
+      hint: choice.description,
+    })),
+  });
+  const selectedModuleIds = resolveInitModuleIds(baseProfile.id, {
+    include: selectedOptionalModuleIds,
+  });
+
+  const selection = describeScaffoldSelection({
+    profile: baseProfile,
+    selectedModuleIds,
+  });
+  console.log("Selected lanes:");
+  for (const selectedLane of summarizeOptionalModuleChoices(selectedModuleIds)) {
+    console.log(`  - ${selectedLane}`);
+  }
+  console.log("");
+
   const readline = createInterface({
     input: process.stdin,
     output: process.stdout,
   });
 
   try {
-    console.log("Trellis init wizard");
-    console.log("");
-    console.log(`Starting from: ${defaultProfile.displayName}`);
-    console.log("Base runtime stays lean by default. Optional GTM lanes can be toggled before scaffold.");
-    console.log("");
-
-    const selectedProfile = defaultProfile;
-    const selectedModules = new Set(resolveInitModuleIds(selectedProfile.id, {
-      include: input.include,
-      exclude: input.exclude,
-    }));
-    await promptForOptionalModules(readline, selectedModules);
-    const selection = describeScaffoldSelection({
-      profile: selectedProfile,
-      selectedModuleIds: [...selectedModules],
-    });
     const defaultTarget = input.targetArg ?? `../${selection.defaultDirectoryName}`;
     const targetAnswer = await readline.question(`Target directory (${defaultTarget}): `);
     const resolvedTargetArg = (targetAnswer.trim() || defaultTarget).trim();
@@ -503,78 +522,17 @@ async function promptForInit(input: {
     console.log(`Scaffold: ${selection.displayName}`);
     console.log(`Target:   ${resolvedTargetArg}`);
     console.log(`Name:     ${appName}`);
-    printList("Optional lanes", summarizeOptionalModuleChoices([...selectedModules]));
+    printList("Optional lanes", summarizeOptionalModuleChoices(selectedModuleIds));
     console.log("");
 
     return {
       targetDirArg: resolvedTargetArg,
-      profile: selectedProfile.id,
+      profile: baseProfile.id,
       appName,
-      moduleIds: [...selectedModules],
+      moduleIds: selectedModuleIds,
     };
   } finally {
     readline.close();
-  }
-}
-
-async function promptForOptionalModules(
-  readline: ReturnType<typeof createInterface>,
-  selectedModules: Set<string>,
-) {
-  const choicesById = new Map<string, (typeof aiSdrInitModuleChoices)[number]>(aiSdrInitModuleChoices.map((choice) => [
-    choice.id,
-    choice,
-  ]));
-  const choicesByNumber = new Map<string, (typeof aiSdrInitModuleChoices)[number]>(aiSdrInitModuleChoices.map((choice, index) => [
-    String(index + 1),
-    choice,
-  ]));
-
-  console.log("Optional lanes:");
-  console.log("  press Enter to keep the current selection");
-  console.log("  type one or more ids or numbers to toggle, for example: discovery,3");
-  console.log("");
-
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    for (const [index, choice] of aiSdrInitModuleChoices.map((choice, index) => [index + 1, choice] as const)) {
-      const enabled = selectedModules.has(choice.moduleId) ? "[x]" : "[ ]";
-      console.log(`  ${enabled} ${index}. ${choice.displayName} (${choice.id})`);
-      console.log(`      ${choice.description}`);
-    }
-    console.log("");
-
-    const answer = await readline.question("Toggle optional lanes: ");
-    const trimmed = answer.trim();
-    if (!trimmed) {
-      console.log("");
-      return;
-    }
-
-    const tokens = trimmed
-      .split(",")
-      .map((token) => token.trim().toLowerCase())
-      .filter(Boolean);
-
-    const unknown: string[] = [];
-    for (const token of tokens) {
-      const resolvedChoice = choicesByNumber.get(token) ?? choicesById.get(token);
-      if (!resolvedChoice) {
-        unknown.push(token);
-        continue;
-      }
-
-      if (selectedModules.has(resolvedChoice.moduleId)) {
-        selectedModules.delete(resolvedChoice.moduleId);
-      } else {
-        selectedModules.add(resolvedChoice.moduleId);
-      }
-    }
-
-    if (unknown.length > 0) {
-      console.log(`Unknown optional lanes: ${unknown.join(", ")}`);
-    }
-    console.log("");
   }
 }
 

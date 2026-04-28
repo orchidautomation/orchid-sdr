@@ -8,7 +8,7 @@ This is the shortest path to a working Trellis reference app.
 npm run ai-sdr -- init
 ```
 
-That command now scaffolds the bare minimum `core` runtime by default.
+That command now scaffolds the base Trellis runtime by default.
 
 After boot, add capabilities incrementally:
 
@@ -18,22 +18,10 @@ npm run ai-sdr -- add deep-research parallel --apply
 npm run ai-sdr -- add enrichment prospeo --apply
 ```
 
-Shortcut presets still exist, but they are optional:
-
-- `core` - manual signals, dashboard, MCP, and the minimum honest runtime
-- `starter` - core plus discovery, deep research, and enrichment
-- `production` - current production-parity reference stack
-
-If you already know what you want, the flag path still works:
+If you want to skip the wizard and choose lanes directly:
 
 ```bash
-npm run ai-sdr -- init ../trellis-starter --profile starter --name trellis-starter
-```
-
-You can also override optional modules directly:
-
-```bash
-npm run ai-sdr -- init ../trellis-core-plus --profile core --with-discovery --with-deep-research
+npm run ai-sdr -- init ../trellis-core-plus --name trellis-core-plus --with-discovery --with-deep-research
 ```
 
 ## 2. Install
@@ -54,7 +42,7 @@ At minimum:
 - `HANDOFF_WEBHOOK_SECRET`
 - `NO_SENDS_MODE=true`
 
-If the selected profile includes additional providers, fill those after the core env is working.
+If the scaffolded lanes include additional providers, fill those after the core env is working.
 
 ## 3.5. Which accounts do you really need?
 
@@ -62,18 +50,15 @@ To simply boot the app safely, the required env block is enough.
 
 To actually feel the product as a new user:
 
-- `core`
+- base runtime
   - `Convex`
   - `Vercel` for Sandbox and AI Gateway
   - `Firecrawl`
   - `Rivet`
-- `starter`
-  - everything in `core`
+- add lanes as needed
   - `Apify`
   - `Parallel`
   - `Prospeo`
-- `production`
-  - everything in `starter`
   - `AgentMail`
   - `Attio`
   - `Slack` if you want handoff
