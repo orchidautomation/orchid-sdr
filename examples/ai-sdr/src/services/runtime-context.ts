@@ -18,9 +18,12 @@ import type {
   OutboundEmailProvider,
   WebExtractProvider,
 } from "@ai-sdr/framework";
-import { ConvexRepository } from "../repository-convex.js";
-import { LocalSmokeRepository } from "../repository-local-smoke.js";
-import { TrellisRepository, type TrellisRepositoryPort } from "../repository.js";
+import {
+  createDefaultSdrRepository,
+  shouldUseDefaultSdrLocalSmokeMode,
+} from "../../../../packages/default-sdr/src/repository-factory.js";
+import type { TrellisRepositoryPort } from "../../../../packages/default-sdr/src/repository-contracts.js";
+import { TrellisRepository } from "../repository.js";
 import { AiStructuredService } from "./ai-service.js";
 import { getFrameworkRuntimeConfig, type FrameworkRuntimeConfig } from "./framework-stack.js";
 import { KnowledgeService } from "./knowledge-service.js";
@@ -197,28 +200,17 @@ function createRepository(input: {
   framework: FrameworkRuntimeConfig;
   localSmokeMode: boolean;
 }): TrellisRepositoryPort {
-  if (input.localSmokeMode) {
-    return new LocalSmokeRepository(input.config.DEFAULT_CAMPAIGN_TIMEZONE);
-  }
-
-  if (input.framework.selections.state.providerId === "convex") {
-    const convexUrl = input.config.CONVEX_URL ?? input.config.NEXT_PUBLIC_CONVEX_URL;
-    if (!convexUrl) {
-      throw new Error("CONVEX_URL or NEXT_PUBLIC_CONVEX_URL is required when the Convex state provider is enabled.");
-    }
-
-    return new ConvexRepository(convexUrl, input.config.DEFAULT_CAMPAIGN_TIMEZONE);
-  }
-
-  return new TrellisRepository();
+  return createDefaultSdrRepository({
+    localSmokeMode: input.localSmokeMode,
+    defaultCampaignTimezone: input.config.DEFAULT_CAMPAIGN_TIMEZONE,
+    stateProviderId: input.framework.selections.state.providerId,
+    convexUrl: input.config.CONVEX_URL ?? input.config.NEXT_PUBLIC_CONVEX_URL,
+    createPersistentRepository: () => new TrellisRepository(),
+  });
 }
 
 export function shouldUseLocalSmokeMode(config: AppConfig) {
-  if (!config.TRELLIS_LOCAL_SMOKE_MODE) {
-    return false;
-  }
-
-  return true;
+  return shouldUseDefaultSdrLocalSmokeMode(config.TRELLIS_LOCAL_SMOKE_MODE);
 }
 
 export function resetAppContextForTests() {

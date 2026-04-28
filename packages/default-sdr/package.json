@@ -1,0 +1,15 @@
+{
+  "name": "@ai-sdr/default-sdr",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./domain-types": "./src/domain-types.ts",
+    "./repository-contracts": "./src/repository-contracts.ts",
+    "./repository-factory": "./src/repository-factory.ts",
+    "./convex-repository": "./src/convex-repository.ts",
+    "./local-smoke-repository": "./src/local-smoke-repository.ts"
+  }
+}

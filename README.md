@@ -96,6 +96,8 @@ docs/                product, deployment, and architecture docs
   - provider modules
   - CLI
   - MCP packaging
+  - default SDR substrate in `packages/default-sdr/`
+  - default Convex substrate in `packages/convex/`
 - `examples/ai-sdr/`
   - the reference AI SDR application
   - concrete example of discovery, research, qualification, state, CRM, email, and handoff

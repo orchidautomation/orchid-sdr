@@ -370,12 +370,12 @@ export class TrellisMcpToolService {
         outboundCount,
         latestInboundMessage: latestInbound
           ? {
-              id: latestInbound.id,
-              subject: latestInbound.subject,
-              bodyText: latestInbound.body_text,
-              createdAt: latestInbound.created_at?.toISOString?.() ?? null,
-            }
-          : null,
+	              id: latestInbound.id,
+	              subject: latestInbound.subject,
+	              bodyText: latestInbound.body_text,
+	              createdAt: latestInbound.created_at ?? null,
+	            }
+	          : null,
       },
       qualification: qualification
         ? {

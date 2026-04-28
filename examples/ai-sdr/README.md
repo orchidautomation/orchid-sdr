@@ -108,6 +108,16 @@ This is the current working implementation of the AI SDR behavior.
 
 This is the part we most likely want to push further down into Trellis over time.
 
+The extraction is already underway:
+
+- `packages/convex/`
+  - default Convex schema and state mutations
+- `packages/default-sdr/`
+  - default SDR domain types
+  - repository contracts
+  - Convex HTTP repository client
+  - local smoke repository
+
 That is the important nuance:
 
 > the app is already strongly composed, but the substrate is not fully extracted yet
