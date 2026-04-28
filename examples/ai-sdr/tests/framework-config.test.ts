@@ -4,8 +4,10 @@ import {
   aiSdrConfigSchema,
   buildProviderMap,
   collectConfigEnv,
+  collectAppSurfaceEnv,
   collectKnowledgePaths,
   collectWebhookDefinitions,
+  collectWebhookEnv,
   collectPackageBoundaries,
   collectModuleDocs,
   collectModuleMcpServers,
@@ -75,6 +77,104 @@ describe("AI SDR framework config helpers", () => {
       },
       {
         name: "CRM_API_KEY",
+      },
+    ]);
+  });
+
+  it("collects MCP server env and derives app-surface env from webhooks and MCP exposure", () => {
+    const config = defineAiSdr({
+      name: "test-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      modules: [
+        {
+          id: "custom-runtime",
+          displayName: "Custom runtime",
+          mcpServers: [
+            {
+              id: "custom-mcp",
+              displayName: "Custom MCP",
+              transport: "http",
+              url: "https://example.com/mcp",
+              requiredEnv: [{ name: "CUSTOM_MCP_TOKEN", required: true }],
+              optionalEnv: [{ name: "CUSTOM_MCP_REGION" }],
+            },
+          ],
+        },
+      ],
+      mcp: {
+        toolGroups: ["runtime"],
+      },
+      webhooks: [
+        {
+          id: "incoming",
+          displayName: "Incoming webhook",
+          method: "POST",
+          path: "/webhooks/incoming",
+          auth: "shared-secret-query-or-header",
+          secretEnv: "INCOMING_WEBHOOK_SECRET",
+          fallbackSecretEnv: "FALLBACK_INCOMING_SECRET",
+        },
+      ],
+    });
+
+    expect(collectWebhookEnv(config)).toEqual([
+      {
+        name: "INCOMING_WEBHOOK_SECRET",
+        required: true,
+        description: "Secret for Incoming webhook.",
+      },
+      {
+        name: "FALLBACK_INCOMING_SECRET",
+        description: "Fallback secret for Incoming webhook.",
+      },
+    ]);
+    expect(collectAppSurfaceEnv(config)).toEqual([
+      {
+        name: "APP_URL",
+        required: true,
+        description: "Public app URL used by Trellis webhooks, MCP, and sandbox callbacks.",
+      },
+      {
+        name: "TRELLIS_MCP_TOKEN",
+        description: "Optional bearer token for remote Trellis MCP access.",
+      },
+      {
+        name: "DASHBOARD_PASSWORD",
+        description: "Optional dashboard password. Falls back to TRELLIS_SANDBOX_TOKEN when unset.",
+      },
+    ]);
+    expect(collectConfigEnv(config)).toEqual([
+      {
+        name: "APP_URL",
+        required: true,
+        description: "Public app URL used by Trellis webhooks, MCP, and sandbox callbacks.",
+      },
+      {
+        name: "CUSTOM_MCP_REGION",
+      },
+      {
+        name: "CUSTOM_MCP_TOKEN",
+        required: true,
+      },
+      {
+        name: "DASHBOARD_PASSWORD",
+        description: "Optional dashboard password. Falls back to TRELLIS_SANDBOX_TOKEN when unset.",
+      },
+      {
+        name: "FALLBACK_INCOMING_SECRET",
+        description: "Fallback secret for Incoming webhook.",
+      },
+      {
+        name: "INCOMING_WEBHOOK_SECRET",
+        required: true,
+        description: "Secret for Incoming webhook.",
+      },
+      {
+        name: "TRELLIS_MCP_TOKEN",
+        description: "Optional bearer token for remote Trellis MCP access.",
       },
     ]);
   });

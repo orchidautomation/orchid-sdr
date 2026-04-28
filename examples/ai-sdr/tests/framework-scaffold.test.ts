@@ -135,11 +135,14 @@ describe("framework scaffold profiles", () => {
     expect(configModule).toContain('const selectedModuleIds =');
     expect(configModule).toContain('"compositionTargets": [');
     expect(configModule).toContain('"name": scaffoldName');
+    expect(configModule).toContain('"mcp": {');
     expect(configModule).not.toContain('./src/framework/index.js');
     expect(envExample).toContain("CONVEX_URL=https://your-deployment.convex.cloud");
     expect(envExample).toContain("FIRECRAWL_API_KEY=");
     expect(envExample).toContain("PARALLEL_API_KEY=");
     expect(envExample).toContain("TRELLIS_SANDBOX_TOKEN=change-me");
+    expect(envExample).toContain("TRELLIS_MCP_TOKEN=");
+    expect(envExample).toContain("DASHBOARD_PASSWORD=");
     expect(setupChecklist).toContain("# Trellis Setup Checklist");
     expect(setupChecklist).toContain(spec.selection.description);
     expect(setupChecklist).toContain("External Accounts You Actually Need");

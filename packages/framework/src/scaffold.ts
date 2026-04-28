@@ -285,6 +285,7 @@ export function renderScaffoldConfigModule(spec: AiSdrScaffoldSpec) {
     modules: "modules",
     providers: "providersFromModules(modules)",
     capabilityBindings: spec.config.capabilityBindings,
+    mcp: spec.config.mcp,
     packageBoundaries: spec.config.packageBoundaries,
     campaigns: spec.config.campaigns,
     webhooks: spec.config.webhooks,

@@ -277,19 +277,14 @@ export function defineAiSdr(config: AiSdrConfig): AiSdrConfig {
 export function collectConfigEnv(config: AiSdrConfig): AiSdrEnvVar[] {
   const seen = new Map<string, AiSdrEnvVar>();
 
-  for (const envVar of [...(config.requiredEnv ?? []), ...collectModuleEnv(config), ...collectProviderEnv(config)]) {
-    const existing = seen.get(envVar.name);
-    if (!existing) {
-      seen.set(envVar.name, envVar);
-      continue;
-    }
-
-    seen.set(envVar.name, {
-      ...existing,
-      ...envVar,
-      required: Boolean(existing.required || envVar.required),
-      description: existing.description ?? envVar.description,
-    });
+  for (const envVar of [
+    ...(config.requiredEnv ?? []),
+    ...collectModuleEnv(config),
+    ...collectProviderEnv(config),
+    ...collectWebhookEnv(config),
+    ...collectAppSurfaceEnv(config),
+  ]) {
+    mergeEnvVar(seen, envVar);
   }
 
   return [...seen.values()].sort((left, right) => left.name.localeCompare(right.name));
@@ -303,7 +298,83 @@ export function collectModuleEnv(config: AiSdrConfig): AiSdrEnvVar[] {
   return (config.modules ?? []).flatMap((module) => [
     ...(module.requiredEnv ?? []),
     ...(module.providers ?? []).flatMap((provider) => provider.env ?? []),
+    ...(module.mcpServers ?? []).flatMap((server) => [
+      ...(server.requiredEnv ?? []),
+      ...(server.optionalEnv ?? []),
+    ]),
   ]);
+}
+
+export function collectWebhookEnv(config: AiSdrConfig): AiSdrEnvVar[] {
+  return collectWebhookDefinitions(config).flatMap((webhook) => {
+    const envVars: AiSdrEnvVar[] = [];
+
+    if (webhook.secretEnv) {
+      envVars.push({
+        name: webhook.secretEnv,
+        required: true,
+        description: `Secret for ${webhook.displayName}.`,
+      });
+    }
+
+    if (webhook.fallbackSecretEnv) {
+      envVars.push({
+        name: webhook.fallbackSecretEnv,
+        description: `Fallback secret for ${webhook.displayName}.`,
+      });
+    }
+
+    return envVars;
+  });
+}
+
+export function collectAppSurfaceEnv(config: AiSdrConfig): AiSdrEnvVar[] {
+  const envVars: AiSdrEnvVar[] = [];
+  const hasWebhooks = collectWebhookDefinitions(config).length > 0;
+  const hasMcpExposure = Boolean(
+    config.mcp
+    && (
+      (config.mcp.toolGroups?.length ?? 0) > 0
+      || (config.mcp.includeTools?.length ?? 0) > 0
+      || (config.mcp.excludeTools?.length ?? 0) > 0
+    ),
+  );
+
+  if (hasWebhooks || hasMcpExposure) {
+    envVars.push({
+      name: "APP_URL",
+      required: true,
+      description: "Public app URL used by Trellis webhooks, MCP, and sandbox callbacks.",
+    });
+  }
+
+  if (hasMcpExposure) {
+    envVars.push({
+      name: "TRELLIS_MCP_TOKEN",
+      description: "Optional bearer token for remote Trellis MCP access.",
+    });
+    envVars.push({
+      name: "DASHBOARD_PASSWORD",
+      description: "Optional dashboard password. Falls back to TRELLIS_SANDBOX_TOKEN when unset.",
+    });
+  }
+
+  return envVars;
+}
+
+function mergeEnvVar(seen: Map<string, AiSdrEnvVar>, envVar: AiSdrEnvVar) {
+  const existing = seen.get(envVar.name);
+  if (!existing) {
+    seen.set(envVar.name, envVar);
+    return;
+  }
+
+  seen.set(envVar.name, {
+    ...existing,
+    ...envVar,
+    required: Boolean(existing.required || envVar.required),
+    description: existing.description ?? envVar.description,
+  });
 }
 
 export function collectModuleDocs(config: AiSdrConfig): AiSdrModuleDoc[] {
