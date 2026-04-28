@@ -24,7 +24,7 @@ Choose lanes directly with flags:
 npm run ai-sdr -- init ../trellis-core-plus --name trellis-core-plus --with-discovery --with-deep-research
 ```
 
-The CLI no longer owns a guided wizard. The intended guided onboarding surface is a Trellis plugin built on Pluxx.
+The CLI no longer owns a guided wizard. The intended guided onboarding surface is the Trellis plugin in [`plugins/trellis/`](../plugins/trellis/), built on Pluxx.
 When an agent or plugin is driving setup, use the JSON contract:
 
 ```bash
@@ -49,7 +49,7 @@ At minimum:
 
 - `APP_URL`
 - `CONVEX_URL`
-- `ORCHID_SDR_SANDBOX_TOKEN`
+- `TRELLIS_SANDBOX_TOKEN`
 - `HANDOFF_WEBHOOK_SECRET`
 - `NO_SENDS_MODE=true`
 
@@ -89,7 +89,7 @@ If you are only verifying local boot and do not have Convex ready yet, use boot-
 
 ```bash
 export TRELLIS_LOCAL_SMOKE_MODE=true
-export ORCHID_SDR_SANDBOX_TOKEN=local-sandbox-token
+export TRELLIS_SANDBOX_TOKEN=local-sandbox-token
 export HANDOFF_WEBHOOK_SECRET=local-handoff-secret
 npm run doctor
 npm run dev
@@ -113,13 +113,13 @@ npm run ai-sdr -- mcp claude-code --local --write
 
 - dashboard login:
   - uses `DASHBOARD_PASSWORD`
-  - if unset, falls back to `ORCHID_SDR_SANDBOX_TOKEN`
+  - if unset, falls back to `TRELLIS_SANDBOX_TOKEN`
 - remote MCP:
-  - endpoint: `${APP_URL}/mcp/orchid-sdr`
-  - bearer token: `ORCHID_SDR_MCP_TOKEN`
-  - fallback token: `ORCHID_SDR_SANDBOX_TOKEN`
+  - endpoint: `${APP_URL}/mcp/trellis`
+  - bearer token: `TRELLIS_MCP_TOKEN`
+  - fallback token: `TRELLIS_SANDBOX_TOKEN`
 - local MCP URL:
-  - `http://localhost:3000/mcp/orchid-sdr`
+  - `http://localhost:3000/mcp/trellis`
 - deployed app origin:
   - `APP_URL`
   - on Vercel, if `APP_URL` is unset, the app falls back to `https://$VERCEL_URL`

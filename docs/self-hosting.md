@@ -1,6 +1,6 @@
-# Self-Hosting Orchid SDR
+# Self-Hosting Trellis
 
-This guide is for a company that wants to clone the repo and run its own Orchid SDR control plane.
+This guide is for a company that wants to clone the repo and run its own Trellis control plane.
 
 It assumes one deployment owns one product knowledge pack. Multiple campaigns can run inside one deployment, but if the underlying product or ICP is different, use a separate deployment or fork until product-specific knowledge is first-class.
 
@@ -24,8 +24,8 @@ Required:
 - Node.js 22 or Docker
 - Convex deployment details
 - a public HTTPS URL for production
-- a long random `ORCHID_SDR_SANDBOX_TOKEN`
-- a long random `ORCHID_SDR_MCP_TOKEN`
+- a long random `TRELLIS_SANDBOX_TOKEN`
+- a long random `TRELLIS_MCP_TOKEN`
 - a long random `HANDOFF_WEBHOOK_SECRET`
 
 Usually required for the full agent lane:
@@ -48,8 +48,8 @@ Optional:
 ## 1. Clone And Configure
 
 ```bash
-git clone <repo-url> orchid-sdr
-cd orchid-sdr
+git clone <repo-url> trellis
+cd trellis
 cp .env.example .env
 ```
 
@@ -65,8 +65,8 @@ NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
 NO_SENDS_MODE=true
 DEFAULT_CAMPAIGN_TIMEZONE=America/New_York
 
-ORCHID_SDR_SANDBOX_TOKEN=<long-random-secret>
-ORCHID_SDR_MCP_TOKEN=<long-random-secret>
+TRELLIS_SANDBOX_TOKEN=<long-random-secret>
+TRELLIS_MCP_TOKEN=<long-random-secret>
 HANDOFF_WEBHOOK_SECRET=<long-random-secret>
 DASHBOARD_PASSWORD=<long-random-password>
 ```
@@ -118,7 +118,7 @@ curl -fsS http://localhost:3000/healthz
 Expected response:
 
 ```json
-{"ok":true,"service":"orchid-sdr"}
+{"ok":true,"service":"trellis"}
 ```
 
 Open:
@@ -157,11 +157,11 @@ Add this to the MCP client that should operate the deployment:
 ```json
 {
   "mcpServers": {
-    "orchid-sdr": {
+    "trellis": {
       "type": "http",
-      "url": "https://sdr.example.com/mcp/orchid-sdr",
+      "url": "https://sdr.example.com/mcp/trellis",
       "headers": {
-        "Authorization": "Bearer ${ORCHID_SDR_MCP_TOKEN}"
+        "Authorization": "Bearer ${TRELLIS_MCP_TOKEN}"
       }
     }
   }

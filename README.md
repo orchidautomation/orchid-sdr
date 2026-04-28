@@ -1,271 +1,94 @@
-# Orchid SDR
+# Trellis
 
-`orchid-sdr` is an agent-native outbound control plane.
+Trellis is a composable agentic GTM framework.
 
-It wakes up on a schedule, finds leads from public signals, researches the person and company, qualifies them against `knowledge/icp.md`, writes operational state to Convex, and can optionally draft, send, and track outreach.
+This repo now has two distinct layers:
 
-## What It Does
+- `packages/`
+  - framework, provider modules, CLI, and MCP packaging
+- `examples/ai-sdr/`
+  - the reference AI SDR app built on top of Trellis
+- `plugins/trellis/`
+  - the Trellis Pluxx onboarding plugin, kept separate from the reference app
 
-- runs hourly weekday discovery with Rivet actors
-- ingests signals from Apify or any normalized webhook source
-- researches the source post, person, company, and company news
-- qualifies leads against the repo knowledge pack
-- writes the full audit trail to Convex
-- exposes the system through a dashboard and a remote MCP server
-- enforces quiet hours in the campaign's local IANA timezone
-- can auto-sync outbound accounts into Attio and promote CRM stages on replies
-- can optionally send and reply through AgentMail
-
-## Data Flow
+## Repo Shape
 
 ```text
-                           +----------------------+
-                           |  knowledge/icp.md    |
-                           |  product.md / usp.md |
-                           |  repo skills/        |
-                           +----------+-----------+
-                                      |
-                                      v
-                    +--------------------------------------+
-                    |  discoveryCoordinator (Rivet actor)  |
-                    |  wakes on a schedule                 |
-                    +----------------+---------------------+
-                                     |
-                                     | picks search terms
-                                     v
-                           +----------------------+
-                           |  Apify or other      |
-                           |  source systems      |
-                           +----------+-----------+
-                                      |
-                                      | webhook payload
-                                      v
-                +------------------------------------------------+
-                | /webhooks/apify or /webhooks/signals           |
-                +----------------------+-------------------------+
-                                       |
-                                       v
-                         +----------------------------+
-                         | sourceIngest (Rivet actor) |
-                         | normalize + persist signal |
-                         +-------------+--------------+
-                                       |
-                                       v
-                         +-----------------------------+
-                         | prospectThread (Rivet actor)|
-                         | one workflow per prospect   |
-                         +-------------+---------------+
-                                       |
-                                       | research
-                                       v
-                     +-------------------------------------------+
-                     | Firecrawl + sandbox-agent on Vercel      |
-                     | post + profile + company + news          |
-                     +------------------+------------------------+
-                                        |
-                                        | qualification + drafting
-                                        v
-                           +-----------------------------+
-                           | Convex state plane         |
-                           | signals / prospects /      |
-                           | threads / briefs / messages|
-                           +------+----------------------+
-                                  |
-                +-----------------+------------------+
-                |                                    |
-                v                                    v
-        +---------------+                    +------------------+
-        | Dashboard     |                    | MCP server       |
-        | /dashboard    |                    | /mcp/orchid-sdr  |
-        +---------------+                    +------------------+
-                                  |
-                                  | optional
-                                  v
-                        +-----------------------+
-                        | AgentMail / Attio     |
-                        | send, replies, CRM    |
-                        +-----------------------+
+packages/           framework + modules + CLI
+examples/ai-sdr/    reference GTM agent app
+plugins/trellis/    Trellis onboarding plugin for Claude/Cursor/Codex/OpenCode
+docs/               framework and platform docs
+gtm/                positioning and launch docs
 ```
 
-## Core Surfaces
+## What Lives In `examples/ai-sdr`
 
-- `GET /dashboard`
-  Operator console for pipeline state, actor health, sandbox jobs, provider runs, and qualified leads.
-- `POST|GET|DELETE /mcp/orchid-sdr`
-  Remote MCP server for querying and controlling the system from a local agent.
-- `POST /webhooks/apify`
-  Discovery ingest for Apify run completions.
-- `POST /webhooks/signals`
-  Generic ingest for normalized signals from any source.
-- `POST /webhooks/agentmail`
-  Inbound email wake-up path.
-- `GET /healthz`
-  Liveness check.
+The reference app includes:
 
-## Quick Start
+- `ai-sdr.config.ts`
+- `src/`
+- `scripts/`
+- `tests/`
+- `convex/`
+- `knowledge/`
+- app-level `skills/`
 
-If you want a new working reference app scaffold from this repo:
+That app is the current example of how to compose:
 
-```bash
-npm run ai-sdr -- init ../trellis-core --name trellis-core
-```
+- state
+- discovery
+- research
+- enrichment
+- outbound
+- CRM sync
+- handoff
+- MCP control
 
-That now gives you the base Trellis runtime by default.
+## Common Commands
 
-Then add providers and sources incrementally:
-
-```bash
-npm run ai-sdr -- add source apify --apply
-npm run ai-sdr -- add deep-research parallel --apply
-npm run ai-sdr -- add enrichment prospeo --apply
-```
-
-The generated project includes:
-
-- `TRELLIS_SETUP.md` with the exact first-boot checklist for that scaffold
-- `packages/` with the extracted local `@ai-sdr/*` workspace packages
-- a workspace-backed `package.json` so the generated app installs and runs as its own local Trellis workspace
-
-The CLI is now explicit by default. Choose lanes with flags:
-
-```bash
-npm run ai-sdr -- init ../trellis-custom --name trellis-custom --with-discovery --with-deep-research --with-enrichment
-```
-
-The guided onboarding experience should live in a Trellis plugin built on Pluxx, not inside the CLI itself.
-
-When a plugin or coding agent is driving setup, prefer the machine-readable contract:
-
-```bash
-npm run ai-sdr -- init ../trellis-core --name trellis-core --json
-npm run doctor -- --json
-npm run ai-sdr -- connect source apify --json
-npm run ai-sdr -- deploy local --json
-npm run ai-sdr -- mcp claude-code --local --write --json
-```
-
-For the current repo itself:
-
-1. Install dependencies.
-
-```bash
-npm install
-```
-
-2. Copy env values into `.env`.
-
-At minimum you usually want:
-
-- `CONVEX_URL`
-- `HANDOFF_WEBHOOK_SECRET`
-- `ORCHID_SDR_SANDBOX_TOKEN`
-- `NO_SENDS_MODE=true`
-
-3. Start the app.
+Run these from the repo root:
 
 ```bash
 npm run dev
+npm run doctor
+npm run typecheck
+npm test
+npm run ai-sdr -- modules --json
+npm run ai-sdr -- check --json
 ```
 
-4. Open the operator console.
-
-```text
-http://localhost:3000/dashboard
-```
-
-If you want the full runtime, add provider keys such as Convex, Apify, Parallel, Firecrawl, Vercel AI Gateway, AgentMail, and Attio. Neon remains available only as an optional SQL compatibility module, not part of the default boot path. When Attio is configured, the first outbound can auto-create or update the company and contact, and classified replies can automatically promote the Attio stage.
-
-The shortest honest vendor path to see value is:
-
-- base runtime
-  - `Convex`
-  - `Vercel` for Sandbox and AI Gateway
-  - `Firecrawl`
-  - `Rivet`
-- then add lanes
-  - `Apify` for discovery
-  - `Parallel` for deep research
-  - `Prospeo` for enrichment
-  - `AgentMail` for outbound
-  - `Attio` for CRM sync
-  - `Slack` for handoff
-
-The current auth model is token/password based, not Vercel OAuth:
-
-- dashboard login uses `DASHBOARD_PASSWORD`, or falls back to `ORCHID_SDR_SANDBOX_TOKEN`
-- remote MCP uses bearer token `ORCHID_SDR_MCP_TOKEN`, or falls back to `ORCHID_SDR_SANDBOX_TOKEN`
-- deployed MCP URL is `${APP_URL}/mcp/orchid-sdr`
-- if `APP_URL` is unset on Vercel, the app falls back to `https://$VERCEL_URL`
-
-For Claude Code local setup:
+## Scaffold A New App
 
 ```bash
-npm run ai-sdr -- mcp claude-code --local --write
+npm run ai-sdr -- init ../my-trellis-agent --name my-trellis-agent --json
 ```
 
-Campaign quiet hours are evaluated in the campaign's local timezone. New campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE` and you can update a live campaign later through the remote MCP tool `control.setCampaignTimezone`.
+For the current reference AI SDR shape:
 
-Parallel Search MCP is mounted into sandbox turns by default using `https://search.parallel.ai/mcp`. If you set `PARALLEL_API_KEY`, the sandbox adds bearer auth and also mounts Parallel Task MCP at `https://task-mcp.parallel.ai/mcp` for async deep research and enrichment.
+```bash
+npm run ai-sdr -- init ../my-ai-sdr \
+  --name my-ai-sdr \
+  --with-discovery \
+  --with-deep-research \
+  --with-enrichment \
+  --with-crm \
+  --with-email \
+  --with-handoff \
+  --json
+```
 
-By default, discovery runs once per hour on weekdays only, and LinkedIn discovery will fetch up to 50 posts per run.
+## Onboarding Direction
 
-## Multiple Campaigns
+The CLI is the machine contract.
 
-One deployment can run multiple campaigns.
+The guided user experience should come from the Trellis Pluxx plugin, not from an interactive terminal wizard.
 
-That is the right model when you want multiple outbound agents for the same product, for example:
+Plugin source:
 
-- different ICP slices
-- different discovery sources
-- different sender identities
-- different outreach strategies
-- different timezones and quiet-hour windows
+- [plugins/trellis/README.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/plugins/trellis/README.md)
 
-In that setup, keep one deployed control plane and create multiple campaigns inside it.
+## Reference App
 
-Separate deploys are safer when the underlying product or knowledge pack is different, because the current `knowledge/` files and tracked `skills/` are still repo-global rather than campaign-scoped.
+Start here:
 
-## Repo Layout
-
-- `src/`
-  API, actors, orchestration, adapters, MCP server, and dashboard.
-- `ai-sdr.config.ts`
-  Early typed framework config describing the current deployment as composable knowledge, skills, providers, and campaigns.
-- `knowledge/`
-  Product context that feeds qualification, research, and drafting.
-- `skills/`
-  Sandbox skill instructions for qualification, research, copy, reply policy, and handoff policy.
-- `docs/reference.md`
-  Full setup, env, MCP, skill, knowledge-pack, Attio, and webhook details.
-- `docs/framework-primitives.md`
-  Emerging modular primitives for GTM engineers building custom AI SDRs with coding agents.
-- `docs/crm-normalization.md`
-  Normalized CRM contracts for Salesforce, HubSpot, Twenty, Attio, and Nango-backed adapters.
-- `docs/self-hosting.md`
-  Clone-and-deploy guide for running Orchid SDR on a customer's own server.
-- `docs/email-providers.md`
-  Email provider guidance for agent-native outbound and why AgentMail is the default fit.
-- `blog/`
-  Long-form posts on the architecture, product thesis, and category.
-- `docs/blog/`
-  Blog and launch writing.
-- `future-ideas/`
-  Longer-horizon product and architecture ideas that are not part of the immediate production checklist.
-
-## Read Next
-
-- [New User Guide](docs/new-user-guide.md)
-- [Reference](docs/reference.md)
-- [Getting Started](docs/getting-started.md)
-- [Framework Primitives](docs/framework-primitives.md)
-- [CRM Normalization](docs/crm-normalization.md)
-- [Self-Hosting](docs/self-hosting.md)
-- [Email Providers](docs/email-providers.md)
-- [Blog Series](blog/README.md)
-- [Future Ideas](future-ideas/README.md)
-- [The AI SDR Market Is Broken](docs/blog/the-ai-sdr-market-is-broken.md)
-- [LinkedIn Post Draft](docs/blog/linkedin-post-built-an-ai-sdr-in-eight-hours.md)
-
-## License
-
-AGPL-3.0-only. See [LICENSE](LICENSE).
+- [examples/ai-sdr/README.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/examples/ai-sdr/README.md)

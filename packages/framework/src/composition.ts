@@ -53,7 +53,7 @@ export const aiSdrCompositionProfiles = {
   productionParity: {
     id: "productionParity",
     displayName: "Current production parity",
-    description: "Stack shape needed to recreate the current Orchid SDR behavior from modules.",
+    description: "Stack shape needed to recreate the current Trellis behavior from modules.",
     requiredCapabilities: [
       "state",
       "source",

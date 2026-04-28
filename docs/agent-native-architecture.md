@@ -76,7 +76,7 @@ It gives the framework one provider surface for structured model calls and sandb
 
 MCP should describe what agents can do.
 
-Provider modules can mount external MCP servers such as Parallel and Firecrawl, while the first-party `orchid-sdr` MCP exposes internal tools for pipeline state, lead inspection, mail preview/send, CRM sync, runtime flags, and handoff.
+Provider modules can mount external MCP servers such as Parallel and Firecrawl, while the first-party `trellis` MCP exposes internal tools for pipeline state, lead inspection, mail preview/send, CRM sync, runtime flags, and handoff.
 
 Provider MCP tools are indexed in [MCP Capability Index](mcp-capability-index.md).
 
@@ -149,7 +149,7 @@ ai-sdr add extract firecrawl
 ai-sdr add email agentmail
 ai-sdr add crm attio
 ai-sdr add handoff slack
-ai-sdr add mcp orchid-mcp
+ai-sdr add mcp trellis-mcp
 ```
 
 Rivet and Vercel Sandbox are both `runtime` providers, but they satisfy different contracts:

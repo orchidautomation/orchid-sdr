@@ -223,16 +223,16 @@ export function vercelSandboxProvider(): AiSdrProviderDefinition {
   });
 }
 
-export function orchidMcpProvider(): AiSdrProviderDefinition {
+export function trellisMcpProvider(): AiSdrProviderDefinition {
   return provider({
-    id: "orchid-mcp",
+    id: "trellis-mcp",
     kind: "mcp",
-    displayName: "Orchid first-party MCP",
+    displayName: "Trellis first-party MCP",
     packageName: "@ai-sdr/mcp",
     env: [
-      { name: "ORCHID_SDR_MCP_TOKEN", description: "Bearer token for remote MCP access." },
+      { name: "TRELLIS_MCP_TOKEN", description: "Bearer token for remote MCP access." },
       {
-        name: "ORCHID_SDR_SANDBOX_TOKEN",
+        name: "TRELLIS_SANDBOX_TOKEN",
         required: true,
         description: "Fallback MCP token and sandbox callback token.",
       },

@@ -1,14 +1,14 @@
-# Email Providers for Orchid SDR
+# Email Providers for Trellis
 
 This page is about one narrow question:
 
-Which email provider is the best fit for Orchid SDR?
+Which email provider is the best fit for Trellis?
 
 Short answer:
 
-- `AgentMail` is the best default fit for Orchid SDR's current architecture.
+- `AgentMail` is the best default fit for Trellis's current architecture.
 
-That is not the same as saying it is universally the best email provider. It means it is the best match for the way Orchid SDR already works:
+That is not the same as saying it is universally the best email provider. It means it is the best match for the way Trellis already works:
 
 - campaign-scoped sender identities
 - inbox provisioning
@@ -18,7 +18,7 @@ That is not the same as saying it is universally the best email provider. It mea
 
 ## Recommendation
 
-If you want Orchid SDR to run as an agent-native outbound system, use:
+If you want Trellis to run as an agent-native outbound system, use:
 
 1. `AgentMail`
 2. `MailSlurp`
@@ -36,9 +36,9 @@ If you want the agent to act inside a real user's mailbox, use:
 
 ## Why AgentMail Fits Best
 
-AgentMail maps most closely to Orchid SDR's mental model.
+AgentMail maps most closely to Trellis's mental model.
 
-What Orchid SDR wants from email:
+What Trellis wants from email:
 
 - create or pin a sender identity per campaign
 - keep one inbox identity per thread
@@ -60,7 +60,7 @@ That makes it a strong fit for agent-native SDR workflows rather than just gener
 
 ## Comparison Matrix
 
-| Provider | Best for | Fit for Orchid SDR | Why |
+| Provider | Best for | Fit for Trellis | Why |
 |---|---|---|---|
 | `AgentMail` | Agent-owned inboxes and replies | Best fit | Inbox primitives, replies, threads, webhooks, custom domains, and warm-up guidance align with the current workflow model |
 | `MailSlurp` | Programmable inbox infrastructure | Good fit | Real inbox objects, send and receive, webhooks, custom domains, plus-addressing |
@@ -114,7 +114,7 @@ It is still useful if your workflow is:
 - fetch full body later
 - thread replies using message headers
 
-That is workable, but it is not as natural a fit as AgentMail for Orchid SDR.
+That is workable, but it is not as natural a fit as AgentMail for Trellis.
 
 ## Practical Rule of Thumb
 
@@ -143,7 +143,7 @@ Use `Nylas` when:
 
 ## Final Recommendation
 
-For Orchid SDR as it exists today:
+For Trellis as it exists today:
 
 - `AgentMail` is the best default choice.
 

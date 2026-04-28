@@ -1,12 +1,12 @@
-# Orchid SDR Blog Series
+# Trellis Blog Series
 
-This directory contains long-form posts about why Orchid SDR exists, how it is built, and what it says about the future of outbound software.
+This directory contains long-form posts about why Trellis exists, how it is built, and what it says about the future of outbound software.
 
 ## Posts
 
-- [Why I Built Orchid SDR](01-why-i-built-orchid-sdr.md)
+- [Why I Built Trellis](01-why-i-built-trellis.md)
 - [The AI SDR Industry Is Broken](02-the-ai-sdr-industry-is-broken.md)
-- [The Stack Behind Orchid SDR](03-the-stack-behind-orchid-sdr.md)
+- [The Stack Behind Trellis](03-the-stack-behind-trellis.md)
 - [Why Composability Beats Monolithic AI SDRs](04-why-composability-beats-monolithic-ai-sdrs.md)
 - [Why the Claude Code Harness Matters](05-why-the-claude-code-harness-matters.md)
 - [Why Signal Normalization Matters](06-why-signal-normalization-matters.md)

@@ -1,10 +1,10 @@
 # CRM Normalization
 
-This page describes the CRM abstraction Orchid needs before Salesforce, HubSpot, Twenty, Attio, and Nango-backed integrations can all work cleanly.
+This page describes the CRM abstraction Trellis needs before Salesforce, HubSpot, Twenty, Attio, and Nango-backed integrations can all work cleanly.
 
 ## Principle
 
-Orchid should own the GTM data model. CRM vendors should be adapters.
+Trellis should own the GTM data model. CRM vendors should be adapters.
 
 That means the framework needs normalized objects for:
 
@@ -54,7 +54,7 @@ Common Salesforce shapes:
 - `Task`
 - custom objects
 
-Orchid should not force every CRM into Salesforce terms. Instead:
+Trellis should not force every CRM into Salesforce terms. Instead:
 
 - normalized `company` can map to Salesforce `Account`
 - normalized `contact` can map to Salesforce `Contact` or `Lead`
@@ -66,7 +66,7 @@ That lets a Salesforce adapter support serious enterprise schemas without making
 
 ## Where Nango Fits
 
-Nango is a good fit as an integration runtime, not as the Orchid data model.
+Nango is a good fit as an integration runtime, not as the Trellis data model.
 
 Nango can handle:
 
@@ -78,7 +78,7 @@ Nango can handle:
 - observability for integration calls
 - large vendor coverage
 
-Orchid should still define:
+Trellis should still define:
 
 - the normalized CRM schemas
 - the SDR workflow semantics
@@ -90,7 +90,7 @@ Orchid should still define:
 In other words:
 
 ```text
-Orchid normalized CRM contract
+Trellis normalized CRM contract
         |
         v
 Native adapter or Nango-backed adapter
@@ -113,7 +113,7 @@ interface ProspectCrmProvider {
 
 Native adapters can call vendor APIs directly.
 
-Nango-backed adapters can use Nango for auth, proxy calls, and sync/action execution while still mapping data to Orchid's normalized request/result schemas.
+Nango-backed adapters can use Nango for auth, proxy calls, and sync/action execution while still mapping data to Trellis's normalized request/result schemas.
 
 ## Future Modules
 

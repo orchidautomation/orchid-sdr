@@ -7,7 +7,7 @@ import {
   firecrawlProvider,
   neonProvider,
   normalizedWebhookProvider,
-  orchidMcpProvider,
+  trellisMcpProvider,
   parallelProvider,
   prospeoProvider,
   rivetProvider,
@@ -483,16 +483,16 @@ export function vercelSandboxModule(): AiSdrModuleDefinition {
   });
 }
 
-export function orchidMcpModule(): AiSdrModuleDefinition {
+export function trellisMcpModule(): AiSdrModuleDefinition {
   return module({
-    id: "orchid-mcp",
+    id: "trellis-mcp",
     displayName: "First-party MCP",
     packageName: "@ai-sdr/mcp",
     description: "Expose pipeline, lead, runtime, mail, CRM, and handoff tools through MCP.",
-    providerKey: "orchid-mcp",
+    providerKey: "trellis-mcp",
     capabilityIds: ["mcp"],
     contracts: ["mcp.tools.v1"],
-    providers: [orchidMcpProvider()],
+    providers: [trellisMcpProvider()],
     docs: [
       {
         label: "MCP reference",
@@ -527,7 +527,7 @@ export function slackHandoffModule(): AiSdrModuleDefinition {
   });
 }
 
-export function defaultOrchidModules(): AiSdrModuleDefinition[] {
+export function defaultTrellisModules(): AiSdrModuleDefinition[] {
   return [
     normalizedWebhookModule(),
     apifyLinkedInModule(),
@@ -539,7 +539,7 @@ export function defaultOrchidModules(): AiSdrModuleDefinition[] {
     vercelAiGatewayModule(),
     rivetModule(),
     vercelSandboxModule(),
-    orchidMcpModule(),
+    trellisMcpModule(),
     agentMailModule(),
     attioModule(),
     slackHandoffModule(),

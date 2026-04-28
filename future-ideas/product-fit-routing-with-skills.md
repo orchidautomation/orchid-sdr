@@ -2,11 +2,11 @@
 
 ## Status
 
-Future idea. Not committed to the current Orchid SDR production path yet.
+Future idea. Not committed to the current Trellis production path yet.
 
 ## Short Version
 
-Orchid SDR could become more useful for multi-product companies by adding a product-fit routing layer before qualification and outreach.
+Trellis could become more useful for multi-product companies by adding a product-fit routing layer before qualification and outreach.
 
 Instead of assuming every inbound or discovered lead should be evaluated against one ICP, the system would first determine what the company appears to sell, what the person likely owns, what pain or buying signal is visible, and which product or offer is the best fit.
 
@@ -24,7 +24,7 @@ The form only gives partial context:
 - optional message
 - source campaign or landing page
 
-Orchid SDR enriches the lead, researches the person and company, then asks:
+Trellis enriches the lead, researches the person and company, then asks:
 
 - What does this company likely sell?
 - What GTM motion do they appear to use?
@@ -89,7 +89,7 @@ Example product-fit output:
   ],
   "disqualifiedProducts": [
     {
-      "product": "orchid-sdr",
+      "product": "trellis",
       "reason": "no evidence they want autonomous outbound"
     }
   ],
@@ -135,7 +135,7 @@ The catalog gives the agent facts. Skills teach judgment.
 
 ## Why This Matters
 
-This would let Orchid SDR handle more realistic inbound and outbound situations:
+This would let Trellis handle more realistic inbound and outbound situations:
 
 - one company selling multiple products
 - agencies with multiple service lines

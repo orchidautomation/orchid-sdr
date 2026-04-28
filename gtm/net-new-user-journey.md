@@ -282,7 +282,7 @@ Example:
 
 ```bash
 export TRELLIS_LOCAL_SMOKE_MODE=true
-export ORCHID_SDR_SANDBOX_TOKEN=local-sandbox-token
+export TRELLIS_SANDBOX_TOKEN=local-sandbox-token
 export HANDOFF_WEBHOOK_SECRET=local-handoff-secret
 export DASHBOARD_PASSWORD=dev
 export DISCOVERY_LINKEDIN_ENABLED=false
@@ -631,29 +631,29 @@ Every deployment exposes a first-party MCP endpoint.
 ### Local MCP
 
 ```text
-http://localhost:3000/mcp/orchid-sdr
+http://localhost:3000/mcp/trellis
 ```
 
 ### Deployed MCP
 
 ```text
-${APP_URL}/mcp/orchid-sdr
+${APP_URL}/mcp/trellis
 ```
 
 ### Auth
 
-- preferred token: `ORCHID_SDR_MCP_TOKEN`
-- fallback token: `ORCHID_SDR_SANDBOX_TOKEN`
+- preferred token: `TRELLIS_MCP_TOKEN`
+- fallback token: `TRELLIS_SANDBOX_TOKEN`
 
 ### Example MCP client config
 
 ```json
 {
   "mcpServers": {
-    "orchid-sdr": {
+    "trellis": {
       "transport": {
         "type": "http",
-        "url": "http://localhost:3000/mcp/orchid-sdr",
+        "url": "http://localhost:3000/mcp/trellis",
         "headers": {
           "Authorization": "Bearer dev-mcp-token"
         }
@@ -723,7 +723,7 @@ They need to understand:
 
 1. `APP_URL` becomes the public base URL
 2. webhooks point to `${APP_URL}/webhooks/...`
-3. MCP lives at `${APP_URL}/mcp/orchid-sdr`
+3. MCP lives at `${APP_URL}/mcp/trellis`
 4. if using remote Rivet orchestration on Vercel, `RIVET_ENDPOINT` is required
 5. if `APP_URL` is unset, the app can fall back to `https://$VERCEL_URL`, but explicit `APP_URL` is better
 
@@ -743,7 +743,7 @@ Once deployed, the same two surfaces matter:
 1. dashboard
    - `${APP_URL}/dashboard`
 2. MCP
-   - `${APP_URL}/mcp/orchid-sdr`
+   - `${APP_URL}/mcp/trellis`
 
 That means local and deployed mental models stay aligned, which is good product design.
 

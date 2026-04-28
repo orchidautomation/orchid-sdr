@@ -2,11 +2,11 @@
 
 ## Status
 
-Future direction. This is not the current production contract for Orchid SDR.
+Future direction. This is not the current production contract for Trellis.
 
 ## North Star
 
-Orchid SDR should evolve from one deployable AI SDR into the open-source framework for building custom AI SDRs.
+Trellis should evolve from one deployable AI SDR into the open-source framework for building custom AI SDRs.
 
 The thesis:
 
@@ -137,14 +137,14 @@ As of April 25, 2026, these npm package names returned `404 Not Found` from the 
 - `@ai-sdr/core`
 - `@aisdr/core`
 - `@aidsr/core`
-- `@orchid-sdr/core`
+- `@trellis/core`
 
 Best naming direction:
 
 - use `create-ai-sdr` for scaffolding
 - use `ai-sdr` as the CLI package and binary
 - use `@ai-sdr/*` for framework packages if the npm organization can be claimed
-- keep `orchid-sdr` as the reference implementation and original project identity
+- keep `trellis` as the reference implementation and original project identity
 
 Example package family:
 
@@ -464,7 +464,7 @@ Needed docs:
 
 ### Milestone 1: Reference App
 
-Goal: make current Orchid SDR easy to clone and deploy.
+Goal: make current Trellis easy to clone and deploy.
 
 Already mostly done:
 

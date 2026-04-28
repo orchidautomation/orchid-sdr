@@ -7,7 +7,7 @@ Current framing:
 - **Product:** `Trellis`
 - **Company / studio:** Orchid Labs
 - **Category:** Composable Agentic GTM
-- **Current reference app:** Orchid SDR
+- **Current reference app:** `examples/ai-sdr`
 
 This is no longer just an outbound checklist. It is the current map of:
 
@@ -19,7 +19,7 @@ This is no longer just an outbound checklist. It is the current map of:
 
 What is true right now:
 
-- the repo runs as a **single application package** named `orchid-sdr`
+- the repo runs as a **single application package** named `trellis`
 - the repo is now also an **npm workspace** with extracted local packages under `packages/`
 - the framework now has **typed capability bindings**, **module definitions**, **package boundaries**, and **composition profiles**
 - the default research taxonomy is now explicitly:
@@ -114,10 +114,7 @@ Important:
   - `productionParity`
 - [x] validate config references and unsupported bindings
 - [x] expose a prototype `npm run ai-sdr` CLI
-- [x] add a first-pass `npm run ai-sdr -- init` scaffold flow with:
-  - `core`
-  - `starter`
-  - `production` profiles
+- [x] add a first-pass `npm run ai-sdr -- init` scaffold flow
 
 ### Taxonomy / Provider Mapping
 
@@ -203,6 +200,7 @@ Important:
 - [x] keep `demo` as a backward-compatible alias to `core` while removing it from the public UX
 - [ ] add a stricter zero-vendor mock profile if we want a pure no-accounts demo later
 - [ ] build a Trellis onboarding plugin on top of Pluxx for all 4 host surfaces
+- [x] separate the Trellis plugin source from the reference app under `plugins/trellis/`
 - [ ] make the Pluxx plugin drive:
   - scaffold/init
   - env validation
@@ -269,7 +267,7 @@ Example target behavior:
 
 ## P1: Productization / Docs / Installability
 
-- [ ] update README to describe `Trellis` framing without breaking the current Orchid SDR reference app explanation
+- [ ] update README to describe `Trellis` framing without breaking the current Trellis reference app explanation
 - [ ] document the package taxonomy clearly
 - [ ] document the preset model clearly
 - [ ] create a first-class setup guide for:

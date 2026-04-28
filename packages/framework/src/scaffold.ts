@@ -43,7 +43,7 @@ export const aiSdrInitProfiles = {
       "rivet",
       "vercel-sandbox",
       "vercel-ai-gateway",
-      "orchid-mcp",
+      "trellis-mcp",
     ],
   },
   starter: {
@@ -62,13 +62,13 @@ export const aiSdrInitProfiles = {
       "rivet",
       "vercel-sandbox",
       "vercel-ai-gateway",
-      "orchid-mcp",
+      "trellis-mcp",
     ],
   },
   production: {
     id: "production",
     displayName: "Production parity AI SDR",
-    description: "Current Orchid SDR stack with outbound email, CRM sync, handoff, discovery, and the full research lane.",
+    description: "Current Trellis stack with outbound email, CRM sync, handoff, discovery, and the full research lane.",
     defaultDirectoryName: "trellis-production",
     compositionTargets: ["minimum", "productionParity"],
     moduleIds: [
@@ -84,7 +84,7 @@ export const aiSdrInitProfiles = {
       "rivet",
       "vercel-sandbox",
       "vercel-ai-gateway",
-      "orchid-mcp",
+      "trellis-mcp",
     ],
   },
 } as const satisfies Record<string, AiSdrInitProfile>;
@@ -298,13 +298,13 @@ export function renderScaffoldConfigModule(spec: AiSdrScaffoldSpec) {
     .replace('"providers": "providersFromModules(modules)"', '"providers": providersFromModules(modules)');
 
   return [
-    'import { defineAiSdr, defaultOrchidModules, providersFromModules } from "@ai-sdr/framework";',
+    'import { defineAiSdr, defaultTrellisModules, providersFromModules } from "@ai-sdr/framework";',
     "",
     `const scaffoldName = ${JSON.stringify(scaffoldName)};`,
     `const scaffoldDescription = ${JSON.stringify(scaffoldDescription)};`,
     `const selectedProfileId = ${JSON.stringify(selectedProfileId)};`,
     `const selectedModuleIds = ${JSON.stringify(selectedModuleIds, null, 2)};`,
-    "const modules = defaultOrchidModules().filter((module) => selectedModuleIds.includes(module.id));",
+    "const modules = defaultTrellisModules().filter((module) => selectedModuleIds.includes(module.id));",
     "",
     `export default defineAiSdr(${serialized});`,
     "",
@@ -321,8 +321,8 @@ export function renderScaffoldEnvExample(spec: AiSdrScaffoldSpec) {
     ["NEXT_PUBLIC_CONVEX_URL", "https://your-deployment.convex.cloud"],
     ["NO_SENDS_MODE", "true"],
     ["DEFAULT_CAMPAIGN_TIMEZONE", "UTC"],
-    ["ORCHID_SDR_SANDBOX_TOKEN", "change-me"],
-    ["ORCHID_SDR_MCP_TOKEN", ""],
+    ["TRELLIS_SANDBOX_TOKEN", "change-me"],
+    ["TRELLIS_MCP_TOKEN", ""],
     ["HANDOFF_WEBHOOK_SECRET", "change-me"],
   ]);
 
@@ -398,21 +398,21 @@ Vercel OAuth is **not** part of the default Trellis auth story right now. The cu
 - Dashboard login:
   - route: \`/dashboard\`
   - password source: \`DASHBOARD_PASSWORD\`
-  - fallback if unset: \`ORCHID_SDR_SANDBOX_TOKEN\`
+  - fallback if unset: \`TRELLIS_SANDBOX_TOKEN\`
 - Remote MCP auth:
-  - route: \`/mcp/orchid-sdr\`
-  - bearer token: \`ORCHID_SDR_MCP_TOKEN\`
-  - fallback if unset: \`ORCHID_SDR_SANDBOX_TOKEN\`
+  - route: \`/mcp/trellis\`
+  - bearer token: \`TRELLIS_MCP_TOKEN\`
+  - fallback if unset: \`TRELLIS_SANDBOX_TOKEN\`
 - Claude Code quick setup:
   - \`npm run ai-sdr -- mcp claude-code --local --write\`
 
 ## URL Derivation
 
 - Local operator surface: \`http://localhost:3000/dashboard\`
-- Local MCP endpoint: \`http://localhost:3000/mcp/orchid-sdr\`
+- Local MCP endpoint: \`http://localhost:3000/mcp/trellis\`
 - Deployed app origin: \`APP_URL\`
 - If \`APP_URL\` is unset on Vercel, the app falls back to \`https://$VERCEL_URL\`
-- Deployed MCP endpoint: \`\${APP_URL}/mcp/orchid-sdr\`
+- Deployed MCP endpoint: \`\${APP_URL}/mcp/trellis\`
 - Webhook endpoints: \`\${APP_URL}/webhooks/<provider>\`
 
 ## Configured Webhooks
@@ -457,7 +457,7 @@ npm run sandbox:probe
 ## Common Failure Modes
 
 - Missing \`CONVEX_URL\` or \`NEXT_PUBLIC_CONVEX_URL\`
-- Missing \`ORCHID_SDR_SANDBOX_TOKEN\`
+- Missing \`TRELLIS_SANDBOX_TOKEN\`
 - Missing \`HANDOFF_WEBHOOK_SECRET\`
 - Provider API keys present in config intent but absent in \`.env\`
 - Running discovery or probe before the dashboard and health check are healthy

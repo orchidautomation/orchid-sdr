@@ -1,6 +1,6 @@
-# Why I Built Orchid SDR
+# Why I Built Trellis
 
-I built Orchid SDR because the AI SDR market kept bothering me.
+I built Trellis because the AI SDR market kept bothering me.
 
 Not because the idea was bad.
 
@@ -60,7 +60,7 @@ That means:
 - a real database
 - and an operator surface that is not just a pretty dashboard
 
-That is why Orchid SDR ended up with actors, MCP tools, Postgres, sandboxed turns, and CRM sync.
+That is why Trellis ended up with actors, MCP tools, Postgres, sandboxed turns, and CRM sync.
 
 The architecture is the product.
 
@@ -92,7 +92,7 @@ without rewriting the entire system.
 
 That is how modern AI software should feel.
 
-So Orchid SDR started with one core idea:
+So Trellis started with one core idea:
 
 build the SDR as a control plane, not a feature.
 

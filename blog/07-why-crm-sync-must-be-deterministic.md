@@ -31,7 +31,7 @@ That means the write path needs real rules.
 
 ## What Deterministic Sync Looks Like
 
-In Orchid SDR, the CRM path is treated as a first-party tool, not a side effect of a prompt.
+In Trellis, the CRM path is treated as a first-party tool, not a side effect of a prompt.
 
 That means:
 

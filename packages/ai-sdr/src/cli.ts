@@ -6,12 +6,12 @@ import process from "node:process";
 
 import { createClient } from "rivetkit/client";
 
-import config from "../../../ai-sdr.config.js";
-import { registry } from "../../../src/registry.js";
+import config from "../../../examples/ai-sdr/ai-sdr.config.js";
+import { registry } from "../../../examples/ai-sdr/src/registry.js";
 import {
   aiSdrCompositionProfileIds,
   buildModuleInstallPlan,
-  defaultOrchidModules,
+  defaultTrellisModules,
   evaluateModuleComposition,
   findModuleForAddCommand,
   type AiSdrCompositionProfileId,
@@ -35,22 +35,25 @@ const arg = parsedCliArgs.positionals[0];
 const providerArg = parsedCliArgs.positionals[1];
 const cliFlags = parsedCliArgs.flags;
 const jsonOutput = isJsonOutput(cliFlags);
-const scriptRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const SCAFFOLD_COPY_ENTRIES = [
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const referenceAppRoot = path.resolve(repoRoot, "examples/ai-sdr");
+const SHARED_SCAFFOLD_COPY_ENTRIES = [
   ".dockerignore",
   ".gitignore",
   "Dockerfile",
   "docker-compose.example.yml",
-  "convex",
   "docs",
-  "knowledge",
   "packages",
+  "tsconfig.json",
+  "vercel.json",
+];
+const REFERENCE_APP_SCAFFOLD_COPY_ENTRIES = [
+  "convex",
+  "knowledge",
   "scripts",
   "skills",
   "src",
   "tests",
-  "tsconfig.json",
-  "vercel.json",
 ];
 
 await main();
@@ -137,6 +140,8 @@ Examples:
   npm run ai-sdr -- add state convex
   npm run ai-sdr -- add runtime rivet
   npm run ai-sdr -- add source apify
+  npm run ai-sdr -- modules --json
+  npm run ai-sdr -- check --json
   npm run ai-sdr -- discovery seed "https://www.linkedin.com/feed/update/urn:li:activity:123/"
   npm run ai-sdr -- discovery run "https://www.linkedin.com/feed/update/urn:li:activity:123/" --source linkedin_public_post
   npm run ai-sdr -- discovery tick --source linkedin_public_post
@@ -225,7 +230,23 @@ async function handleDiscoveryCommand(
 
 function listModules() {
   const installed = new Set((config.modules ?? []).map((module) => module.id));
-  for (const module of defaultOrchidModules()) {
+  if (jsonOutput) {
+    emitJson({
+      ok: true,
+      command: "modules",
+      modules: defaultTrellisModules().map((module) => ({
+        id: module.id,
+        displayName: module.displayName,
+        packageName: module.packageName ?? null,
+        providerKey: module.providerKey ?? null,
+        capabilityIds: module.capabilityIds ?? [],
+        contracts: module.contracts ?? [],
+        installed: installed.has(module.id),
+      })),
+    });
+    return;
+  }
+  for (const module of defaultTrellisModules()) {
     const status = installed.has(module.id) ? "installed" : "available";
     const pkg = module.packageName ? ` ${module.packageName}` : "";
     console.log(`${module.id}\t${status}\t${module.displayName}${pkg}`);
@@ -233,8 +254,26 @@ function listModules() {
 }
 
 function printCompositionCheck() {
-  for (const profile of resolveConfiguredCompositionProfiles()) {
-    const evaluation = evaluateModuleComposition(config.modules ?? [], { profile });
+  const evaluations = resolveConfiguredCompositionProfiles().map((profile) =>
+    evaluateModuleComposition(config.modules ?? [], { profile }),
+  );
+  if (jsonOutput) {
+    emitJson({
+      ok: evaluations.every((evaluation) => evaluation.ok),
+      command: "check",
+      profiles: evaluations.map((evaluation) => ({
+        profileId: evaluation.profile.id,
+        displayName: evaluation.profile.displayName,
+        ok: evaluation.ok,
+        missingCapabilities: evaluation.missingCapabilities,
+        missingContracts: evaluation.missingContracts,
+        providedCapabilities: evaluation.providedCapabilities,
+        providedContracts: evaluation.providedContracts,
+      })),
+    });
+    return;
+  }
+  for (const evaluation of evaluations) {
     console.log(`${evaluation.ok ? "ok" : "error"}: ${evaluation.profile.displayName}`);
     printList("  Missing capabilities", evaluation.missingCapabilities);
     printList("  Missing contracts", evaluation.missingContracts);
@@ -256,7 +295,7 @@ function printAddPlan(moduleId: string | undefined) {
     return;
   }
 
-  const module = findModuleForAddCommand(defaultOrchidModules(), {
+  const module = findModuleForAddCommand(defaultTrellisModules(), {
     capabilityOrModule: moduleId,
     provider: providerArg,
   });
@@ -285,7 +324,7 @@ function handleConnectCommand(moduleId: string | undefined) {
       "npm run ai-sdr -- connect crm attio",
       "npm run ai-sdr -- connect email agentmail",
       "npm run ai-sdr -- connect handoff slack",
-      "npm run ai-sdr -- connect mcp orchid-mcp",
+      "npm run ai-sdr -- connect mcp trellis-mcp",
     ];
     if (jsonOutput) {
       emitJson({
@@ -306,13 +345,13 @@ function handleConnectCommand(moduleId: string | undefined) {
   npm run ai-sdr -- connect crm attio
   npm run ai-sdr -- connect email agentmail
   npm run ai-sdr -- connect handoff slack
-  npm run ai-sdr -- connect mcp orchid-mcp
+  npm run ai-sdr -- connect mcp trellis-mcp
 
 Use --apply if you also want to add the module to a scaffolded workspace first.`);
     return;
   }
 
-  const module = findModuleForAddCommand(defaultOrchidModules(), {
+  const module = findModuleForAddCommand(defaultTrellisModules(), {
     capabilityOrModule: moduleId,
     provider: providerArg,
   });
@@ -365,7 +404,7 @@ function handleDeployCommand(target: string | undefined) {
           smokeMode: {
             env: {
               TRELLIS_LOCAL_SMOKE_MODE: "true",
-              ORCHID_SDR_SANDBOX_TOKEN: "local-sandbox-token",
+              TRELLIS_SANDBOX_TOKEN: "local-sandbox-token",
               HANDOFF_WEBHOOK_SECRET: "local-handoff-secret",
               DASHBOARD_PASSWORD: "dev",
               DISCOVERY_LINKEDIN_ENABLED: "false",
@@ -391,7 +430,7 @@ function handleDeployCommand(target: string | undefined) {
 Smoke-mode boot only:
 
   export TRELLIS_LOCAL_SMOKE_MODE=true
-  export ORCHID_SDR_SANDBOX_TOKEN=local-sandbox-token
+  export TRELLIS_SANDBOX_TOKEN=local-sandbox-token
   export HANDOFF_WEBHOOK_SECRET=local-handoff-secret
   export DASHBOARD_PASSWORD=dev
   export DISCOVERY_LINKEDIN_ENABLED=false
@@ -409,7 +448,7 @@ Then open http://localhost:3000/dashboard`);
           requiredEnv: [
             "APP_URL",
             "CONVEX_URL or NEXT_PUBLIC_CONVEX_URL",
-            "ORCHID_SDR_SANDBOX_TOKEN",
+            "TRELLIS_SANDBOX_TOKEN",
             "HANDOFF_WEBHOOK_SECRET",
             "Vercel sandbox / AI Gateway credentials",
             "RIVET_ENDPOINT when running on Vercel with remote Rivet",
@@ -419,7 +458,7 @@ Then open http://localhost:3000/dashboard`);
             "run npm run doctor until boot blockers are clear",
             "set hosted env vars in Vercel",
             "deploy",
-            "verify /healthz, /dashboard, and /mcp/orchid-sdr",
+            "verify /healthz, /dashboard, and /mcp/trellis",
             "only then wire discovery webhooks and live providers",
           ],
         });
@@ -430,7 +469,7 @@ Then open http://localhost:3000/dashboard`);
 Required before deploy:
   - APP_URL
   - CONVEX_URL or NEXT_PUBLIC_CONVEX_URL
-  - ORCHID_SDR_SANDBOX_TOKEN
+  - TRELLIS_SANDBOX_TOKEN
   - HANDOFF_WEBHOOK_SECRET
   - Vercel sandbox / AI Gateway credentials
   - RIVET_ENDPOINT when running on Vercel with remote Rivet
@@ -440,7 +479,7 @@ Recommended sequence:
   2. run npm run doctor until boot blockers are clear
   3. set hosted env vars in Vercel
   4. deploy
-  5. verify /healthz, /dashboard, and /mcp/orchid-sdr
+  5. verify /healthz, /dashboard, and /mcp/trellis
   6. only then wire discovery webhooks and live providers`);
       return;
     case "self-hosted":
@@ -462,7 +501,7 @@ Recommended sequence:
             "set production env vars",
             "npm run doctor",
             "npm run start",
-            "verify /healthz, /dashboard, and /mcp/orchid-sdr",
+            "verify /healthz, /dashboard, and /mcp/trellis",
           ],
         });
         return;
@@ -481,7 +520,7 @@ Recommended sequence:
   3. set production env vars
   4. npm run doctor
   5. npm run start
-  6. verify /healthz, /dashboard, and /mcp/orchid-sdr`);
+  6. verify /healthz, /dashboard, and /mcp/trellis`);
       return;
     default:
       throw new Error("Unknown deploy target. Use one of: local, vercel, self-hosted");
@@ -515,13 +554,19 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
   await ensureEmptyDirectory(targetDir);
   await mkdir(targetDir, { recursive: true });
 
-  for (const entry of SCAFFOLD_COPY_ENTRIES) {
-    await cp(path.join(scriptRoot, entry), path.join(targetDir, entry), {
+  for (const entry of SHARED_SCAFFOLD_COPY_ENTRIES) {
+    await cp(path.join(repoRoot, entry), path.join(targetDir, entry), {
       recursive: true,
     });
   }
 
-  const rootPackage = JSON.parse(await readFile(path.join(scriptRoot, "package.json"), "utf8")) as {
+  for (const entry of REFERENCE_APP_SCAFFOLD_COPY_ENTRIES) {
+    await cp(path.join(referenceAppRoot, entry), path.join(targetDir, entry), {
+      recursive: true,
+    });
+  }
+
+  const rootPackage = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8")) as {
     version: string;
     license: string;
     type: string;
@@ -721,12 +766,12 @@ async function handleClaudeCodeMcp(flags: Record<string, string | boolean>) {
     : (useRemote ? resolveRemoteMcpUrl() : resolveLocalMcpUrl(flags));
   const token = typeof flags.token === "string"
     ? flags.token
-    : (process.env.ORCHID_SDR_MCP_TOKEN ?? process.env.ORCHID_SDR_SANDBOX_TOKEN ?? "REPLACE_ME");
+    : (process.env.TRELLIS_MCP_TOKEN ?? process.env.TRELLIS_SANDBOX_TOKEN ?? "REPLACE_ME");
   const tokenSource = typeof flags.token === "string"
     ? "flag"
-    : (process.env.ORCHID_SDR_MCP_TOKEN ? "ORCHID_SDR_MCP_TOKEN"
-      : (process.env.ORCHID_SDR_SANDBOX_TOKEN ? "ORCHID_SDR_SANDBOX_TOKEN" : "placeholder"));
-  const serverName = typeof flags.name === "string" ? flags.name : "orchid-sdr";
+    : (process.env.TRELLIS_MCP_TOKEN ? "TRELLIS_MCP_TOKEN"
+      : (process.env.TRELLIS_SANDBOX_TOKEN ? "TRELLIS_SANDBOX_TOKEN" : "placeholder"));
+  const serverName = typeof flags.name === "string" ? flags.name : "trellis";
   const builtConfig = buildClaudeCodeMcpConfig({
     serverName,
     url,
@@ -778,7 +823,7 @@ async function handleClaudeCodeMcp(flags: Record<string, string | boolean>) {
       config: displayConfig,
       nextSteps: [
         "Start Trellis locally or deploy it",
-        "Make sure the bearer token matches ORCHID_SDR_MCP_TOKEN or ORCHID_SDR_SANDBOX_TOKEN",
+        "Make sure the bearer token matches TRELLIS_MCP_TOKEN or TRELLIS_SANDBOX_TOKEN",
         "Reload MCP servers in the host",
       ],
     });
@@ -788,8 +833,8 @@ async function handleClaudeCodeMcp(flags: Record<string, string | boolean>) {
   console.log(configJson);
   console.log("");
   console.log("Next steps:");
-  console.log("  1. Start orchid-sdr locally or deploy it");
-  console.log("  2. Make sure the bearer token matches ORCHID_SDR_MCP_TOKEN or ORCHID_SDR_SANDBOX_TOKEN");
+  console.log("  1. Start trellis locally or deploy it");
+  console.log("  2. Make sure the bearer token matches TRELLIS_MCP_TOKEN or TRELLIS_SANDBOX_TOKEN");
   console.log("  3. Reload Claude Code MCP servers");
 }
 
@@ -889,13 +934,13 @@ function summarizeOptionalModuleChoices(selectedModuleIds: string[]) {
 
 function resolveLocalMcpUrl(flags: Record<string, string | boolean>) {
   const port = typeof flags.port === "string" ? flags.port : (process.env.PORT ?? "3000");
-  return `http://localhost:${port}/mcp/orchid-sdr`;
+  return `http://localhost:${port}/mcp/trellis`;
 }
 
 function resolveRemoteMcpUrl() {
   const appUrl = process.env.APP_URL
     ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://your-app.example.com");
-  return `${appUrl.replace(/\/$/, "")}/mcp/orchid-sdr`;
+  return `${appUrl.replace(/\/$/, "")}/mcp/trellis`;
 }
 
 function parseQuotedConst(source: string, constantName: string) {
@@ -1033,10 +1078,10 @@ http://localhost:3000/dashboard
 
 ## Auth And URLs
 
-- dashboard login uses \`DASHBOARD_PASSWORD\`, or falls back to \`ORCHID_SDR_SANDBOX_TOKEN\`
-- remote MCP auth uses bearer token \`ORCHID_SDR_MCP_TOKEN\`, or falls back to \`ORCHID_SDR_SANDBOX_TOKEN\`
-- local MCP URL is \`http://localhost:3000/mcp/orchid-sdr\`
-- deployed MCP URL is \`\${APP_URL}/mcp/orchid-sdr\`
+- dashboard login uses \`DASHBOARD_PASSWORD\`, or falls back to \`TRELLIS_SANDBOX_TOKEN\`
+- remote MCP auth uses bearer token \`TRELLIS_MCP_TOKEN\`, or falls back to \`TRELLIS_SANDBOX_TOKEN\`
+- local MCP URL is \`http://localhost:3000/mcp/trellis\`
+- deployed MCP URL is \`\${APP_URL}/mcp/trellis\`
 - if you deploy on Vercel and leave \`APP_URL\` unset, the app falls back to \`https://$VERCEL_URL\`
 
 ## Add Providers Later
@@ -1092,7 +1137,19 @@ function buildScaffoldPackage(
     type: rootPackage.type,
     engines: rootPackage.engines,
     workspaces: rootPackage.workspaces ?? ["packages/*"],
-    scripts: rootPackage.scripts,
+    scripts: {
+      dev: "tsx watch src/index.ts",
+      build: "tsup src/index.ts src/mcp/trellis-server.ts --format esm --target node22 --outDir dist --clean && mkdir -p dist/migrations && cp src/db/migrations/*.sql dist/migrations/",
+      start: "node dist/index.js",
+      typecheck: "tsc --noEmit",
+      test: "vitest run",
+      "test:watch": "vitest",
+      "ai-sdr": "tsx packages/ai-sdr/src/cli.ts",
+      "db:migrate": "tsx scripts/migrate.ts",
+      doctor: "tsx scripts/doctor.ts",
+      "discovery:tick": "tsx scripts/discovery-tick.ts",
+      "sandbox:probe": "tsx scripts/sandbox-probe.ts",
+    },
     dependencies: {
       ...rootPackage.dependencies,
       ...workspaceDependencies,

@@ -2,7 +2,7 @@
 
 ## Thesis
 
-Orchid should evolve from a strong single AI SDR app into a composable agentic GTM platform.
+Trellis should evolve from a strong single AI SDR app into a composable agentic GTM platform.
 
 The core asset is not just outbound automation. The core asset is a reusable GTM execution and intelligence substrate:
 
@@ -36,7 +36,7 @@ The AI SDR is the first reference application built on that substrate.
 - compute recommendations
 - expose agent-queryable answers through MCP
 
-The second loop is just as important as the first. It is how Orchid becomes real GTM engineering infrastructure rather than only an AI SDR.
+The second loop is just as important as the first. It is how Trellis becomes real GTM engineering infrastructure rather than only an AI SDR.
 
 ## Architecture Direction
 
@@ -674,7 +674,7 @@ Possible business shapes:
 The strongest framing is:
 
 - **Composable Agentic GTM** = platform
-- **Orchid SDR** = first reference app / preset
+- **Trellis** = first reference app / preset
 
 ## Naming Options
 
@@ -685,7 +685,7 @@ The product likely needs two names:
 
 ### Best Product Name Directions
 
-#### 1. Orchid GTM
+#### 1. Trellis GTM
 
 Best if the company brand should stay primary.
 
@@ -696,11 +696,11 @@ Best if the company brand should stay primary.
 
 Examples:
 
-- Orchid GTM
-- Orchid Agentic GTM
-- Orchid GTM OS
+- Trellis GTM
+- Trellis Agentic GTM
+- Trellis GTM OS
 
-#### 2. Orchid Flow
+#### 2. Trellis Flow
 
 Best if the product should feel like an orchestration layer.
 
@@ -708,7 +708,7 @@ Best if the product should feel like an orchestration layer.
 - fits Rivet / Convex / composability well
 - weaker if the goal is explicit GTM category ownership
 
-#### 3. Orchid Signal
+#### 3. Trellis Signal
 
 Best if the platform centers around event-driven GTM automation.
 
@@ -770,13 +770,13 @@ Best only if the OSS package should fully inherit the company brand.
 
 Current best split:
 
-- **Product:** Orchid GTM
+- **Product:** Trellis GTM
 - **Category statement:** Composable Agentic GTM
-- **Reference app:** Orchid SDR
+- **Reference app:** Trellis
 - **Package / CLI:** `ai-sdr`
 
 That gives the cleanest ladder:
 
-- company / product brand stays Orchid
+- company / product brand stays Trellis
 - the framework vision stays broad
 - the install surface stays simple and obvious

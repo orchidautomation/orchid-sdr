@@ -1,6 +1,6 @@
-# The Stack Behind Orchid SDR
+# The Stack Behind Trellis
 
-The interesting part of Orchid SDR is not just that it uses AI.
+The interesting part of Trellis is not just that it uses AI.
 
 The interesting part is the way the stack is composed.
 
@@ -19,7 +19,7 @@ It needs to remember:
 
 That is why the top of the system runs on Rivet actors.
 
-Rivet gives Orchid SDR:
+Rivet gives Trellis:
 
 - durable actors
 - persistent scheduling
@@ -47,7 +47,7 @@ The harness model gives you a mature pattern for:
 - hooks
 - project-scoped context
 
-That means Orchid SDR is not inventing its own fragile agent runtime from scratch.
+That means Trellis is not inventing its own fragile agent runtime from scratch.
 
 It is inheriting a much better extension model.
 
@@ -55,7 +55,7 @@ It is inheriting a much better extension model.
 
 The model should not be the architecture.
 
-That is why Orchid SDR routes model calls through Vercel AI Gateway.
+That is why Trellis routes model calls through Vercel AI Gateway.
 
 Today it can use `moonshotai/kimi-k2.6`.
 Tomorrow it can use something else.
@@ -84,7 +84,7 @@ It does not give you enough context to draft credible outreach.
 
 That is where Firecrawl fits.
 
-For each lead, Orchid SDR can research:
+For each lead, Trellis can research:
 
 - the original post or source page
 - the person profile
@@ -121,7 +121,7 @@ Email and CRM are business systems.
 
 They should not be hidden inside model calls.
 
-That is why Orchid SDR keeps them behind adapters:
+That is why Trellis keeps them behind adapters:
 
 - AgentMail for sender identity, send, reply, and inbound events
 - Attio for deterministic CRM sync

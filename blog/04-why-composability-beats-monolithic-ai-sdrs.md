@@ -70,7 +70,7 @@ If they are fused, every change becomes a full-system change.
 
 If they are modular, you can improve one layer without destabilizing the others.
 
-That is why Orchid SDR treats:
+That is why Trellis treats:
 
 - Firecrawl as a research layer
 - Attio as a CRM layer

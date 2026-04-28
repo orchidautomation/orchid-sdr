@@ -148,7 +148,7 @@ This is the best profile for most first-time technical users.
 
 ### `production`
 
-`production` is the full current Orchid SDR parity stack.
+`production` is the full current Trellis parity stack.
 
 It includes everything in `starter`, plus:
 
@@ -268,12 +268,12 @@ If you are using the Vercel-connected Rivet flow, those values usually come from
 You will also need:
 
 - `APP_URL`
-- `ORCHID_SDR_SANDBOX_TOKEN`
+- `TRELLIS_SANDBOX_TOKEN`
 - `HANDOFF_WEBHOOK_SECRET`
 
 Recommended:
 
-- `ORCHID_SDR_MCP_TOKEN`
+- `TRELLIS_MCP_TOKEN`
 - `DASHBOARD_PASSWORD`
 
 ### Additional Accounts By Profile
@@ -340,7 +340,7 @@ If Convex is not ready yet and you only want a local boot check, use boot-only s
 
 ```bash
 export TRELLIS_LOCAL_SMOKE_MODE=true
-export ORCHID_SDR_SANDBOX_TOKEN=local-sandbox-token
+export TRELLIS_SANDBOX_TOKEN=local-sandbox-token
 export HANDOFF_WEBHOOK_SECRET=local-handoff-secret
 npm run doctor
 npm run dev
@@ -363,13 +363,13 @@ Dashboard auth:
 
 - route: `/dashboard`
 - password source: `DASHBOARD_PASSWORD`
-- fallback: `ORCHID_SDR_SANDBOX_TOKEN`
+- fallback: `TRELLIS_SANDBOX_TOKEN`
 
 MCP auth:
 
-- route: `/mcp/orchid-sdr`
-- bearer token: `ORCHID_SDR_MCP_TOKEN`
-- fallback: `ORCHID_SDR_SANDBOX_TOKEN`
+- route: `/mcp/trellis`
+- bearer token: `TRELLIS_MCP_TOKEN`
+- fallback: `TRELLIS_SANDBOX_TOKEN`
 
 There is no first-party OAuth login flow yet.
 
@@ -378,12 +378,12 @@ There is no first-party OAuth login flow yet.
 Local:
 
 - dashboard: `http://localhost:3000/dashboard`
-- MCP: `http://localhost:3000/mcp/orchid-sdr`
+- MCP: `http://localhost:3000/mcp/trellis`
 
 Deployed:
 
 - dashboard: `${APP_URL}/dashboard`
-- MCP: `${APP_URL}/mcp/orchid-sdr`
+- MCP: `${APP_URL}/mcp/trellis`
 - webhooks: `${APP_URL}/webhooks/...`
 
 Important:
@@ -439,7 +439,7 @@ Use `production`.
 
 What you prove:
 
-- the full current Orchid SDR behavior
+- the full current Trellis behavior
 - CRM sync
 - outbound email
 - reply handling

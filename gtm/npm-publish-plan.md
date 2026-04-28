@@ -48,7 +48,7 @@ The simplest first public launch is:
 
 Current root `package.json`:
 
-- name: `orchid-sdr`
+- name: `trellis`
 - version: `0.1.0`
 - `private: true`
 - workspaces enabled
@@ -408,7 +408,7 @@ Smoke path:
 
 ```bash
 export TRELLIS_LOCAL_SMOKE_MODE=true
-export ORCHID_SDR_SANDBOX_TOKEN=local-sandbox-token
+export TRELLIS_SANDBOX_TOKEN=local-sandbox-token
 export HANDOFF_WEBHOOK_SECRET=local-handoff-secret
 export DASHBOARD_PASSWORD=dev
 export DISCOVERY_LINKEDIN_ENABLED=false

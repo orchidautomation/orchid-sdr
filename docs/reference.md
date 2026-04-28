@@ -1,4 +1,4 @@
-# Orchid SDR Reference
+# Trellis Reference
 
 This page keeps the implementation and setup detail that does not need to live on the front page.
 
@@ -9,7 +9,7 @@ This page keeps the implementation and setup detail that does not need to live o
 - `Convex` as the shared operational state plane
 - `sandbox-agent` + `@vercel/sandbox` for turn-scoped agent execution
 - `@ai-sdk/gateway` for structured model calls
-- `@modelcontextprotocol/sdk` for the first-party `orchid-sdr` MCP surface
+- `@modelcontextprotocol/sdk` for the first-party `trellis` MCP surface
 - `Attio` as the optional CRM sync target
 - `AgentMail` as the optional outbound and inbound email provider
 
@@ -21,8 +21,8 @@ Minimum local env:
 - `NO_SENDS_MODE=true` if you want append-only mode with outbound blocked
 - `DEFAULT_CAMPAIGN_TIMEZONE=America/New_York` if you want new campaigns to inherit a local quiet-hours timezone
 - `HANDOFF_WEBHOOK_SECRET`
-- `ORCHID_SDR_SANDBOX_TOKEN`
-- `ORCHID_SDR_MCP_TOKEN` if you want a dedicated token for remote MCP access
+- `TRELLIS_SANDBOX_TOKEN`
+- `TRELLIS_MCP_TOKEN` if you want a dedicated token for remote MCP access
 
 For the full sandbox lane:
 
@@ -154,7 +154,7 @@ If those drift apart, qualification and copy quality drift too.
 There are two MCP layers:
 
 1. sandbox-mounted MCP servers
-2. the first-party `orchid-sdr` MCP server
+2. the first-party `trellis` MCP server
 
 ### Add a Sandbox-Mounted MCP
 
@@ -162,7 +162,7 @@ Sandbox MCP servers are written into `.mcp.json` during sandbox setup in `src/or
 
 Current defaults:
 
-- `orchid-sdr` first-party MCP
+- `trellis` first-party MCP
 - `parallel-search` via `https://search.parallel.ai/mcp`
 - `parallel-task` via `https://task-mcp.parallel.ai/mcp` when `PARALLEL_API_KEY` is set
 - `firecrawl` when `FIRECRAWL_API_KEY` is set
@@ -175,7 +175,7 @@ To add another one:
 2. pass any needed secrets into the sandbox env
 3. mention the tool in the relevant prompt or skill
 
-### Add a First-Party `orchid-sdr` Tool
+### Add a First-Party `trellis` Tool
 
 If you want a tool to run through your backend instead of directly hitting a vendor MCP:
 
@@ -190,7 +190,7 @@ Use the first-party MCP for:
 - provider abstraction
 - anything you want behind your own typed boundary
 
-Current `orchid-sdr` tool groups:
+Current `trellis` tool groups:
 
 Operator and pipeline tools:
 
@@ -231,12 +231,12 @@ Example remote MCP config:
 ```json
 {
   "mcpServers": {
-    "orchid-sdr": {
+    "trellis": {
       "transport": {
         "type": "http",
-        "url": "https://your-app.example.com/mcp/orchid-sdr",
+        "url": "https://your-app.example.com/mcp/trellis",
         "headers": {
-          "Authorization": "Bearer ${ORCHID_SDR_MCP_TOKEN}"
+          "Authorization": "Bearer ${TRELLIS_MCP_TOKEN}"
         }
       }
     }
@@ -252,12 +252,12 @@ npm run ai-sdr -- mcp claude-code --local --write
 
 Auth model:
 
-- endpoint: `/mcp/orchid-sdr`
+- endpoint: `/mcp/trellis`
 - bearer-token protected
-- preferred token: `ORCHID_SDR_MCP_TOKEN`
-- fallback token: `ORCHID_SDR_SANDBOX_TOKEN`
+- preferred token: `TRELLIS_MCP_TOKEN`
+- fallback token: `TRELLIS_SANDBOX_TOKEN`
 
-See also: `docs/email-providers.md` for the recommended email provider shape for Orchid SDR.
+See also: `docs/email-providers.md` for the recommended email provider shape for Trellis.
 
 ## Attio
 

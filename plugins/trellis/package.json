@@ -1,0 +1,10 @@
+{
+  "name": "trellis-plugin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "pluxx lint",
+    "validate": "pluxx validate",
+    "build": "pluxx build --target claude-code cursor codex opencode"
+  }
+}

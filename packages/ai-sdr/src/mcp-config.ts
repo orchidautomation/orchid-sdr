@@ -17,7 +17,7 @@ export function buildClaudeCodeMcpConfig(input: {
   url: string;
   token: string;
 }): ClaudeCodeMcpConfig {
-  const serverName = input.serverName?.trim() || "orchid-sdr";
+  const serverName = input.serverName?.trim() || "trellis";
   return {
     mcpServers: {
       [serverName]: {

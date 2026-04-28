@@ -1,6 +1,6 @@
 # Why the Claude Code Harness Matters
 
-A lot of the power in Orchid SDR comes from a simple decision:
+A lot of the power in Trellis comes from a simple decision:
 
 do not build a custom agent runtime if you can inherit a better one.
 
@@ -21,7 +21,7 @@ The harness already knows how to work with:
 - tool calls
 - local files
 
-That means Orchid SDR gets a mature agent execution pattern instead of inventing a new one.
+That means Trellis gets a mature agent execution pattern instead of inventing a new one.
 
 This is a bigger advantage than it might sound.
 

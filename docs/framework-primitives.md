@@ -1,6 +1,6 @@
 # Framework Primitives
 
-This page describes the emerging modular shape of Orchid SDR.
+This page describes the emerging modular shape of Trellis.
 
 The target user is a GTM engineer, RevOps engineer, or technical founder using a coding agent such as Codex or Claude Code to assemble a custom AI SDR from reliable primitives.
 
@@ -186,7 +186,7 @@ Current MVP package targets:
 | `ai-sdr add runtime rivet` | `@ai-sdr/rivet` | `runtime` |
 | `ai-sdr add runtime vercel-sandbox` | `@ai-sdr/vercel-sandbox` | `runtime` |
 | `ai-sdr add handoff slack` | `@ai-sdr/slack` | `handoff` |
-| `ai-sdr add mcp orchid-mcp` | `@ai-sdr/mcp` | `mcp` |
+| `ai-sdr add mcp trellis-mcp` | `@ai-sdr/mcp` | `mcp` |
 
 Provider packages can satisfy more than one capability. The CLI should install by capability/provider pair, while the package remains provider-owned:
 
@@ -210,7 +210,7 @@ The reference app has two composition profiles:
 | Profile | Purpose |
 | --- | --- |
 | `minimum` | Ingest one signal, research it, run model/runtime work, persist state, and expose MCP tools. |
-| `productionParity` | Recreate the current Orchid SDR behavior: state, source, research, enrichment, runtime actors, sandbox harness, model gateway, email, CRM, handoff, and MCP. |
+| `productionParity` | Recreate the current Trellis behavior: state, source, research, enrichment, runtime actors, sandbox harness, model gateway, email, CRM, handoff, and MCP. |
 
 Run:
 
@@ -316,7 +316,7 @@ Current app-specific code:
 
 - database repository
 - dashboard
-- Orchid-specific MCP tool implementation
+- Trellis-specific MCP tool implementation
 - current product knowledge
 - current skills
 - current provider instantiation
@@ -335,4 +335,4 @@ The next step is to keep moving stable contracts into `src/framework/` while lea
 
 Anything a future `npx ai-sdr add <thing>` command would need should become a typed contract, schema, test, or config entry.
 
-That is the path from a single working Orchid SDR repo to an open-source framework for agentic GTM.
+That is the path from a single working Trellis repo to an open-source framework for agentic GTM.
