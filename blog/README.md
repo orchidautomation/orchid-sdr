@@ -14,3 +14,4 @@ This directory contains long-form posts about why Trellis exists, how it is buil
 - [Agents, AgentMail, and the Email Control Plane](08-agents-agentmail-and-the-email-control-plane.md)
 - [The List Is the Message Again](09-the-list-is-the-message-again.md)
 - [Open Source AI SDRs and the Future of Outbound](10-open-source-ai-sdrs-and-the-future-of-outbound.md)
+- [The Harness Lineage: Pi, the Other Trellis, and What We Are Actually Building](11-the-harness-lineage.md)
