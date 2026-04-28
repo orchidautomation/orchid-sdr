@@ -77,6 +77,7 @@ export const recordSignal = mutation({
       companyDomain: args.signal.companyDomain,
       topic: args.signal.topic,
       content: args.signal.content,
+      twitterUrl: null,
       metadata: args.metadata ?? args.signal.metadata,
       capturedAt: args.signal.capturedAt,
       updatedAt: Date.now(),
