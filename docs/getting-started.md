@@ -24,7 +24,7 @@ Choose lanes directly with flags:
 npm run ai-sdr -- init ../trellis-core-plus --name trellis-core-plus --with-discovery --with-deep-research
 ```
 
-The CLI no longer owns a guided wizard. The intended guided onboarding surface is the Trellis plugin in [`plugins/trellis/`](../plugins/trellis/), built on Pluxx.
+The CLI no longer owns a guided wizard. Guided onboarding should sit on top of the CLI, not inside it.
 When an agent or plugin is driving setup, use the JSON contract:
 
 ```bash

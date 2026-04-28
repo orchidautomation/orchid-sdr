@@ -199,8 +199,7 @@ Important:
 - [x] keep the scaffold runtime/profile model internally available where useful
 - [x] keep `demo` as a backward-compatible alias to `core` while removing it from the public UX
 - [ ] add a stricter zero-vendor mock profile if we want a pure no-accounts demo later
-- [ ] build a Trellis onboarding plugin on top of Pluxx for all 4 host surfaces
-- [x] separate the Trellis plugin source from the reference app under `plugins/trellis/`
+- [ ] build a Trellis onboarding layer on top of the CLI for all 4 host surfaces
 - [ ] make the Pluxx plugin drive:
   - scaffold/init
   - env validation

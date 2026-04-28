@@ -8,15 +8,12 @@ This repo now has two distinct layers:
   - framework, provider modules, CLI, and MCP packaging
 - `examples/ai-sdr/`
   - the reference AI SDR app built on top of Trellis
-- `plugins/trellis/`
-  - the Trellis Pluxx onboarding plugin, kept separate from the reference app
 
 ## Repo Shape
 
 ```text
 packages/           framework + modules + CLI
 examples/ai-sdr/    reference GTM agent app
-plugins/trellis/    Trellis onboarding plugin for Claude/Cursor/Codex/OpenCode
 docs/               framework and platform docs
 gtm/                positioning and launch docs
 ```
@@ -81,11 +78,7 @@ npm run ai-sdr -- init ../my-ai-sdr \
 
 The CLI is the machine contract.
 
-The guided user experience should come from the Trellis Pluxx plugin, not from an interactive terminal wizard.
-
-Plugin source:
-
-- [plugins/trellis/README.md](/Users/brandonguerrero/Documents/Orchid%20Automation/Orchid%20Labs/orchid-sdr/plugins/trellis/README.md)
+The guided user experience should sit on top of this repo, not inside an interactive terminal wizard in the CLI.
 
 ## Reference App
 
