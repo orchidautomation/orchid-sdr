@@ -24,6 +24,24 @@ signal -> research -> qualify -> persist -> inspect -> sync -> send -> handoff
 
 If that path is composable and reliable, the same framework can power other GTM systems too.
 
+## Read This First
+
+If you are trying to understand what is framework vs what is app code, read these in order:
+
+1. [../../README.md](../../README.md)
+2. [../../docs/ownership-model.md](../../docs/ownership-model.md)
+3. [../../docs/turnkey-roadmap.md](../../docs/turnkey-roadmap.md)
+4. [ai-sdr.config.ts](ai-sdr.config.ts)
+5. [src/registry.ts](src/registry.ts)
+6. [src/orchestration/prospect-workflow.ts](src/orchestration/prospect-workflow.ts)
+7. [convex/schema.ts](convex/schema.ts)
+
+That is the shortest path to understanding:
+
+- what Trellis already gives you
+- what this example composes
+- what is still too custom today
+
 ## What It Does
 
 - runs scheduled discovery with Rivet actors
@@ -50,6 +68,47 @@ This example shows a different approach:
 - repo-managed knowledge and skills
 - remote MCP control
 - durable state and audit history
+
+## Anatomy
+
+This example currently has three kinds of code in it:
+
+### 1. App blueprint
+
+- `ai-sdr.config.ts`
+
+This is the compositional layer:
+
+- knowledge
+- skills
+- modules
+- providers
+- bindings
+- campaigns
+- webhooks
+- model routing
+
+### 2. Runtime app code
+
+- `src/orchestration/`
+- `src/services/`
+- `src/server.ts`
+- `src/mcp/`
+- `src/registry.ts`
+
+This is the current working implementation of the AI SDR behavior.
+
+### 3. State and storage code
+
+- `convex/schema.ts`
+- `convex/repository.ts`
+- `src/repository*.ts`
+
+This is the part we most likely want to push further down into Trellis over time.
+
+That is the important nuance:
+
+> the app is already strongly composed, but the substrate is not fully extracted yet
 
 ## Data Flow
 

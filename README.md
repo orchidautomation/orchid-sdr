@@ -107,6 +107,8 @@ docs/                product, deployment, and architecture docs
 Start here:
 
 - [examples/ai-sdr/README.md](examples/ai-sdr/README.md)
+- [docs/ownership-model.md](docs/ownership-model.md)
+- [docs/turnkey-roadmap.md](docs/turnkey-roadmap.md)
 
 ### 2. Scaffold a new Trellis app
 
@@ -182,6 +184,8 @@ The reference AI SDR is the first concrete example, not the boundary of the fram
 ## Read Next
 
 - [examples/ai-sdr/README.md](examples/ai-sdr/README.md)
+- [docs/ownership-model.md](docs/ownership-model.md)
+- [docs/turnkey-roadmap.md](docs/turnkey-roadmap.md)
 - [docs/getting-started.md](docs/getting-started.md)
 - [docs/new-user-guide.md](docs/new-user-guide.md)
 - [docs/framework-primitives.md](docs/framework-primitives.md)
