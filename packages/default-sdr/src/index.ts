@@ -12,3 +12,4 @@ export * from "./actor-registry.js";
 export * from "./runtime-bindings.js";
 export * from "./runtime-bootstrap.js";
 export * from "./mcp-tool-service.js";
+export * from "./discovery-coordinator.js";

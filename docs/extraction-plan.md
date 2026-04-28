@@ -73,7 +73,6 @@ Already moved into shared packages:
 
 Still primarily app-owned:
 
-- `examples/ai-sdr/src/orchestration/discovery-coordinator.ts`
 - `examples/ai-sdr/src/orchestration/prospect-workflow.ts`
 - `examples/ai-sdr/src/server.ts`
 
@@ -90,6 +89,11 @@ Partially extracted but still mixed:
 - `examples/ai-sdr/src/server.ts`
   - dashboard state builders now belong to `packages/default-sdr/`
   - route-level orchestration and auth wiring still live in the app
+- `examples/ai-sdr/src/orchestration/discovery-coordinator.ts`
+  - actor shell and state machine now belong to `packages/default-sdr/`
+  - the example keeps only a thin dependency-wiring wrapper
+- `examples/ai-sdr/src/orchestration/source-ingest.ts`
+  - stays app-level for now because it bridges generic signal normalization into app-specific prospect workflow execution
 
 ## Extraction Buckets
 
@@ -210,6 +214,15 @@ Boundary decision:
   - move `discovery-coordinator.ts` toward `packages/default-sdr/`
   - do **not** force it into `@ai-sdr/framework`
 
+Secondary decision:
+
+- `source-ingest.ts` should **stay app-level for now**
+- the reasons are concrete:
+  - inbound signal normalization is already handled by framework/shared signal code
+  - what happens after a normalized signal is captured still depends on the app’s prospect lifecycle
+  - it currently calls directly into `executeProspectWorkflow`, checkpoint shapes, and app-owned audit behavior
+- if we extract it later, the likely home is still `default-sdr`, not core Trellis, and only after the prospect workflow surface is thinner
+
 ## 5. MCP substrate
 
 Current custom surfaces:
@@ -301,11 +314,11 @@ Those are the parts that actually differentiate one GTM app from another.
 
 If we want the highest leverage path, the next moves should be:
 
-1. extract repository contracts and default state-plane implementation
-2. extract runtime bootstrap and actor registry skeleton
-3. extract webhook bootstrap
-4. extract MCP server bootstrap
-5. extract operator dashboard shell
+1. thin `prospect-workflow` by carving out reusable default SDR stage helpers
+2. revisit `source-ingest` once the prospect workflow boundary is cleaner
+3. reduce remaining route/action glue in `examples/ai-sdr/src/server.ts`
+4. make manifest-driven env requirements first-class so Trellis can derive `.env.example` from selected capabilities
+5. move more operational scripts from the example into Trellis-owned CLI/package surfaces
 
 That sequence reduces the biggest day-0 burden first.
 
