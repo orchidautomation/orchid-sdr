@@ -111,7 +111,6 @@ export const aiSdrContractIdSchema = z.enum([
   "state.workflow.v1",
   "state.agentThreads.v1",
   "state.auditLog.v1",
-  "database.postgres.v1",
   "research.search.v1",
   "research.extract.v1",
   "research.enrich.v1",

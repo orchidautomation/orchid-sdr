@@ -5,7 +5,6 @@ import {
   attioProvider,
   convexProvider,
   firecrawlProvider,
-  neonProvider,
   normalizedWebhookProvider,
   trellisMcpProvider,
   parallelProvider,
@@ -349,32 +348,6 @@ export function parallelModule(): AiSdrModuleDefinition {
   });
 }
 
-export function neonModule(): AiSdrModuleDefinition {
-  return module({
-    id: "neon",
-    displayName: "Neon Postgres",
-    packageName: "@ai-sdr/neon",
-    description: "Use Neon as the hosted Postgres database for durable SDR state.",
-    providerKey: "neon",
-    capabilityIds: ["database"],
-    contracts: ["database.postgres.v1"],
-    providers: [neonProvider()],
-    docs: [
-      {
-        label: "Database setup",
-        path: "docs/self-hosting.md",
-      },
-    ],
-    smokeChecks: [
-      {
-        id: "database.migrate",
-        command: "npm run db:migrate",
-        description: "Run migrations against the configured Neon database.",
-      },
-    ],
-  });
-}
-
 export function prospeoModule(): AiSdrModuleDefinition {
   return module({
     id: "prospeo",
@@ -534,7 +507,6 @@ export function defaultTrellisModules(): AiSdrModuleDefinition[] {
     parallelModule(),
     firecrawlModule(),
     convexModule(),
-    neonModule(),
     prospeoModule(),
     vercelAiGatewayModule(),
     rivetModule(),

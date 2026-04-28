@@ -149,6 +149,6 @@ describe("framework scaffold profiles", () => {
     expect(setupChecklist).toContain("Configured Webhooks");
     expect(configModule).toContain('"webhooks": [');
     expect(setupChecklist).toContain("`CONVEX_URL`");
-    expect(setupChecklist).not.toContain("`DATABASE_URL`");
+    expect(setupChecklist).not.toContain("db:migrate");
   });
 });

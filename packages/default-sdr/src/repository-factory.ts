@@ -11,7 +11,6 @@ export function createDefaultSdrRepository(input: {
   defaultCampaignTimezone: string;
   stateProviderId: string | null | undefined;
   convexUrl?: string | null;
-  createPersistentRepository: () => TrellisRepositoryPort;
 }): TrellisRepositoryPort {
   if (input.localSmokeMode) {
     return new LocalSmokeRepository(input.defaultCampaignTimezone);
@@ -25,5 +24,5 @@ export function createDefaultSdrRepository(input: {
     return new ConvexRepository(input.convexUrl, input.defaultCampaignTimezone);
   }
 
-  return input.createPersistentRepository();
+  throw new Error(`unsupported default SDR state provider: ${input.stateProviderId ?? "none"}`);
 }

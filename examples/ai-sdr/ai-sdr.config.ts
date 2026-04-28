@@ -1,6 +1,6 @@
 import { defineAiSdr, defaultTrellisModules, providersFromModules } from "@ai-sdr/framework";
 
-const modules = defaultTrellisModules().filter((module) => module.id !== "neon");
+const modules = defaultTrellisModules();
 
 export default defineAiSdr({
   name: "trellis",

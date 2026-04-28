@@ -46,7 +46,7 @@ describe("AI SDR framework config helpers", () => {
       },
       requiredEnv: [
         {
-          name: "DATABASE_URL",
+          name: "CONVEX_URL",
           required: true,
         },
       ],
@@ -57,7 +57,7 @@ describe("AI SDR framework config helpers", () => {
           displayName: "CRM",
           env: [
             {
-              name: "DATABASE_URL",
+              name: "CONVEX_URL",
             },
             {
               name: "CRM_API_KEY",
@@ -69,12 +69,12 @@ describe("AI SDR framework config helpers", () => {
 
     expect(collectConfigEnv(config)).toEqual([
       {
-        name: "CRM_API_KEY",
-      },
-      {
-        name: "DATABASE_URL",
+        name: "CONVEX_URL",
         required: true,
         description: undefined,
+      },
+      {
+        name: "CRM_API_KEY",
       },
     ]);
   });
@@ -167,7 +167,7 @@ describe("AI SDR framework config helpers", () => {
 
     expect(config.modules?.some((item) => item.id === "attio")).toBe(true);
     expect(config.modules?.some((item) => item.id === "convex")).toBe(true);
-    expect(config.modules?.some((item) => item.id === "neon")).toBe(true);
+    expect(config.modules?.some((item) => item.id === "neon")).toBe(false);
     expect(config.modules?.some((item) => item.id === "rivet")).toBe(true);
     expect(config.providers?.some((item) => item.id === "attio")).toBe(true);
     expect(config.providers?.some((item) => item.id === "parallel")).toBe(true);

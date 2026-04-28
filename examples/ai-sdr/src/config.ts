@@ -34,7 +34,6 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DASHBOARD_PASSWORD: z.string().optional(),
 
-  DATABASE_URL: z.string().min(1).optional(),
   NO_SENDS_MODE: optionalBooleanFromEnv,
   TRELLIS_LOCAL_SMOKE_MODE: booleanFromEnv,
 

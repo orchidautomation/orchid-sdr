@@ -253,7 +253,7 @@ npm run dev
 http://localhost:3000/dashboard
 ```
 
-For a fuller runtime, add provider keys such as Convex, Apify, Parallel, Firecrawl, Vercel AI Gateway, AgentMail, and Attio. Neon remains optional as a SQL compatibility module and is not part of the default boot path.
+For a fuller runtime, add provider keys such as Convex, Apify, Parallel, Firecrawl, Vercel AI Gateway, AgentMail, and Attio.
 
 ### Auth And Runtime Notes
 

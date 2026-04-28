@@ -23,7 +23,6 @@ import {
   shouldUseDefaultSdrLocalSmokeMode,
 } from "../../../../packages/default-sdr/src/repository-factory.js";
 import type { TrellisRepositoryPort } from "../../../../packages/default-sdr/src/repository-contracts.js";
-import { TrellisRepository } from "../repository.js";
 import { AiStructuredService } from "./ai-service.js";
 import { getFrameworkRuntimeConfig, type FrameworkRuntimeConfig } from "./framework-stack.js";
 import { KnowledgeService } from "./knowledge-service.js";
@@ -205,7 +204,6 @@ function createRepository(input: {
     defaultCampaignTimezone: input.config.DEFAULT_CAMPAIGN_TIMEZONE,
     stateProviderId: input.framework.selections.state.providerId,
     convexUrl: input.config.CONVEX_URL ?? input.config.NEXT_PUBLIC_CONVEX_URL,
-    createPersistentRepository: () => new TrellisRepository(),
   });
 }
 

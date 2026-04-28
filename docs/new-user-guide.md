@@ -346,6 +346,5 @@ Optional deployment modules:
 - Attio
 - AgentMail
 - Slack
-- Neon
 
 For a production deployment, keep `APP_URL` set explicitly, verify webhook routes against the deployed hostname, and leave `NO_SENDS_MODE=true` until workflow behavior has been reviewed end to end.

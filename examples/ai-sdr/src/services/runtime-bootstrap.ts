@@ -1,6 +1,4 @@
-import { migrateDatabase } from "../db/migrate.js";
 import { registry } from "../registry.js";
-import { TrellisRepository } from "../repository.js";
 import { getActorClient } from "./actor-client.js";
 import { getAppContext } from "./runtime-context.js";
 import { runSandboxCompatibilityProbe } from "./sandbox-probe.js";
@@ -13,9 +11,6 @@ import {
 
 export const ensureRuntimeBootstrapped = createBootstrapRunner(async () => {
     const context = getAppContext();
-    if (context.repository instanceof TrellisRepository) {
-      await migrateDatabase();
-    }
     await context.repository.ensureDefaultCampaign();
 
     if (context.config.NO_SENDS_MODE !== undefined) {

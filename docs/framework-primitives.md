@@ -82,7 +82,6 @@ email.outbound.v1
 state.reactive.v1
 state.workflow.v1
 state.agentThreads.v1
-database.postgres.v1
 research.extract.v1
 research.monitor.v1
 runtime.actor.v1
@@ -126,8 +125,7 @@ Examples:
 
 - CRM: Attio, HubSpot, Salesforce, Twenty
 - Email: AgentMail, Gmail, Outlook, custom SMTP or API
-- State: Convex by default, Neon/Postgres as a lower-level database adapter
-- Database: Neon Postgres, Supabase Postgres, RDS Postgres, self-hosted Postgres
+- State: Convex
 - Search: Parallel, Firecrawl, search APIs, browser or sandbox tools
 - Extract: Parallel, Firecrawl, browser or sandbox tools
 - Enrichment: Parallel, Prospeo, Clay, custom data providers

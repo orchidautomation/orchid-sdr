@@ -164,13 +164,6 @@ function resolveAddSelector(value: string): AddSelector {
         capabilityIds: [],
         contractIds: ["research.monitor.v1"],
       };
-    case "postgres":
-    case "storage":
-    case "db":
-      return {
-        capabilityIds: ["database"],
-        contractIds: [],
-      };
     case "convex":
     case "reactive":
     case "threads":

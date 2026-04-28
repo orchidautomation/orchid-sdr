@@ -15,7 +15,6 @@ export type FrameworkProviderSelection = {
 
 export type FrameworkStackSelections = {
   state: FrameworkProviderSelection;
-  database: FrameworkProviderSelection;
   crm: FrameworkProviderSelection;
   email: FrameworkProviderSelection;
   sourceWarmInbound: FrameworkProviderSelection;
@@ -51,7 +50,6 @@ export function getFrameworkRuntimeConfig(): FrameworkRuntimeConfig {
     packageBoundaries: collectPackageBoundaries(config),
     selections: {
       state: pickProvider(config, "state"),
-      database: pickProvider(config, "database", "database.postgres.v1"),
       crm: pickProvider(config, "crm"),
       email: pickProvider(config, "email"),
       sourceWarmInbound: pickProvider(config, "source", "signal.webhook.v1"),

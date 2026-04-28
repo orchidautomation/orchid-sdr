@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const migrateDatabase = vi.fn(async () => {});
 const runSandboxCompatibilityProbe = vi.fn(async () => {});
 const registryStart = vi.fn();
 const parseConfig = vi.fn(() => ({
@@ -14,10 +13,6 @@ const initialize = vi.fn(async () => {});
 const enqueueTick = vi.fn(async () => {
   throw new Error("actor failed to start");
 });
-
-vi.mock("../src/db/migrate.js", () => ({
-  migrateDatabase,
-}));
 
 vi.mock("../src/services/sandbox-probe.js", () => ({
   runSandboxCompatibilityProbe,
@@ -59,7 +54,6 @@ vi.mock("../src/services/actor-client.js", () => ({
 describe("ensureRuntimeBootstrapped", () => {
   beforeEach(() => {
     vi.resetModules();
-    migrateDatabase.mockClear();
     runSandboxCompatibilityProbe.mockClear();
     registryStart.mockClear();
     parseConfig.mockClear();
@@ -75,7 +69,6 @@ describe("ensureRuntimeBootstrapped", () => {
     const { ensureRuntimeBootstrapped } = await import("../src/services/runtime-bootstrap.js");
 
     await expect(ensureRuntimeBootstrapped()).resolves.toBeUndefined();
-    expect(migrateDatabase).not.toHaveBeenCalled();
     expect(ensureDefaultCampaign).toHaveBeenCalledTimes(2);
     expect(setControlFlag).toHaveBeenCalledWith("no_sends_mode", {
       enabled: true,

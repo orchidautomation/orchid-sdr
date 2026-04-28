@@ -43,7 +43,6 @@ Optional:
 - Attio for CRM sync
 - Slack for handoff
 - Prospeo for email enrichment
-- Neon/Postgres only if you intentionally enable the optional SQL compatibility module
 
 ## 1. Clone And Configure
 

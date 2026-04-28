@@ -46,7 +46,6 @@ describe("framework module install plans", () => {
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "search", provider: "firecrawl" })?.id).toBe("firecrawl");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "extract", provider: "firecrawl" })?.id).toBe("firecrawl");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "monitor", provider: "firecrawl" })).toBeUndefined();
-    expect(findModuleForAddCommand(modules, { capabilityOrModule: "database", provider: "neon" })?.id).toBe("neon");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "state", provider: "convex" })?.id).toBe("convex");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "threads", provider: "convex" })?.id).toBe("convex");
     expect(findModuleForAddCommand(modules, { capabilityOrModule: "source", provider: "apify" })?.id).toBe("apify-linkedin");

@@ -130,21 +130,6 @@ export function prospeoProvider(): AiSdrProviderDefinition {
   });
 }
 
-export function neonProvider(): AiSdrProviderDefinition {
-  return provider({
-    id: "neon",
-    kind: "database",
-    displayName: "Neon Postgres",
-    packageName: "@ai-sdr/neon",
-    env: [
-      { name: "DATABASE_URL", required: true, description: "Neon Postgres connection string." },
-      { name: "NEON_API_KEY", description: "Optional Neon API key for future database provisioning automation." },
-      { name: "NEON_PROJECT_ID", description: "Optional Neon project ID for future provisioning automation." },
-    ],
-    capabilities: ["database.postgres", "database.branching", "database.provisioning"],
-  });
-}
-
 export function convexProvider(): AiSdrProviderDefinition {
   return provider({
     id: "convex",
