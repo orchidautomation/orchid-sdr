@@ -178,11 +178,7 @@ My recommendation for a first-time technical evaluator is:
 6. inspect the pipeline and MCP surface
 7. only after that, add CRM and email
 
-If you are using Codex or another skill-aware coding agent, the repo now also includes setup skills for:
-
-- `skills/setup-and-verify`
-- `skills/convex-setup`
-- `skills/vercel-setup`
+If you are using Codex or another coding agent, use the generated setup checklist plus the repo docs for first boot.
 
 ## What You Need To Bring
 

@@ -158,7 +158,7 @@ Important:
 
 - [x] generated `TRELLIS_SETUP.md` per scaffolded project
 - [x] added a first-pass getting-started guide in `docs/getting-started.md`
-- [x] added a tracked `skills/setup-and-verify` skill for first-boot agent guidance
+- [x] moved first-boot guidance out of the example skill pack and into docs/setup flow
 - [x] make `init` generate workspace-backed package dependencies and copy local `packages/`
 - [x] decide that guided onboarding should move out of the CLI and into a Pluxx-based Trellis plugin
 

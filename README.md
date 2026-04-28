@@ -2,6 +2,8 @@
 
 Trellis is a composable agentic GTM framework.
 
+Developed by Orchid Labs.
+
 This repo now has two distinct layers:
 
 - `packages/`

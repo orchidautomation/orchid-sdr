@@ -2,7 +2,11 @@
 
 This directory is the reference AI SDR app built on top of Trellis.
 
+Developed by Orchid Labs.
+
 `trellis` is the underlying agent-native GTM framework. This example shows one composed workflow: signal-driven AI SDR.
+
+The example app skill pack is runtime-only. Setup and deployment guidance lives in docs and generated setup checklists, not in `examples/ai-sdr/skills/`.
 
 It wakes up on a schedule, finds leads from public signals, researches the person and company, qualifies them against `knowledge/icp.md`, writes operational state to Convex, and can optionally draft, send, and track outreach.
 

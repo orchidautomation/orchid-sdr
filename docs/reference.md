@@ -95,7 +95,7 @@ When changing models:
 
 Tracked AISDR skills live in `skills/`.
 
-Current tracked skills:
+Current tracked AI SDR runtime skills:
 
 - `skills/icp-qualification`
 - `skills/research-brief`
@@ -103,9 +103,6 @@ Current tracked skills:
 - `skills/sdr-copy`
 - `skills/reply-policy`
 - `skills/handoff-policy`
-- `skills/setup-and-verify`
-- `skills/convex-setup`
-- `skills/vercel-setup`
 
 How skills are loaded:
 
@@ -114,7 +111,8 @@ How skills are loaded:
 
 Recommended pattern:
 
-- put AISDR-specific, reusable behavior in tracked `skills/`
+- put AI SDR runtime behavior in tracked `skills/`
+- keep setup and deployment guidance in docs and generated setup checklists
 - put personal or vendor/dev-only helper skills in local `.claude/skills/` or ignored folders like `.agents/`
 
 To add a new tracked skill:
