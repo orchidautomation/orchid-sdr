@@ -139,4 +139,23 @@ describe("evaluateSendAuthority", () => {
     expect(result.reasons).toContain("research confidence below threshold");
     expect(result.reasons).toContain("content policy check failed");
   });
+
+  it("does not treat campaign pause as a mid-flight send blocker", () => {
+    const result = evaluateSendAuthority({
+      snapshot: buildSnapshot(),
+      controlFlags: {
+        globalKillSwitch: false,
+        noSendsMode: false,
+        pausedCampaignIds: ["cmp_default"],
+      },
+      kind: "first_outbound",
+      emailConfidence: 0.9,
+      researchConfidence: 0.8,
+      policyPass: true,
+      now: new Date("2026-04-22T15:00:00.000Z"),
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(result.reasons).toEqual([]);
+  });
 });

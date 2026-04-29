@@ -1,4 +1,4 @@
-import type { MessageInsertInput, ProspectSnapshot } from "../repository.js";
+import { CAMPAIGN_PAUSED_REASON, type MessageInsertInput, type ProspectSnapshot } from "../repository.js";
 import { extractJsonObject } from "../lib/json.js";
 import { extractCompanyResearchUrl, extractLinkedinProfileUrl } from "../lib/signal-urls.js";
 import type { QualificationAssessment, ReplyClass, ResearchBrief, SandboxTurnRequest } from "../domain/types.js";
@@ -150,6 +150,17 @@ export async function executeProspectWorkflow(
   let snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
   const threadId = snapshot.thread.id;
   const controlFlags = await deps.context.repository.getControlFlags();
+  if (controlFlags.pausedCampaignIds.includes(snapshot.campaign.id)) {
+    if (snapshot.thread.status === "active") {
+      await deps.context.repository.pauseThread(threadId, CAMPAIGN_PAUSED_REASON);
+      await deps.context.repository.appendAuditEvent("thread", threadId, "ThreadPaused", {
+        reason: CAMPAIGN_PAUSED_REASON,
+      });
+      snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
+    }
+
+    return paused(snapshot, snapshot.thread.pausedReason ?? CAMPAIGN_PAUSED_REASON);
+  }
   const sourceSignal = snapshot.prospect.sourceSignalId
     ? await deps.context.repository.getSignal(snapshot.prospect.sourceSignalId)
     : null;

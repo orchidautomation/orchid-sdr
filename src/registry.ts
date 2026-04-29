@@ -246,16 +246,18 @@ const campaignOps = actor({
       const flags = await repository.getControlFlags();
       const pausedCampaignIds = Array.from(new Set([...flags.pausedCampaignIds, campaignId]));
       await repository.setControlFlag("paused_campaigns", { campaignIds: pausedCampaignIds });
+      const drained = await repository.pauseCampaignProspects(campaignId);
       c.state.lastMutationAt = Date.now();
-      return { ok: true, pausedCampaignIds };
+      return { ok: true, pausedCampaignIds, ...drained };
     },
     resumeCampaign: async (c, campaignId: string) => {
       const repository = getAppContext().repository;
       const flags = await repository.getControlFlags();
       const pausedCampaignIds = flags.pausedCampaignIds.filter((value) => value !== campaignId);
       await repository.setControlFlag("paused_campaigns", { campaignIds: pausedCampaignIds });
+      const resumed = await repository.resumeCampaignProspects(campaignId);
       c.state.lastMutationAt = Date.now();
-      return { ok: true, pausedCampaignIds };
+      return { ok: true, pausedCampaignIds, ...resumed };
     },
     setLinkedinSourceEnabled: async (
       c,

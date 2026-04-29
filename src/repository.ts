@@ -164,6 +164,8 @@ export interface MessageInsertInput {
   metadata?: Record<string, unknown>;
 }
 
+export const CAMPAIGN_PAUSED_REASON = "campaign is paused";
+
 type SignalRow = {
   id: string;
   source: string;
@@ -1441,6 +1443,72 @@ export class OrchidRepository {
         pausedReason: reason,
       });
     }
+  }
+
+  async pauseCampaignProspects(campaignId: string, reason = CAMPAIGN_PAUSED_REASON) {
+    const [threadsResult, prospectsResult] = await Promise.all([
+      this.db.query(
+        `
+        update threads
+        set status = 'paused',
+            paused_reason = $2,
+            updated_at = now()
+        where campaign_id = $1
+          and status = 'active'
+        `,
+        [campaignId, reason],
+      ),
+      this.db.query(
+        `
+        update prospects
+        set status = 'paused',
+            paused_reason = $2,
+            updated_at = now()
+        where campaign_id = $1
+          and status = 'active'
+        `,
+        [campaignId, reason],
+      ),
+    ]);
+
+    return {
+      pausedThreads: threadsResult.rowCount ?? 0,
+      pausedProspects: prospectsResult.rowCount ?? 0,
+    };
+  }
+
+  async resumeCampaignProspects(campaignId: string, reason = CAMPAIGN_PAUSED_REASON) {
+    const [threadsResult, prospectsResult] = await Promise.all([
+      this.db.query(
+        `
+        update threads
+        set status = 'active',
+            paused_reason = null,
+            updated_at = now()
+        where campaign_id = $1
+          and status = 'paused'
+          and paused_reason = $2
+        `,
+        [campaignId, reason],
+      ),
+      this.db.query(
+        `
+        update prospects
+        set status = 'active',
+            paused_reason = null,
+            updated_at = now()
+        where campaign_id = $1
+          and status = 'paused'
+          and paused_reason = $2
+        `,
+        [campaignId, reason],
+      ),
+    ]);
+
+    return {
+      resumedThreads: threadsResult.rowCount ?? 0,
+      resumedProspects: prospectsResult.rowCount ?? 0,
+    };
   }
 
   async createHandoff(threadId: string, target: string, payload: Record<string, unknown>) {

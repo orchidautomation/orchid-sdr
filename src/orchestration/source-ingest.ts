@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { createId } from "../lib/ids.js";
+import { CAMPAIGN_PAUSED_REASON } from "../repository.js";
 import type { DiscoverySource, SignalSource } from "../domain/types.js";
 import type { WorkflowDependencies } from "./types.js";
 import { executeProspectWorkflow } from "./prospect-workflow.js";
@@ -150,6 +151,8 @@ async function ingestNormalizedSignals(
   const campaign = input.campaignId
     ? await deps.context.repository.getCampaign(input.campaignId)
     : await deps.context.repository.ensureDefaultCampaign();
+  const controlFlags = await deps.context.repository.getControlFlags();
+  const campaignPaused = controlFlags.pausedCampaignIds.includes(campaign.id);
   const providerRunId = await deps.context.repository.recordProviderRun({
     provider: input.provider,
     kind: input.kind,
@@ -187,6 +190,23 @@ async function ingestNormalizedSignals(
       });
 
       const { prospectId } = await deps.context.repository.createOrUpdateProspectFromSignal(signalId, campaign.id);
+      if (campaignPaused) {
+        const snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
+        if (snapshot.thread.status === "active") {
+          await deps.context.repository.pauseThread(snapshot.thread.id, CAMPAIGN_PAUSED_REASON);
+          await deps.context.repository.appendAuditEvent("thread", snapshot.thread.id, "ThreadPaused", {
+            reason: CAMPAIGN_PAUSED_REASON,
+          });
+        }
+        outcomes.push({
+          action: "paused",
+          prospectId,
+          threadId: snapshot.thread.id,
+          reason: snapshot.thread.pausedReason ?? CAMPAIGN_PAUSED_REASON,
+        });
+        continue;
+      }
+
       outcomes.push(await executeProspectWorkflow(deps, prospectId));
     }
 

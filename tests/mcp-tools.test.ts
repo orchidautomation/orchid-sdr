@@ -921,6 +921,59 @@ describe("OrchidMcpToolService operator tools", () => {
     });
   });
 
+  it("keeps rows paused after a draining send when the campaign is paused", async () => {
+    const { service, repository } = createService();
+    const baseSnapshot: any = await repository.getProspectSnapshot();
+    repository.getProspectSnapshot.mockResolvedValueOnce({
+      ...baseSnapshot,
+      prospect: {
+        ...baseSnapshot.prospect,
+        status: "active",
+        stage: "first_outbound",
+        pausedReason: null,
+      },
+      thread: {
+        ...baseSnapshot.thread,
+        status: "active",
+        stage: "first_outbound",
+        pausedReason: null,
+        providerInboxId: null,
+      },
+      email: {
+        address: "ada@analyticalengines.com",
+        confidence: 0.91,
+        source: "prospeo",
+      },
+    });
+    repository.getControlFlags.mockResolvedValueOnce({
+      globalKillSwitch: false,
+      noSendsMode: false,
+      pausedCampaignIds: ["cmp_default"],
+    } as any);
+
+    await service.handleTool("mail.send", {
+      threadId: "thr_1",
+      kind: "first_outbound",
+      subject: "Hello Ada",
+      bodyText: "Quick note",
+    });
+
+    expect(repository.updateThreadState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: "thr_1",
+        status: "paused",
+        pausedReason: "campaign is paused",
+      }),
+    );
+    expect(repository.updateProspectState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prospectId: "pros_1",
+        status: "paused",
+        pausedReason: "campaign is paused",
+      }),
+    );
+  });
+
   it("short-circuits blocked sends before running model policy checks", async () => {
     const { service, repository, context } = createService();
     const baseSnapshot: any = await repository.getProspectSnapshot();

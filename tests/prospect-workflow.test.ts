@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { previewDraftForProspect, processInboundReply } from "../src/orchestration/prospect-workflow.js";
+import { executeProspectWorkflow, previewDraftForProspect, processInboundReply } from "../src/orchestration/prospect-workflow.js";
 
 function createSnapshot() {
   return {
@@ -232,6 +232,7 @@ describe("processInboundReply", () => {
       getControlFlags: vi.fn(async () => ({
         noSendsMode: true,
         globalKillSwitch: false,
+        pausedCampaignIds: [],
       })),
       getSignal: vi.fn(async () => null),
     };
@@ -294,6 +295,82 @@ describe("processInboundReply", () => {
       prospectId: "pros_1",
       threadId: "thr_1",
       reason: "no sends mode",
+    });
+  });
+
+  it("stops new lifecycle execution immediately when the campaign is paused", async () => {
+    const snapshot = createSnapshot();
+    const repository = {
+      getProspectSnapshot: vi.fn(async () => snapshot),
+      getControlFlags: vi.fn(async () => ({
+        noSendsMode: false,
+        globalKillSwitch: false,
+        pausedCampaignIds: ["cmp_default"],
+      })),
+      pauseThread: vi.fn(async () => undefined),
+      appendAuditEvent: vi.fn(async () => undefined),
+    };
+
+    const result = await executeProspectWorkflow(
+      {
+        context: {
+          repository,
+        },
+        runSandboxTurn: vi.fn(),
+      } as any,
+      "pros_1",
+    );
+
+    expect(repository.pauseThread).toHaveBeenCalledWith("thr_1", "campaign is paused");
+    expect(repository.appendAuditEvent).toHaveBeenCalledWith("thread", "thr_1", "ThreadPaused", {
+      reason: "campaign is paused",
+    });
+    expect(result).toMatchObject({
+      action: "paused",
+      prospectId: "pros_1",
+      threadId: "thr_1",
+      reason: "campaign is paused",
+    });
+  });
+
+  it("preserves an existing pause reason when campaign pause is also enabled", async () => {
+    const repository = {
+      getProspectSnapshot: vi.fn(async () => ({
+        ...createSnapshot(),
+        prospect: {
+          ...createSnapshot().prospect,
+          status: "paused",
+          pausedReason: "manual review required",
+        },
+        thread: {
+          ...createSnapshot().thread,
+          status: "paused",
+          pausedReason: "manual review required",
+        },
+      })),
+      getControlFlags: vi.fn(async () => ({
+        noSendsMode: false,
+        globalKillSwitch: false,
+        pausedCampaignIds: ["cmp_default"],
+      })),
+      pauseThread: vi.fn(async () => undefined),
+      appendAuditEvent: vi.fn(async () => undefined),
+    };
+
+    const result = await executeProspectWorkflow(
+      {
+        context: {
+          repository,
+        },
+        runSandboxTurn: vi.fn(),
+      } as any,
+      "pros_1",
+    );
+
+    expect(repository.pauseThread).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      action: "paused",
+      reason: "manual review required",
     });
   });
 });

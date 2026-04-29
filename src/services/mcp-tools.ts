@@ -1,5 +1,4 @@
-import type { MessageInsertInput } from "../repository.js";
-import type { ProspectSnapshot } from "../repository.js";
+import { CAMPAIGN_PAUSED_REASON, type MessageInsertInput, type ProspectSnapshot } from "../repository.js";
 import type { DiscoverySource } from "../domain/types.js";
 import { previewDraftForProspect } from "../orchestration/prospect-workflow.js";
 import { runSandboxTurn } from "../orchestration/sandbox-broker.js";
@@ -1042,6 +1041,7 @@ export class OrchidMcpToolService {
     if (!providerInboxId) {
       throw new Error(`no AgentMail inbox available for campaign ${input.snapshot.campaign.id}`);
     }
+    const campaignPaused = controlFlags.pausedCampaignIds.includes(input.snapshot.campaign.id);
 
     const sendResponse = input.isReply
       ? await this.replyFromThread(input.snapshot, {
@@ -1075,14 +1075,14 @@ export class OrchidMcpToolService {
       providerThreadId: sendResponse.providerThreadId ?? input.snapshot.thread.providerThreadId,
       providerInboxId,
       stage: "await_reply",
-      status: "active",
-      pausedReason: null,
+      status: campaignPaused ? "paused" : "active",
+      pausedReason: campaignPaused ? CAMPAIGN_PAUSED_REASON : null,
     });
     await this.context.repository.updateProspectState({
       prospectId: input.snapshot.prospect.prospectId,
       stage: "await_reply",
-      status: "active",
-      pausedReason: null,
+      status: campaignPaused ? "paused" : "active",
+      pausedReason: campaignPaused ? CAMPAIGN_PAUSED_REASON : null,
     });
     await this.context.repository.appendAuditEvent("thread", input.snapshot.thread.id, "OutboundSent", {
       kind: input.kind,

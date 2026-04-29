@@ -22,9 +22,6 @@ export function evaluateSendAuthority(input: SendAuthorityInput): SendAuthorityR
   if (input.controlFlags.noSendsMode) {
     reasons.push("no sends mode enabled");
   }
-  if (input.controlFlags.pausedCampaignIds.includes(input.snapshot.campaign.id)) {
-    reasons.push("campaign is paused");
-  }
   if (input.snapshot.thread.status === "paused") {
     reasons.push("thread is paused");
   }
