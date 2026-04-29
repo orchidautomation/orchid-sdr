@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { createId } from "../lib/ids.js";
+import { pickNormalizedProspectTitle } from "../lib/prospect-title.js";
 import type { DiscoverySource, SignalSource } from "../domain/types.js";
 import type { WorkflowDependencies } from "./types.js";
 import { executeProspectWorkflow } from "./prospect-workflow.js";
@@ -120,7 +121,9 @@ function normalizeSignalWebhookRecord(defaultSource: string, rawSignal: Record<s
       sourceRef: deriveSourceRef(source, rawSignal, url, content),
       url,
       authorName: readString(rawSignal, ["authorName", "name", "author", "fullName"]) ?? "Unknown",
-      authorTitle: readString(rawSignal, ["authorTitle", "title", "headline", "role"]),
+      authorTitle: pickNormalizedProspectTitle(
+        readString(rawSignal, ["authorTitle", "headline", "role", "title"]),
+      ),
       authorCompany: readString(rawSignal, ["authorCompany", "company", "companyName"]),
       companyDomain: readString(rawSignal, ["companyDomain", "domain", "website"]),
       topic,
