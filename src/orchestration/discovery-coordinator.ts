@@ -571,6 +571,20 @@ async function runDiscoveryTick(
 
   try {
     const campaign = await context.repository.getCampaign(campaignId);
+    const controlFlags = await context.repository.getControlFlags();
+    if (controlFlags.pausedCampaignIds.includes(campaignId)) {
+      c.state.lastStatus = "skipped";
+      return {
+        ok: true,
+        source,
+        campaignId,
+        scheduledNextTickAt: await scheduleNextTick(c),
+        planner,
+        startedRuns,
+        skipped: true,
+        reason: "campaign is paused",
+      };
+    }
     if (!isSourceEnabled(context.config, campaign, source)) {
       c.state.lastStatus = "skipped";
       return {
