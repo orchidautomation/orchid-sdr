@@ -11,14 +11,15 @@ describe("getClosedWonLookalikeExample", () => {
     expect(example.workflow.map((step) => step.support)).toEqual([
       "adapter_gap",
       "placeholder",
-      "adapter_gap",
-      "adapter_gap",
+      "native",
+      "native",
       "adapter_gap",
       "native",
       "native",
       "native",
     ]);
     expect(example.mcpTools).toContain("example.closedWonLookalike");
+    expect(example.mcpTools).toContain("ocean.searchCompanies");
     expect(example.operatorFlows.map((flow) => flow.command)).toContain(
       "npm run example:closed-won-lookalike -- --mode operator",
     );

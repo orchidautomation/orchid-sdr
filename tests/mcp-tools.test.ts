@@ -445,6 +445,61 @@ describe("OrchidMcpToolService operator tools", () => {
     const context = {
       repository,
       attio,
+      ocean: {
+        searchCompanies: vi.fn(async (input) => ({
+          detail: "ok",
+          total: 1,
+          searchAfter: null,
+          missingDomains: {},
+          redirectMap: {},
+          companies: [
+            {
+              domain: "lookalike.dev",
+              name: "Lookalike Dev",
+              relevance: "A",
+              primaryCountry: "US",
+              companySize: "51-200",
+              description: "Workflow software",
+              linkedinUrl: "https://www.linkedin.com/company/lookalike-dev",
+              technologies: ["Segment"],
+              industries: ["Software"],
+              keywords: ["workflow"],
+              raw: input,
+            },
+          ],
+        })),
+        searchPeople: vi.fn(async (input) => ({
+          detail: "ok",
+          total: 1,
+          searchAfter: null,
+          redirectMap: {},
+          includeDomainsStatuses: {},
+          lookalikePeopleStatuses: {},
+          people: [
+            {
+              id: "person_1",
+              domain: "lookalike.dev",
+              name: "Ada Lovelace",
+              jobTitle: "Engineering Manager",
+              linkedinUrl: "https://www.linkedin.com/in/ada",
+              relevance: "A",
+              email: null,
+              company: {
+                name: "Lookalike Dev",
+                companySize: "51-200",
+                logo: null,
+              },
+              raw: input,
+            },
+          ],
+        })),
+        enrichCompany: vi.fn(async (input) => ({
+          domain: "lookalike.dev",
+          name: "Lookalike Dev",
+          description: "Workflow software",
+          raw: input,
+        })),
+      },
       agentMail: {
         isConfigured: vi.fn(() => true),
         createInbox: vi.fn(async () => ({
@@ -628,6 +683,62 @@ describe("OrchidMcpToolService operator tools", () => {
         }),
       ]),
     });
+  });
+
+  it("routes Ocean company search through the first-party adapter", async () => {
+    const { service } = createService();
+
+    const result = await service.handleTool("ocean.searchCompanies", {
+      lookalikeDomains: ["seed.example"],
+      size: 10,
+      companyMatchingMode: "broad",
+      companiesFilters: {
+        technologies: {
+          apps: {
+            anyOf: ["Segment"],
+          },
+        },
+      },
+    });
+
+    const typedResult = result as {
+      companies: Array<{ domain: string }>;
+    };
+
+    expect(typedResult.companies).toHaveLength(1);
+    expect(typedResult.companies[0]?.domain).toBe("lookalike.dev");
+  });
+
+  it("routes Ocean people search and company enrichment through the first-party adapter", async () => {
+    const { service } = createService();
+
+    const people = await service.handleTool("ocean.searchPeople", {
+      companiesFilters: {
+        lookalikeDomains: ["seed.example"],
+      },
+      peopleFilters: {
+        jobTitleKeywords: {
+          anyOf: ["Engineering Manager"],
+        },
+      },
+      size: 5,
+    });
+    const enrichment = await service.handleTool("ocean.enrichCompany", {
+      company: {
+        domain: "lookalike.dev",
+      },
+      fields: ["name", "description"],
+    });
+
+    const typedPeople = people as {
+      people: Array<{ jobTitle: string }>;
+    };
+    const typedEnrichment = enrichment as {
+      domain: string;
+    };
+
+    expect(typedPeople.people[0]?.jobTitle).toBe("Engineering Manager");
+    expect(typedEnrichment.domain).toBe("lookalike.dev");
   });
 
   it("syncs a prospect to Attio through the generic CRM tool", async () => {

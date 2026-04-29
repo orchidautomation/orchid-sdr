@@ -26,6 +26,9 @@
       "pipeline.workflowFeed",
       "pipeline.qualifiedLeads",
       "runtime.flags",
+      "ocean.searchCompanies",
+      "ocean.searchPeople",
+      "ocean.enrichCompany",
       "research.search",
       "research.extract",
       "email.enrich",
@@ -49,13 +52,13 @@
     },
     {
       "key": "find_lookalikes",
-      "support": "adapter_gap",
+      "support": "native",
       "title": "Find lookalike companies",
       "outcome": "Expand the best-customer cohort into net-new target accounts."
     },
     {
       "key": "identify_personas",
-      "support": "adapter_gap",
+      "support": "native",
       "title": "Identify personas",
       "outcome": "Find the right people at each account."
     },

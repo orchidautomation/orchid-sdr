@@ -72,22 +72,22 @@ export function getClosedWonLookalikeExample(): ClosedWonLookalikeExample {
         key: "find_lookalikes",
         title: "Find lookalike companies",
         outcome: "Produce net-new target accounts from the best-customer cohort.",
-        support: "adapter_gap",
-        primitives: ["sourceIngest actor", "discoveryCoordinator actor", "pipeline.workflowFeed"],
+        support: "native",
+        primitives: ["ocean.searchCompanies", "sourceIngest actor", "pipeline.workflowFeed"],
         notes: [
-          "The runtime is source-driven today, so an Ocean-style company expansion provider should arrive as a thin adapter.",
-          "The example keeps this provider boundary explicit instead of pretending it is native already.",
+          "Ocean is now available as a first-party adapter for lookalike company search.",
+          "The workflow still needs a deterministic handoff from CRM cohort selection into this search step.",
         ],
       },
       {
         key: "identify_personas",
         title: "Identify target personas at lookalike accounts",
         outcome: "Find the right buyers or operators at each account.",
-        support: "adapter_gap",
-        primitives: ["ApifySourceAdapter", "ParallelResearchAdapter", "FirecrawlExtractAdapter"],
+        support: "native",
+        primitives: ["ocean.searchPeople", "ParallelResearchAdapter", "FirecrawlExtractAdapter"],
         notes: [
-          "The repo has discovery and research primitives, but not a dedicated account-to-persona search adapter yet.",
-          "A persona finder can be introduced without changing the rest of the workflow shape.",
+          "Ocean now covers lookalike people and persona search through the first-party backend surface.",
+          "Parallel and Firecrawl still complement Ocean when you need current web context before sync.",
         ],
       },
       {
@@ -106,8 +106,9 @@ export function getClosedWonLookalikeExample(): ClosedWonLookalikeExample {
         title: "Enrich companies and contacts",
         outcome: "Add research, contact emails, and account context before CRM upsert.",
         support: "native",
-        primitives: ["research.search", "research.extract", "email.enrich", "prospectThread actor"],
+        primitives: ["ocean.enrichCompany", "research.search", "research.extract", "email.enrich", "prospectThread actor"],
         notes: [
+          "Ocean now adds first-party company enrichment alongside the existing web research and email enrichment primitives.",
           "Company research is already covered by Parallel and Firecrawl-backed primitives.",
           "Contact email enrichment is already covered by the first-party `email.enrich` tool.",
         ],
@@ -158,6 +159,9 @@ export function getClosedWonLookalikeExample(): ClosedWonLookalikeExample {
       "pipeline.workflowFeed",
       "pipeline.qualifiedLeads",
       "runtime.flags",
+      "ocean.searchCompanies",
+      "ocean.searchPeople",
+      "ocean.enrichCompany",
       "research.search",
       "research.extract",
       "email.enrich",
@@ -184,6 +188,12 @@ export function getClosedWonLookalikeExample(): ClosedWonLookalikeExample {
         command: "example.closedWonLookalike({\"includeRuntime\":true})",
         purpose: "Load the example package and append live runtime guidance from the first-party MCP surface.",
       },
+      {
+        name: "Ocean lookalike search",
+        type: "mcp",
+        command: "ocean.searchCompanies({\"lookalikeDomains\":[\"example.com\"],\"size\":25})",
+        purpose: "Expand a closed-won seed domain into lookalike target accounts through the first-party Ocean adapter.",
+      },
     ],
     gaps: [
       {
@@ -193,13 +203,13 @@ export function getClosedWonLookalikeExample(): ClosedWonLookalikeExample {
       },
       {
         area: "Lookalike company provider",
-        status: "adapter_gap",
-        detail: "We need a thin provider abstraction for Ocean-style company expansion so this motion becomes reproducible instead of manual.",
+        status: "native",
+        detail: "Ocean is now wired as a first-party provider for lookalike company search; what remains is deterministic orchestration from CRM cohort selection into the search request.",
       },
       {
         area: "Account-to-persona finder",
-        status: "adapter_gap",
-        detail: "Research primitives exist, but a dedicated account-to-buyer discovery adapter is still missing.",
+        status: "native",
+        detail: "Ocean is now wired as a first-party provider for lookalike people and persona discovery.",
       },
       {
         area: "Seed cohort scoring stage",

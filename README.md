@@ -134,7 +134,7 @@ npm run dev
 http://localhost:3000/dashboard
 ```
 
-If you want the full runtime, add provider keys such as Apify, Firecrawl, Vercel AI Gateway, AgentMail, and Attio. When Attio is configured, the first outbound can auto-create or update the company and contact, and classified replies can automatically promote the Attio stage.
+If you want the full runtime, add provider keys such as Apify, Firecrawl, Ocean, Vercel AI Gateway, AgentMail, and Attio. When Attio is configured, the first outbound can auto-create or update the company and contact, and classified replies can automatically promote the Attio stage.
 
 Campaign quiet hours are evaluated in the campaign's local timezone. New campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE` and you can update a live campaign later through the remote MCP tool `control.setCampaignTimezone`.
 
@@ -166,6 +166,7 @@ It includes:
 
 - a manifest with native support vs adapter gaps
 - an example knowledge pack and overlay skills
+- first-party Ocean provider tools for lookalike company search, persona search, and company enrichment
 - a CLI operator surface: `npm run example:closed-won-lookalike -- --mode blueprint`
 - a live inspection mode: `npm run example:closed-won-lookalike -- --mode operator`
 - a first-party MCP tool: `example.closedWonLookalike`

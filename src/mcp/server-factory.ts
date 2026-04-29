@@ -139,6 +139,52 @@ export function createOrchidMcpServer(context: AppContext) {
   );
 
   server.registerTool(
+    "ocean.searchCompanies",
+    {
+      description: "Search lookalike companies through the first-party Ocean adapter using lookalike domains and company/person filters.",
+      inputSchema: {
+        size: z.number().int().min(1).max(10000).optional(),
+        searchAfter: z.string().optional(),
+        lookalikeDomains: z.array(z.string()).optional(),
+        companyMatchingMode: z.enum(["precise", "broad"]).optional(),
+        companiesFilters: z.record(z.string(), z.unknown()).optional(),
+        peopleFilters: z.record(z.string(), z.unknown()).optional(),
+        fields: z.array(z.string()).optional(),
+      },
+    },
+    async (args) => toToolResult(await context.mcpTools.handleTool("ocean.searchCompanies", args)),
+  );
+
+  server.registerTool(
+    "ocean.searchPeople",
+    {
+      description: "Search lookalike people through the first-party Ocean adapter using people filters and optional company lookalike filters.",
+      inputSchema: {
+        size: z.number().int().min(1).max(10000).optional(),
+        searchAfter: z.string().optional(),
+        peoplePerCompany: z.number().int().min(1).optional(),
+        jobTitleThreshold: z.number().min(0).max(1).optional(),
+        peopleFilters: z.record(z.string(), z.unknown()).optional(),
+        companiesFilters: z.record(z.string(), z.unknown()).optional(),
+        fields: z.array(z.string()).optional(),
+      },
+    },
+    async (args) => toToolResult(await context.mcpTools.handleTool("ocean.searchPeople", args)),
+  );
+
+  server.registerTool(
+    "ocean.enrichCompany",
+    {
+      description: "Enrich one company through the first-party Ocean adapter.",
+      inputSchema: {
+        company: z.record(z.string(), z.unknown()),
+        fields: z.array(z.string()).optional(),
+      },
+    },
+    async (args) => toToolResult(await context.mcpTools.handleTool("ocean.enrichCompany", args)),
+  );
+
+  server.registerTool(
     "pipeline.summary",
     {
       description: "Get a concise operator summary of the SDR pipeline, including discovery state and current throughput.",

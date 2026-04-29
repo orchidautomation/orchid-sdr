@@ -11,6 +11,12 @@ import type { AppContext } from "./runtime-context.js";
 
 const MAIL_PREVIEW_TIMEOUT_MS = 90_000;
 
+function coerceRecordArg(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
 export class OrchidMcpToolService {
   constructor(private readonly context: AppContext) {}
 
@@ -32,6 +38,12 @@ export class OrchidMcpToolService {
         return this.context.parallel.search(String(args.query ?? ""), Number(args.limit ?? 5));
       case "research.extract":
         return this.context.firecrawl.extract(String(args.url ?? ""));
+      case "ocean.searchCompanies":
+        return this.handleOceanSearchCompanies(args);
+      case "ocean.searchPeople":
+        return this.handleOceanSearchPeople(args);
+      case "ocean.enrichCompany":
+        return this.handleOceanEnrichCompany(args);
       case "pipeline.summary":
         return this.handlePipelineSummary(args);
       case "example.closedWonLookalike":
@@ -282,6 +294,8 @@ export class OrchidMcpToolService {
         flags,
         discoveryHealth,
         suggestedNextTools: [
+          "ocean.searchCompanies",
+          "ocean.searchPeople",
           "pipeline.summary",
           "pipeline.workflowFeed",
           "pipeline.qualifiedLeads",
@@ -295,6 +309,42 @@ export class OrchidMcpToolService {
     const source = this.readDiscoverySource(args.source);
     const { snapshots } = await this.getDiscoverySnapshots();
     return snapshots[source];
+  }
+
+  private async handleOceanSearchCompanies(args: Record<string, unknown>) {
+    return this.context.ocean.searchCompanies({
+      size: this.readOptionalNumber(args.size),
+      searchAfter: this.readOptionalString(args.searchAfter),
+      lookalikeDomains: this.readStringArray(args.lookalikeDomains),
+      companyMatchingMode: args.companyMatchingMode === "broad" ? "broad" : "precise",
+      companiesFilters: coerceRecordArg(args.companiesFilters),
+      peopleFilters: coerceRecordArg(args.peopleFilters),
+      fields: this.readStringArray(args.fields),
+    });
+  }
+
+  private async handleOceanSearchPeople(args: Record<string, unknown>) {
+    return this.context.ocean.searchPeople({
+      size: this.readOptionalNumber(args.size),
+      searchAfter: this.readOptionalString(args.searchAfter),
+      peoplePerCompany: this.readOptionalNumber(args.peoplePerCompany),
+      jobTitleThreshold: this.readOptionalFloat(args.jobTitleThreshold),
+      peopleFilters: coerceRecordArg(args.peopleFilters),
+      companiesFilters: coerceRecordArg(args.companiesFilters),
+      fields: this.readStringArray(args.fields),
+    });
+  }
+
+  private async handleOceanEnrichCompany(args: Record<string, unknown>) {
+    const company = coerceRecordArg(args.company);
+    if (!company) {
+      throw new Error("company is required");
+    }
+
+    return this.context.ocean.enrichCompany({
+      company,
+      fields: this.readStringArray(args.fields),
+    });
   }
 
   private async handleRuntimeDiscoveryHealth() {
@@ -351,6 +401,34 @@ export class OrchidMcpToolService {
       flags,
       campaignOps,
     };
+  }
+
+  private readOptionalNumber(value: unknown) {
+    if (value === undefined || value === null || value === "") {
+      return undefined;
+    }
+
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : undefined;
+  }
+
+  private readOptionalFloat(value: unknown) {
+    if (value === undefined || value === null || value === "") {
+      return undefined;
+    }
+
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  private readOptionalString(value: unknown) {
+    return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+  }
+
+  private readStringArray(value: unknown) {
+    return Array.isArray(value)
+      ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      : undefined;
   }
 
   private async handleLeadInspect(args: Record<string, unknown>) {
