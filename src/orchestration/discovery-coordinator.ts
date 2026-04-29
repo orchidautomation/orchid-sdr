@@ -22,6 +22,9 @@ interface DiscoveryActorState {
   ticks: number;
   lastTickAt: number;
   nextTickAt: number;
+  nextTickToken: string | null;
+  pendingTickToken: string | null;
+  lastEnqueueAt: number;
   lastPlanner: string | null;
   lastRunId: string | null;
   lastTerm: string | null;
@@ -37,6 +40,10 @@ interface DiscoveryTickResult {
   startedRuns: Array<{
     actorRunId: string | null;
     term: string;
+  }>;
+  skippedTerms?: Array<{
+    term: string;
+    reason: string;
   }>;
   skipped?: boolean;
   reason?: string;
@@ -56,6 +63,7 @@ interface RunCompletionPayload {
 }
 
 const APIFY_RUN_POLL_DELAY_MS = 15_000;
+const MANUAL_TICK_DELAY_MS = 1;
 
 export const discoveryCoordinator = actor({
   state: {
@@ -65,6 +73,9 @@ export const discoveryCoordinator = actor({
     ticks: 0,
     lastTickAt: 0,
     nextTickAt: 0,
+    nextTickToken: null as string | null,
+    pendingTickToken: null as string | null,
+    lastEnqueueAt: 0,
     lastPlanner: null as string | null,
     lastRunId: null as string | null,
     lastTerm: null as string | null,
@@ -139,10 +150,7 @@ export const discoveryCoordinator = actor({
 
       const alreadyScheduled = c.state.nextTickAt > Date.now();
       if (!alreadyScheduled) {
-        c.state.nextTickAt = Date.now() + getAppContext().config.DISCOVERY_INTERVAL_MS;
-        await c.schedule.after(getAppContext().config.DISCOVERY_INTERVAL_MS, "tick", {
-          reason: "initialize",
-        });
+        await scheduleNextTick(c, "initialize");
       }
 
       c.state.initialized = true;
@@ -161,16 +169,71 @@ export const discoveryCoordinator = actor({
       c,
       input?: {
         reason?: string;
+        scheduledToken?: string;
+        enqueueToken?: string;
       },
-    ) => runDiscoveryTick(c, input),
+    ) => {
+      if (input?.scheduledToken) {
+        if (isScheduledTickStale(c.state.nextTickToken, input.scheduledToken)) {
+          return {
+            ok: true,
+            source: c.state.source,
+            campaignId: c.state.campaignId,
+            scheduledNextTickAt: c.state.nextTickAt,
+            planner: c.state.lastPlanner ?? "pending",
+            startedRuns: [],
+            skipped: true,
+            reason: "stale scheduled tick ignored",
+          };
+        }
+
+        c.state.nextTickToken = null;
+        c.state.nextTickAt = 0;
+      }
+
+      if (input?.enqueueToken && input.enqueueToken === c.state.pendingTickToken) {
+        c.state.pendingTickToken = null;
+      }
+
+      return runDiscoveryTick(c, input);
+    },
     enqueueTick: async (
       c,
       input?: {
         reason?: string;
       },
     ) => {
-      await c.schedule.after(1, "tick", {
+      const now = Date.now();
+      const { DISCOVERY_ENQUEUE_DEDUPE_MS } = getAppContext().config;
+
+      if (c.state.pendingTickToken) {
+        return {
+          ok: true,
+          queued: false,
+          source: c.state.source,
+          campaignId: c.state.campaignId,
+          skipped: true,
+          reason: "tick already queued",
+        };
+      }
+
+      if (c.state.lastTickAt > 0 && now - c.state.lastTickAt < DISCOVERY_ENQUEUE_DEDUPE_MS) {
+        return {
+          ok: true,
+          queued: false,
+          source: c.state.source,
+          campaignId: c.state.campaignId,
+          skipped: true,
+          reason: "recent tick already started",
+        };
+      }
+
+      const enqueueToken = createId("tick");
+      c.state.pendingTickToken = enqueueToken;
+      c.state.lastEnqueueAt = now;
+      await c.schedule.after(MANUAL_TICK_DELAY_MS, "tick", {
         reason: input?.reason ?? "manual_enqueue",
+        enqueueToken,
       });
 
       return {
@@ -567,6 +630,7 @@ async function runDiscoveryTick(
 
   let planner = "fallback";
   let startedRuns: DiscoveryTickResult["startedRuns"] = [];
+  let skippedTerms: DiscoveryTickResult["skippedTerms"] = [];
   const failures: DiscoveryTickResult["failures"] = [];
 
   try {
@@ -611,11 +675,28 @@ async function runDiscoveryTick(
       };
     }
 
+    const recentRunState = await loadRecentRunState(c.db, context.config.DISCOVERY_TERM_COOLDOWN_MS);
+    const availableSlots = Math.max(0, context.config.DISCOVERY_MAX_CONCURRENT_RUNS - recentRunState.runningCount);
+    if (availableSlots <= 0) {
+      c.state.lastPlanner = planner;
+      c.state.lastStatus = "skipped";
+      return {
+        ok: true,
+        source,
+        campaignId,
+        scheduledNextTickAt: await scheduleNextTick(c),
+        planner,
+        startedRuns,
+        skipped: true,
+        reason: "max concurrent discovery runs already in flight",
+      };
+    }
+
     const history = await loadDiscoveryHistory(c.db);
     const fallbackTerms = selectFallbackDiscoveryTerms({
       seedTerms: getSeedTerms(context.config, source),
       history,
-      maxRuns: context.config.DISCOVERY_MAX_RUNS_PER_TICK,
+      maxRuns: Math.min(context.config.DISCOVERY_MAX_RUNS_PER_TICK, availableSlots),
     });
 
     let plannedTerms = fallbackTerms;
@@ -624,7 +705,7 @@ async function runDiscoveryTick(
       source,
       history,
       fallbackTerms,
-      maxRuns: context.config.DISCOVERY_MAX_RUNS_PER_TICK,
+      maxRuns: Math.min(context.config.DISCOVERY_MAX_RUNS_PER_TICK, availableSlots),
     }).catch((error) => {
       c.log.warn({
         msg: "sandbox discovery planner failed, falling back",
@@ -639,6 +720,10 @@ async function runDiscoveryTick(
       planner = "sandbox";
     }
 
+    const filtered = filterPlannedTerms(plannedTerms, recentRunState, availableSlots);
+    plannedTerms = filtered.terms;
+    skippedTerms = filtered.skippedTerms;
+
     if (!plannedTerms.length) {
       c.state.lastPlanner = planner;
       c.state.lastStatus = "skipped";
@@ -649,8 +734,9 @@ async function runDiscoveryTick(
         scheduledNextTickAt: await scheduleNextTick(c),
         planner,
         startedRuns,
+        skippedTerms,
         skipped: true,
-        reason: "no discovery terms available",
+        reason: skippedTerms.length ? "all planned discovery terms were deduped or rate-limited" : "no discovery terms available",
       };
     }
 
@@ -782,6 +868,7 @@ async function runDiscoveryTick(
         source,
         tickReason: input?.reason ?? null,
         startedRuns: startedRuns.length,
+        skippedTerms,
       }),
     );
 
@@ -794,6 +881,7 @@ async function runDiscoveryTick(
       scheduledNextTickAt: await scheduleNextTick(c),
       planner,
       startedRuns,
+      skippedTerms: skippedTerms.length ? skippedTerms : undefined,
       skipped: startedRuns.length === 0,
       reason: startedRuns.length === 0 ? "no discovery runs started" : undefined,
       failures: failures.length ? failures : undefined,
@@ -938,13 +1026,120 @@ async function scheduleNextTick(c: {
   schedule: {
     after: (duration: number, fn: string, ...args: unknown[]) => Promise<void>;
   };
-}) {
+}, reason = "scheduled") {
   const nextAt = Date.now() + getAppContext().config.DISCOVERY_INTERVAL_MS;
+  const tickToken = createId("tick");
   c.state.nextTickAt = nextAt;
+  c.state.nextTickToken = tickToken;
   await c.schedule.after(getAppContext().config.DISCOVERY_INTERVAL_MS, "tick", {
-    reason: "scheduled",
+    reason,
+    scheduledToken: tickToken,
   });
   return nextAt;
+}
+
+async function loadRecentRunState(
+  database: {
+    execute: <TRow extends Record<string, unknown> = Record<string, unknown>>(
+      query: string,
+      ...args: unknown[]
+    ) => Promise<TRow[]>;
+  },
+  cooldownMs: number,
+) {
+  const cutoff = Date.now() - cooldownMs;
+  const rows = await database.execute<{
+    term: string;
+    status: string;
+    created_at: number;
+  }>(
+    `
+    select term, status, created_at
+    from discovery_runs
+    where status = 'running'
+       or (created_at >= ? and status != 'failed')
+    order by created_at desc
+    `,
+    cutoff,
+  );
+
+  const runningTerms = new Set<string>();
+  const recentTerms = new Set<string>();
+
+  for (const row of rows) {
+    const normalized = normalizeTerms([row.term])[0];
+    if (!normalized) continue;
+    recentTerms.add(normalized);
+    if (row.status === "running") {
+      runningTerms.add(normalized);
+    }
+  }
+
+  return {
+    runningCount: rows.filter((row) => row.status === "running").length,
+    runningTerms,
+    recentTerms,
+  };
+}
+
+export function filterPlannedTerms(
+  plannedTerms: Array<{
+    term: string;
+    reason: string;
+    priority: number;
+  }>,
+  recentRunState: {
+    runningTerms: Set<string>;
+    recentTerms: Set<string>;
+  },
+  availableSlots: number,
+) {
+  const selected: typeof plannedTerms = [];
+  const skippedTerms: Array<{ term: string; reason: string }> = [];
+  const seen = new Set<string>();
+
+  for (const plannedTerm of plannedTerms) {
+    const normalized = normalizeTerms([plannedTerm.term])[0];
+    if (!normalized) {
+      skippedTerms.push({ term: plannedTerm.term, reason: "term normalized to empty value" });
+      continue;
+    }
+    if (seen.has(normalized)) {
+      skippedTerms.push({ term: normalized, reason: "duplicate term in same tick" });
+      continue;
+    }
+    if (recentRunState.runningTerms.has(normalized)) {
+      skippedTerms.push({ term: normalized, reason: "term already has a running provider run" });
+      continue;
+    }
+    if (recentRunState.recentTerms.has(normalized)) {
+      skippedTerms.push({ term: normalized, reason: "term is within discovery cooldown window" });
+      continue;
+    }
+
+    selected.push({
+      ...plannedTerm,
+      term: normalized,
+    });
+    seen.add(normalized);
+
+    if (selected.length >= availableSlots) {
+      break;
+    }
+  }
+
+  return {
+    terms: selected,
+    skippedTerms,
+  };
+}
+
+export function isScheduledTickStale(currentToken: string | null, incomingToken: string | undefined) {
+  if (!incomingToken) {
+    return false;
+  }
+
+  return !currentToken || incomingToken !== currentToken;
 }
 
 function getSeedTerms(config: AppConfig, source: DiscoverySource) {

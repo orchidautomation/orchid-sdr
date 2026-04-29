@@ -52,10 +52,7 @@ async function bootstrapDiscoveryActors() {
     await actor.initialize({
       campaignId: campaign.id,
       source: "linkedin_public_post",
-      runNow: false,
-    });
-    await actor.enqueueTick({
-      reason: "startup_bootstrap",
+      runNow: true,
     });
   }
 
@@ -64,10 +61,7 @@ async function bootstrapDiscoveryActors() {
     await actor.initialize({
       campaignId: campaign.id,
       source: "x_public_post",
-      runNow: false,
-    });
-    await actor.enqueueTick({
-      reason: "startup_bootstrap",
+      runNow: true,
     });
   }
 }

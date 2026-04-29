@@ -55,6 +55,9 @@ const envSchema = z.object({
 
   DISCOVERY_INTERVAL_MS: z.coerce.number().default(60 * 60 * 1000),
   DISCOVERY_MAX_RUNS_PER_TICK: z.coerce.number().default(2),
+  DISCOVERY_MAX_CONCURRENT_RUNS: z.coerce.number().default(2),
+  DISCOVERY_ENQUEUE_DEDUPE_MS: z.coerce.number().default(30 * 1000),
+  DISCOVERY_TERM_COOLDOWN_MS: z.coerce.number().default(15 * 60 * 1000),
   DISCOVERY_WEEKDAYS_ONLY: z
     .union([z.literal("true"), z.literal("false")])
     .default("true")
