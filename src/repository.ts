@@ -124,6 +124,45 @@ export interface DashboardAuditEventRow {
   createdAt: string;
 }
 
+export interface ValidationCleanupCandidate {
+  prospectId: string;
+  threadId: string | null;
+  fullName: string;
+  company: string | null;
+  title: string | null;
+  stage: string;
+  status: string;
+  threadStatus: string | null;
+  pausedReason: string | null;
+  isQualified: boolean;
+  sourceSignalId: string | null;
+  signalCapturedAt: string | null;
+  hasResearchBrief: boolean;
+  outboundMessages: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ValidationBaselineSummary {
+  since: string;
+  summary: {
+    signals: number;
+    prospects: number;
+    qualifiedProspects: number;
+    activeThreads: number;
+    pausedThreads: number;
+    researchBriefs: number;
+    outboundMessages: number;
+    inboundMessages: number;
+    providerRuns: number;
+    auditEvents: number;
+  };
+  recentProspects: DashboardProspectRow[];
+  providerRuns: DashboardProviderRunRow[];
+  workflowFeed: DashboardAuditEventRow[];
+  excludedLegacyProspects: number;
+}
+
 export interface ProspectSnapshot {
   prospect: ProspectContext;
   qualificationReason: string | null;
@@ -653,6 +692,333 @@ export class OrchidRepository {
       payload: coerceJson<Record<string, unknown>>(row.payload, {}),
       createdAt: new Date(row.created_at).toISOString(),
     }));
+  }
+
+  async listValidationCleanupCandidates(input: {
+    before?: string;
+    prospectIds?: string[];
+    limit?: number;
+  }): Promise<ValidationCleanupCandidate[]> {
+    const prospectIds = Array.isArray(input.prospectIds)
+      ? input.prospectIds.map((value) => value.trim()).filter(Boolean)
+      : [];
+    const limit = Math.max(1, Math.min(input.limit ?? 25, 200));
+
+    if (!input.before && prospectIds.length === 0) {
+      throw new Error("before or prospectIds is required");
+    }
+
+    const clauses = [
+      `coalesce((p.metadata->'operations'->'validationCleanup'->>'excludedFromValidation')::boolean, false) = false`,
+    ];
+    const values: unknown[] = [];
+
+    if (prospectIds.length > 0) {
+      values.push(prospectIds);
+      clauses.push(`p.id = any($${values.length}::text[])`);
+    }
+
+    if (input.before) {
+      values.push(input.before);
+      clauses.push(`p.updated_at < $${values.length}::timestamptz`);
+    }
+
+    values.push(limit);
+
+    const result = await this.db.query(
+      `
+      select
+        p.id as prospect_id,
+        t.id as thread_id,
+        p.full_name,
+        p.company,
+        p.title,
+        p.stage,
+        p.status,
+        t.status as thread_status,
+        p.paused_reason,
+        p.is_qualified,
+        p.source_signal_id,
+        s.captured_at as signal_captured_at,
+        exists(select 1 from research_briefs rb where rb.prospect_id = p.id) as has_research_brief,
+        (
+          select count(*)::int
+          from messages m
+          join threads mt on mt.id = m.thread_id
+          where mt.prospect_id = p.id
+            and m.direction = 'outbound'
+        ) as outbound_messages,
+        p.created_at,
+        p.updated_at
+      from prospects p
+      left join threads t on t.prospect_id = p.id
+      left join signals s on s.id = p.source_signal_id
+      where ${clauses.join(" and ")}
+      order by p.updated_at asc
+      limit $${values.length}
+      `,
+      values,
+    );
+
+    return result.rows.map((row) => ({
+      prospectId: row.prospect_id,
+      threadId: row.thread_id,
+      fullName: row.full_name,
+      company: row.company,
+      title: row.title,
+      stage: row.stage,
+      status: row.status,
+      threadStatus: row.thread_status,
+      pausedReason: row.paused_reason,
+      isQualified: Boolean(row.is_qualified),
+      sourceSignalId: row.source_signal_id,
+      signalCapturedAt: row.signal_captured_at ? new Date(row.signal_captured_at).toISOString() : null,
+      hasResearchBrief: Boolean(row.has_research_brief),
+      outboundMessages: Number(row.outbound_messages ?? 0),
+      createdAt: new Date(row.created_at).toISOString(),
+      updatedAt: new Date(row.updated_at).toISOString(),
+    }));
+  }
+
+  async excludeProspectsFromValidation(input: {
+    prospectIds: string[];
+    batchId: string;
+    reason: string;
+  }) {
+    const prospectIds = input.prospectIds.map((value) => value.trim()).filter(Boolean);
+    if (prospectIds.length === 0) {
+      return;
+    }
+
+    await this.db.query(
+      `
+      update prospects
+      set status = 'completed',
+          paused_reason = coalesce(paused_reason, $3),
+          metadata = jsonb_set(
+            coalesce(metadata, '{}'::jsonb),
+            '{operations,validationCleanup}',
+            jsonb_build_object(
+              'batchId', $2,
+              'reason', $3,
+              'excludedFromValidation', true,
+              'cleanedAt', now()
+            ),
+            true
+          ),
+          updated_at = now()
+      where id = any($1::text[])
+      `,
+      [prospectIds, input.batchId, input.reason],
+    );
+
+    await this.db.query(
+      `
+      update threads
+      set status = 'completed',
+          paused_reason = coalesce(paused_reason, $3),
+          next_follow_up_at = null,
+          metadata = jsonb_set(
+            coalesce(metadata, '{}'::jsonb),
+            '{operations,validationCleanup}',
+            jsonb_build_object(
+              'batchId', $2,
+              'reason', $3,
+              'excludedFromValidation', true,
+              'cleanedAt', now()
+            ),
+            true
+          ),
+          updated_at = now()
+      where prospect_id = any($1::text[])
+      `,
+      [prospectIds, input.batchId, input.reason],
+    );
+  }
+
+  async getValidationBaselineSummary(input: {
+    since: string;
+    limit?: number;
+  }): Promise<ValidationBaselineSummary> {
+    const limit = Math.max(1, Math.min(input.limit ?? 10, 50));
+    const excludedClause =
+      `coalesce((p.metadata->'operations'->'validationCleanup'->>'excludedFromValidation')::boolean, false) = false`;
+
+    const [countsResult, recentProspectsResult, providerRunsResult, workflowFeedResult, excludedResult] = await Promise.all([
+      this.db.query(
+        `
+        select
+          (select count(*)::int from signals where created_at >= $1::timestamptz) as signals,
+          (select count(*)::int from prospects p where p.created_at >= $1::timestamptz and ${excludedClause}) as prospects,
+          (
+            select count(*)::int
+            from prospects p
+            where p.created_at >= $1::timestamptz
+              and ${excludedClause}
+              and p.is_qualified = true
+          ) as qualified_prospects,
+          (
+            select count(*)::int
+            from threads t
+            join prospects p on p.id = t.prospect_id
+            where t.created_at >= $1::timestamptz
+              and ${excludedClause}
+              and t.status = 'active'
+          ) as active_threads,
+          (
+            select count(*)::int
+            from threads t
+            join prospects p on p.id = t.prospect_id
+            where t.created_at >= $1::timestamptz
+              and ${excludedClause}
+              and t.status = 'paused'
+          ) as paused_threads,
+          (
+            select count(*)::int
+            from research_briefs rb
+            join prospects p on p.id = rb.prospect_id
+            where rb.created_at >= $1::timestamptz
+              and ${excludedClause}
+          ) as research_briefs,
+          (
+            select count(*)::int
+            from messages m
+            join threads t on t.id = m.thread_id
+            join prospects p on p.id = t.prospect_id
+            where m.created_at >= $1::timestamptz
+              and ${excludedClause}
+              and m.direction = 'outbound'
+          ) as outbound_messages,
+          (
+            select count(*)::int
+            from messages m
+            join threads t on t.id = m.thread_id
+            join prospects p on p.id = t.prospect_id
+            where m.created_at >= $1::timestamptz
+              and ${excludedClause}
+              and m.direction = 'inbound'
+          ) as inbound_messages,
+          (select count(*)::int from provider_runs where created_at >= $1::timestamptz) as provider_runs,
+          (select count(*)::int from audit_events where created_at >= $1::timestamptz) as audit_events
+        `,
+        [input.since],
+      ),
+      this.db.query(
+        `
+        select
+          p.id,
+          p.full_name,
+          p.company,
+          p.title,
+          p.stage,
+          p.status,
+          p.is_qualified,
+          p.qualification_reason,
+          p.metadata->'qualification' as qualification,
+          p.paused_reason,
+          p.updated_at
+        from prospects p
+        where p.created_at >= $1::timestamptz
+          and ${excludedClause}
+        order by p.updated_at desc
+        limit $2
+        `,
+        [input.since, limit],
+      ),
+      this.db.query(
+        `
+        select
+          id,
+          provider,
+          kind,
+          external_id,
+          status,
+          created_at,
+          updated_at,
+          request_payload->>'term' as request_term,
+          response_payload->>'error' as error,
+          case
+            when status in ('succeeded', 'failed', 'aborted', 'timed_out', 'completed')
+              then greatest(0, floor(extract(epoch from (updated_at - created_at)) * 1000))::bigint
+            else null
+          end as duration_ms
+        from provider_runs
+        where created_at >= $1::timestamptz
+        order by created_at desc
+        limit $2
+        `,
+        [input.since, limit],
+      ),
+      this.db.query(
+        `
+        select id, entity_type, entity_id, event_name, payload, created_at
+        from audit_events
+        where created_at >= $1::timestamptz
+        order by created_at desc
+        limit $2
+        `,
+        [input.since, limit],
+      ),
+      this.db.query(
+        `
+        select count(*)::int as count
+        from prospects
+        where coalesce((metadata->'operations'->'validationCleanup'->>'excludedFromValidation')::boolean, false) = true
+        `,
+      ),
+    ]);
+
+    const counts = countsResult.rows[0] ?? {};
+
+    return {
+      since: input.since,
+      summary: {
+        signals: Number(counts.signals ?? 0),
+        prospects: Number(counts.prospects ?? 0),
+        qualifiedProspects: Number(counts.qualified_prospects ?? 0),
+        activeThreads: Number(counts.active_threads ?? 0),
+        pausedThreads: Number(counts.paused_threads ?? 0),
+        researchBriefs: Number(counts.research_briefs ?? 0),
+        outboundMessages: Number(counts.outbound_messages ?? 0),
+        inboundMessages: Number(counts.inbound_messages ?? 0),
+        providerRuns: Number(counts.provider_runs ?? 0),
+        auditEvents: Number(counts.audit_events ?? 0),
+      },
+      recentProspects: recentProspectsResult.rows.map((row) => ({
+        id: row.id,
+        fullName: row.full_name,
+        company: row.company,
+        title: row.title,
+        stage: row.stage,
+        status: row.status,
+        isQualified: Boolean(row.is_qualified),
+        qualificationReason: row.qualification_reason,
+        qualification: coerceQualification(row.qualification),
+        pausedReason: row.paused_reason,
+        updatedAt: new Date(row.updated_at).toISOString(),
+      })),
+      providerRuns: providerRunsResult.rows.map((row) => ({
+        id: row.id,
+        provider: row.provider,
+        kind: row.kind,
+        externalId: row.external_id,
+        status: row.status,
+        createdAt: new Date(row.created_at).toISOString(),
+        updatedAt: new Date(row.updated_at).toISOString(),
+        durationMs: row.duration_ms === null ? null : Number(row.duration_ms),
+        requestTerm: row.request_term,
+        error: row.error,
+      })),
+      workflowFeed: workflowFeedResult.rows.map((row) => ({
+        id: row.id,
+        entityType: row.entity_type,
+        entityId: row.entity_id,
+        eventName: row.event_name,
+        payload: coerceJson<Record<string, unknown>>(row.payload, {}),
+        createdAt: new Date(row.created_at).toISOString(),
+      })),
+      excludedLegacyProspects: Number(excludedResult.rows[0]?.count ?? 0),
+    };
   }
 
   async recordProviderRun(input: {
