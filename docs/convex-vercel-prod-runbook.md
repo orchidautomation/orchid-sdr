@@ -75,6 +75,16 @@ NEXT_PUBLIC_CONVEX_URL=https://<your-deployment>.convex.cloud
 CONVEX_SITE_URL=https://<your-deployment>.convex.site
 ```
 
+If `npx convex deploy` fails on schema validation against old prod data, do not leave the final schema loose. Use a staged migration:
+
+1. temporarily loosen only the legacy fields that are blocking deploy
+2. deploy that temporary migration shape
+3. backfill the old rows
+4. restore the strict schema
+5. deploy again
+
+The final Trellis branch should stay strict.
+
 ## 3. Set The Minimum Production Env
 
 You need these values in Vercel:
@@ -134,6 +144,8 @@ vercel link
 ```
 
 Then set env in Vercel.
+
+The app must use the Convex prod URL after `npx convex deploy`, not the local dev deployment URL.
 
 If you want to push env from local files one by one, use:
 
