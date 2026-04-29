@@ -54,4 +54,20 @@ describe("normalizeSignalWebhookPayload", () => {
     expect(result.signals[1]?.source).toBe("podcast_mention");
     expect(result.signals[1]?.signal.content).toMatch(/GTM systems/);
   });
+
+  it("filters follower-count titles from webhook payloads", () => {
+    const result = normalizeSignalWebhookPayload({
+      provider: "linkedin-import",
+      signals: [
+        {
+          source: "linkedin_public_post",
+          url: "https://www.linkedin.com/posts/example",
+          authorName: "Taylor",
+          headline: "10,434 followers",
+        },
+      ],
+    });
+
+    expect(result.signals[0]?.signal.authorTitle).toBeNull();
+  });
 });

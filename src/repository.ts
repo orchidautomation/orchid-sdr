@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 import { getDb } from "./db/client.js";
 import { getConfig } from "./config.js";
 import { createId } from "./lib/ids.js";
+import { normalizeProspectTitle } from "./lib/prospect-title.js";
 import { extractCompanyResearchUrl, extractLinkedinProfileUrl, extractTwitterProfileUrl } from "./lib/signal-urls.js";
 import type {
   CampaignSenderIdentity,
@@ -705,6 +706,7 @@ export class OrchidRepository {
 
   async insertSignal(input: SignalRecord & { campaignId: string; datasetId?: string | null }) {
     const twitterUrl = input.twitterUrl ?? extractTwitterProfileUrl(input.metadata, input.url);
+    const authorTitle = normalizeProspectTitle(input.authorTitle);
     const result = await this.db.query<{ id: string }>(
       `
       insert into signals (
@@ -753,7 +755,7 @@ export class OrchidRepository {
         input.datasetId ?? null,
         input.url,
         input.authorName,
-        input.authorTitle ?? null,
+        authorTitle,
         input.authorCompany ?? null,
         normalizeDomain(input.companyDomain),
         twitterUrl,
@@ -886,6 +888,7 @@ export class OrchidRepository {
       companyDomain,
     });
 
+    const prospectTitle = normalizeProspectTitle(signal.authorTitle);
     await this.db.query(
       `
       insert into prospects (
@@ -926,7 +929,7 @@ export class OrchidRepository {
         accountId,
         signal.authorName,
         firstName,
-        signal.authorTitle ?? null,
+        prospectTitle,
         signal.authorCompany ?? null,
         companyDomain,
         linkedinProfileUrl,

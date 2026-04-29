@@ -1,5 +1,6 @@
 import { getConfig } from "./config.js";
 import type { ContactEmail, DiscoverySource, ProspectContext } from "./domain/types.js";
+import { pickNormalizedProspectTitle } from "./lib/prospect-title.js";
 
 interface ParallelSearchResult {
   title: string;
@@ -204,8 +205,10 @@ export class ApifySourceAdapter {
       const socialContentRecord = coerceRecord(item.socialContent);
 
       const authorInfo =
-        pickString(authorRecord, ["info", "headline", "description"])
-        ?? pickString(headerRecord, ["text"]);
+        pickNormalizedProspectTitle(
+          pickString(authorRecord, ["headline", "info", "description"]),
+          pickString(headerRecord, ["text"]),
+        );
       const author = pickString(item, ["authorName", "name", "fullName"])
         ?? pickString(authorRecord, ["name", "fullName"])
         ?? "Unknown";
@@ -230,7 +233,12 @@ export class ApifySourceAdapter {
         sourceRef: pickString(item, ["entityId", "id", "postId", "urn", "shareUrn"]) ?? url,
         url,
         authorName: author,
-        authorTitle: pickString(item, ["jobTitle", "title", "headline"]) ?? authorInfo,
+        authorTitle: pickNormalizedProspectTitle(
+          pickString(item, ["jobTitle", "headline", "title"]),
+          pickString(authorRecord, ["headline", "info", "description"]),
+          pickString(headerRecord, ["text"]),
+          authorInfo,
+        ),
         authorCompany: company,
         companyDomain,
         topic,

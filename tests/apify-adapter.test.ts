@@ -33,4 +33,25 @@ describe("ApifySourceAdapter", () => {
     expect(signal.url).toContain("linkedin.com/posts/cephas-princely");
     expect(signal.content).toContain("GTM tools");
   });
+
+  it("drops follower-count text and falls back to a cleaner LinkedIn headline", () => {
+    const adapter = new ApifySourceAdapter();
+    const [signal] = adapter.normalizeLinkedInSignals([
+      {
+        id: "post_2",
+        linkedinUrl: "https://www.linkedin.com/posts/example",
+        title: "849 followers",
+        header: {
+          text: "10,434 followers",
+        },
+        author: {
+          name: "Avery Kim",
+          headline: "Head of Growth at Northstar",
+          info: "43,106 followers",
+        },
+      },
+    ]);
+
+    expect(signal?.authorTitle).toBe("Head of Growth at Northstar");
+  });
 });
