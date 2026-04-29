@@ -4,17 +4,28 @@ import { fileURLToPath } from "node:url";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
+function isAiSdrRoot(candidate: string) {
+  return fs.existsSync(path.join(candidate, "ai-sdr.config.ts"))
+    && fs.existsSync(path.join(candidate, "knowledge"))
+    && fs.existsSync(path.join(candidate, "skills"));
+}
+
+function candidateRoots(current: string) {
+  return [
+    current,
+    path.join(current, "examples", "ai-sdr"),
+  ];
+}
+
 function findProjectRoot(startDirs: string[]) {
   for (const startDir of startDirs) {
     let current = path.resolve(startDir);
 
     while (true) {
-      if (fs.existsSync(path.join(current, "ai-sdr.config.ts"))) {
-        return current;
-      }
-
-      if (fs.existsSync(path.join(current, "package.json"))) {
-        return current;
+      for (const candidate of candidateRoots(current)) {
+        if (isAiSdrRoot(candidate)) {
+          return candidate;
+        }
       }
 
       const parent = path.dirname(current);

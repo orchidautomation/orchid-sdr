@@ -90,7 +90,32 @@ export async function buildDefaultSdrDashboardRuntimeState(
 ) {
   const timeoutMs = input.timeoutMs ?? 1_200;
   const campaign = await context.repository.ensureDefaultCampaign();
-  const client = input.getActorClient();
+  let client: DefaultSdrDashboardActorClient;
+
+  try {
+    client = input.getActorClient();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      campaignId: campaign.id,
+      localSmokeMode: context.localSmokeMode,
+      generatedAt: new Date().toISOString(),
+      runtimeUnavailable: {
+        reason: message,
+      },
+      actors: {
+        sourceIngest: null,
+        campaignOps: null,
+        sandboxBroker: null,
+      },
+      discovery: {
+        linkedin_public_post: null,
+        x_public_post: null,
+      },
+      sandboxJobs: [],
+    };
+  }
+
   const sandboxActor = client.sandboxBroker.getOrCreate();
 
   const [

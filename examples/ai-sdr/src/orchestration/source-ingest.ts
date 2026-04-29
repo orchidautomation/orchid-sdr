@@ -55,6 +55,11 @@ async function ingestNormalizedSignals(
     });
 
     const outcomes = [];
+    const workflowFailures: Array<{
+      signalId: string;
+      prospectId: string;
+      error: string;
+    }> = [];
 
     for (const inbound of input.signals) {
       const signalId = await deps.context.repository.insertSignal({
@@ -119,22 +124,49 @@ async function ingestNormalizedSignals(
       });
 
       const { prospectId } = await deps.context.repository.createOrUpdateProspectFromSignal(signalId, campaign.id);
-      const outcome = await executeProspectWorkflow(deps, prospectId);
-      await deps.context.state.recordWorkflowCheckpoint({
-        workflowName: "prospect-workflow",
-        entityType: "prospect",
-        entityId: prospectId,
-        step: outcome.action,
-        status: "succeeded",
-        runtimeProvider: runtimeProviderId,
-        output: compactRecord({
-          prospectId: outcome.prospectId,
-          threadId: outcome.threadId,
-          reason: outcome.reason,
-          followupDelayMs: outcome.followupDelayMs,
-        }),
-      });
-      outcomes.push(outcome);
+
+      try {
+        const outcome = await executeProspectWorkflow(deps, prospectId);
+        await deps.context.state.recordWorkflowCheckpoint({
+          workflowName: "prospect-workflow",
+          entityType: "prospect",
+          entityId: prospectId,
+          step: outcome.action,
+          status: "succeeded",
+          runtimeProvider: runtimeProviderId,
+          output: compactRecord({
+            prospectId: outcome.prospectId,
+            threadId: outcome.threadId,
+            reason: outcome.reason,
+            followupDelayMs: outcome.followupDelayMs,
+          }),
+        });
+        outcomes.push(outcome);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        workflowFailures.push({
+          signalId,
+          prospectId,
+          error: errorMessage,
+        });
+        await deps.context.repository.appendAuditEvent("prospect", prospectId, "ProspectWorkflowFailed", {
+          signalId,
+          error: errorMessage,
+        });
+        await deps.context.state.recordWorkflowCheckpoint({
+          workflowName: "prospect-workflow",
+          entityType: "prospect",
+          entityId: prospectId,
+          step: "failed",
+          status: "failed",
+          runtimeProvider: runtimeProviderId,
+          error: errorMessage,
+          output: {
+            signalId,
+            prospectId,
+          },
+        });
+      }
     }
 
     await deps.context.repository.updateProviderRun(providerRunId, {
@@ -143,6 +175,8 @@ async function ingestNormalizedSignals(
         itemsSeen: input.signals.length,
         signalsReceived: input.signals.length,
         prospectsProcessed: outcomes.length,
+        workflowFailures: workflowFailures.length,
+        warnings: workflowFailures,
       },
     });
     await deps.context.state.recordWorkflowCheckpoint({
@@ -155,6 +189,7 @@ async function ingestNormalizedSignals(
       output: {
         signalsReceived: input.signals.length,
         prospectsProcessed: outcomes.length,
+        workflowFailures: workflowFailures.length,
       },
     });
 
@@ -163,6 +198,7 @@ async function ingestNormalizedSignals(
       itemsSeen: input.signals.length,
       signalsReceived: input.signals.length,
       prospectsProcessed: outcomes.length,
+      workflowFailures,
       outcomes,
     };
   } catch (error) {

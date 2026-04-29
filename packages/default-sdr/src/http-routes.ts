@@ -129,3 +129,100 @@ export function mountDefaultSdrMcpHttpRoute(
     }
   });
 }
+
+export function mountDefaultSdrRuntimeRoutes(
+  app: Hono,
+  input: {
+    ensureRuntimeBootstrapped(): Promise<void>;
+    shouldUseRemoteRivetRuntime(): boolean;
+    shouldSkipLocalRivetRuntime(): boolean;
+    handleRemoteRivetRequest(request: Request): Promise<Response>;
+    localRivetManagerUrl?: string;
+    rootRedirectTo?: string;
+    healthPath?: string;
+    getHealth(): Promise<Record<string, unknown>>;
+  },
+) {
+  const localManagerBaseUrl = input.localRivetManagerUrl ?? "http://127.0.0.1:6420";
+  const rootRedirectTo = input.rootRedirectTo ?? "/dashboard";
+  const healthPath = input.healthPath ?? "/healthz";
+
+  app.all("/api/rivet", (c) => handleRivetRequest(c.req.raw));
+  app.all("/api/rivet/*", (c) => handleRivetRequest(c.req.raw));
+
+  app.use("*", async (c, next) => {
+    if (!shouldBypassRuntimeBootstrap(c.req.raw, healthPath)) {
+      await input.ensureRuntimeBootstrapped();
+    }
+    await next();
+  });
+
+  app.get("/", (c) => c.redirect(rootRedirectTo));
+
+  app.get(healthPath, async (c) => c.json(await input.getHealth()));
+
+  return {
+    shouldBypassRuntimeBootstrap: (request: Request) => shouldBypassRuntimeBootstrap(request, healthPath),
+  };
+
+  async function handleRivetRequest(request: Request) {
+    if (input.shouldUseRemoteRivetRuntime()) {
+      return input.handleRemoteRivetRequest(request);
+    }
+
+    if (input.shouldSkipLocalRivetRuntime()) {
+      return new Response(
+        JSON.stringify({
+          error: "RIVET_ENDPOINT is required when trellis runs on Vercel.",
+        }),
+        {
+          status: 503,
+          headers: {
+            "content-type": "application/json",
+          },
+        },
+      );
+    }
+
+    return proxyLocalRivetManagerRequest(request, localManagerBaseUrl);
+  }
+}
+
+async function proxyLocalRivetManagerRequest(request: Request, managerBaseUrl: string) {
+  const incomingUrl = new URL(request.url);
+  const managerUrl = new URL(`${managerBaseUrl}${stripRivetPrefix(incomingUrl.pathname)}${incomingUrl.search}`);
+  return await fetch(
+    new Request(managerUrl, {
+      method: request.method,
+      headers: request.headers,
+      body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+      duplex: request.method === "GET" || request.method === "HEAD" ? undefined : "half",
+      redirect: "manual",
+    }),
+  );
+}
+
+function stripRivetPrefix(pathname: string) {
+  if (pathname === "/api/rivet") {
+    return "/";
+  }
+
+  if (pathname.startsWith("/api/rivet/")) {
+    const stripped = pathname.slice("/api/rivet".length);
+    return stripped.length > 0 ? stripped : "/";
+  }
+
+  return pathname;
+}
+
+function shouldBypassRuntimeBootstrap(request: Request, healthPath: string) {
+  const { pathname } = new URL(request.url);
+
+  return pathname === "/"
+    || pathname === "/dashboard"
+    || pathname === "/dashboard/login"
+    || pathname === "/dashboard/logout"
+    || pathname === healthPath
+    || pathname === "/api/rivet"
+    || pathname.startsWith("/api/rivet/");
+}

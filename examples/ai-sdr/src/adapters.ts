@@ -331,12 +331,18 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
           ?? pickString(authorRecord, ["website"])
           ?? linkedinHints.companyWebsite,
       );
+      const authorTitle = normalizeProspectTitle([
+        pickString(item, ["jobTitle"]),
+        pickString(item, ["headline"]),
+        authorInfo,
+        pickString(item, ["title"]),
+      ]);
 
       return {
         sourceRef: pickString(item, ["entityId", "id", "postId", "urn", "shareUrn"]) ?? url,
         url,
         authorName: author,
-        authorTitle: pickString(item, ["jobTitle", "title", "headline"]) ?? authorInfo,
+        authorTitle,
         authorCompany: company,
         companyDomain,
         topic,
@@ -1937,6 +1943,38 @@ function inferCompanyFromHeadline(value: string | null) {
   }
 
   return null;
+}
+
+function normalizeProspectTitle(candidates: Array<string | null | undefined>) {
+  for (const candidate of candidates) {
+    const normalized = cleanProspectTitle(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
+function cleanProspectTitle(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^\d[\d,\s.]*\s+(followers|connections)\b/i.test(normalized)) {
+    return null;
+  }
+
+  if (/\b(followers|connections)\b/i.test(normalized) && !/\bat\b|@|\bfounder\b|\bceo\b|\bcto\b|\bvp\b|\bdirector\b|\bhead\b|\blead\b|\banalyst\b|\bmanager\b/i.test(normalized)) {
+    return null;
+  }
+
+  return normalized;
 }
 
 function splitFullName(fullName: string) {

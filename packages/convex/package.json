@@ -3,11 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
-    ".": "./src/index.ts",
-    "./schema": "./src/schema.ts",
-    "./state-runtime": "./src/state-runtime.ts",
-    "./default-sdr-repository": "./src/default-sdr-repository.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./src/schema.ts",
+      "default": "./dist/schema.js"
+    },
+    "./state-runtime": {
+      "types": "./src/state-runtime.ts",
+      "default": "./dist/state-runtime.js"
+    },
+    "./default-sdr-repository": {
+      "types": "./src/default-sdr-repository.ts",
+      "default": "./dist/default-sdr-repository.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/schema.ts src/state-runtime.ts src/default-sdr-repository.ts --format esm --target node22 --outDir dist --clean"
   }
 }

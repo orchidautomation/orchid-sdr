@@ -11,8 +11,10 @@
     "node": ">=22.0.0"
   },
   "scripts": {
+    "postinstall": "node scripts/fix-rivetkit-engine-runner-protocol.mjs && npm run build:packages",
     "dev": "tsx watch examples/ai-sdr/src/index.ts",
-    "build": "tsup examples/ai-sdr/src/index.ts examples/ai-sdr/src/mcp/trellis-server.ts --format esm --target node22 --outDir dist --clean",
+    "build:packages": "npm run build -w @ai-sdr/framework && npm run build -w @ai-sdr/default-sdr && npm run build -w @ai-sdr/convex",
+    "build": "npm run build:packages && tsup examples/ai-sdr/src/index.ts examples/ai-sdr/src/mcp/trellis-server.ts --format esm --target node22 --outDir dist --clean",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

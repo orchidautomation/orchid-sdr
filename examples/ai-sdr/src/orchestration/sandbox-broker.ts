@@ -19,7 +19,7 @@ const PARALLEL_SEARCH_MCP_NAME = "parallel-search";
 const PARALLEL_TASK_MCP_NAME = "parallel-task";
 const SANDBOX_AGENT_VERSION = "0.5.0-rc.2";
 const SANDBOX_AGENT_BINARY_PATH = `${SANDBOX_HOME}/.local/bin/sandbox-agent`;
-const DEFAULT_SANDBOX_AGENTS = ["claude", "codex"];
+const DEFAULT_SANDBOX_AGENTS = ["claude"];
 interface RunSandboxTurnOptions {
   timeoutMs?: number;
 }

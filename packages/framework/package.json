@@ -3,20 +3,59 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
-    ".": "./src/index.ts",
-    "./composition": "./src/composition.ts",
-    "./install-plan": "./src/install-plan.ts",
-    "./providers": "./src/providers.ts",
-    "./builtin-modules": "./src/builtin-modules.ts",
-    "./scaffold": "./src/scaffold.ts",
-    "./signals": "./src/signals.ts",
-    "./state": "./src/state.ts",
-    "./runtime-bootstrap": "./src/runtime-bootstrap.ts",
-    "./validation": "./src/validation.ts",
-    "./provider-contracts": "./src/provider-contracts.ts",
-    "./crm": "./src/crm.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./composition": {
+      "types": "./src/composition.ts",
+      "default": "./dist/composition.js"
+    },
+    "./install-plan": {
+      "types": "./src/install-plan.ts",
+      "default": "./dist/install-plan.js"
+    },
+    "./providers": {
+      "types": "./src/providers.ts",
+      "default": "./dist/providers.js"
+    },
+    "./builtin-modules": {
+      "types": "./src/builtin-modules.ts",
+      "default": "./dist/builtin-modules.js"
+    },
+    "./scaffold": {
+      "types": "./src/scaffold.ts",
+      "default": "./dist/scaffold.js"
+    },
+    "./signals": {
+      "types": "./src/signals.ts",
+      "default": "./dist/signals.js"
+    },
+    "./state": {
+      "types": "./src/state.ts",
+      "default": "./dist/state.js"
+    },
+    "./runtime-bootstrap": {
+      "types": "./src/runtime-bootstrap.ts",
+      "default": "./dist/runtime-bootstrap.js"
+    },
+    "./validation": {
+      "types": "./src/validation.ts",
+      "default": "./dist/validation.js"
+    },
+    "./provider-contracts": {
+      "types": "./src/provider-contracts.ts",
+      "default": "./dist/provider-contracts.js"
+    },
+    "./crm": {
+      "types": "./src/crm.ts",
+      "default": "./dist/crm.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/composition.ts src/install-plan.ts src/providers.ts src/builtin-modules.ts src/scaffold.ts src/signals.ts src/state.ts src/runtime-bootstrap.ts src/validation.ts src/provider-contracts.ts src/crm.ts --format esm --target node22 --outDir dist --clean"
   },
   "peerDependencies": {
     "zod": "^3.25.76"

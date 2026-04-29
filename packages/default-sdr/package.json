@@ -3,20 +3,62 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
-    ".": "./src/index.ts",
-    "./domain-types": "./src/domain-types.ts",
-    "./repository-contracts": "./src/repository-contracts.ts",
-    "./repository-factory": "./src/repository-factory.ts",
-    "./convex-repository": "./src/convex-repository.ts",
-    "./local-smoke-repository": "./src/local-smoke-repository.ts",
-    "./mcp-server": "./src/mcp-server.ts",
-    "./webhook-bootstrap": "./src/webhook-bootstrap.ts",
-    "./dashboard-bootstrap": "./src/dashboard-bootstrap.ts",
-    "./dashboard-shell": "./src/dashboard-shell.ts",
-    "./actor-registry": "./src/actor-registry.ts",
-    "./runtime-bindings": "./src/runtime-bindings.ts",
-    "./runtime-bootstrap": "./src/runtime-bootstrap.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./domain-types": {
+      "types": "./src/domain-types.ts",
+      "default": "./dist/domain-types.js"
+    },
+    "./repository-contracts": {
+      "types": "./src/repository-contracts.ts",
+      "default": "./dist/repository-contracts.js"
+    },
+    "./repository-factory": {
+      "types": "./src/repository-factory.ts",
+      "default": "./dist/repository-factory.js"
+    },
+    "./convex-repository": {
+      "types": "./src/convex-repository.ts",
+      "default": "./dist/convex-repository.js"
+    },
+    "./local-smoke-repository": {
+      "types": "./src/local-smoke-repository.ts",
+      "default": "./dist/local-smoke-repository.js"
+    },
+    "./mcp-server": {
+      "types": "./src/mcp-server.ts",
+      "default": "./dist/mcp-server.js"
+    },
+    "./webhook-bootstrap": {
+      "types": "./src/webhook-bootstrap.ts",
+      "default": "./dist/webhook-bootstrap.js"
+    },
+    "./dashboard-bootstrap": {
+      "types": "./src/dashboard-bootstrap.ts",
+      "default": "./dist/dashboard-bootstrap.js"
+    },
+    "./dashboard-shell": {
+      "types": "./src/dashboard-shell.ts",
+      "default": "./dist/dashboard-shell.js"
+    },
+    "./actor-registry": {
+      "types": "./src/actor-registry.ts",
+      "default": "./dist/actor-registry.js"
+    },
+    "./runtime-bindings": {
+      "types": "./src/runtime-bindings.ts",
+      "default": "./dist/runtime-bindings.js"
+    },
+    "./runtime-bootstrap": {
+      "types": "./src/runtime-bootstrap.ts",
+      "default": "./dist/runtime-bootstrap.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/domain-types.ts src/repository-contracts.ts src/repository-factory.ts src/convex-repository.ts src/local-smoke-repository.ts src/mcp-server.ts src/webhook-bootstrap.ts src/dashboard-bootstrap.ts src/dashboard-shell.ts src/actor-registry.ts src/runtime-bindings.ts src/runtime-bootstrap.ts --format esm --target node22 --outDir dist --clean"
   }
 }

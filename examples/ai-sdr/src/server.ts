@@ -28,8 +28,12 @@ import {
 import {
   mountDefaultSdrDashboardRoutes,
   mountDefaultSdrMcpHttpRoute,
+  mountDefaultSdrRuntimeRoutes,
 } from "../../../packages/default-sdr/src/http-routes.js";
-import { mountDefaultSdrDashboardActionRoutes } from "../../../packages/default-sdr/src/dashboard-actions.js";
+import {
+  buildDefaultSdrStandardDashboardActions,
+  mountDefaultSdrDashboardActionRoutes,
+} from "../../../packages/default-sdr/src/dashboard-actions.js";
 import { mountDefaultSdrWebhookRoutes } from "../../../packages/default-sdr/src/webhook-bootstrap.js";
 import type { DefaultSdrDashboardActorClient } from "../../../packages/default-sdr/src/dashboard-state.js";
 
@@ -50,18 +54,6 @@ export function createApp() {
     runSandboxTurn: (request: Parameters<typeof runSandboxTurn>[1]) => runSandboxTurn(context, request),
   };
 
-  app.all("/api/rivet", (c) => handleRivetRequest(c.req.raw));
-  app.all("/api/rivet/*", (c) => handleRivetRequest(c.req.raw));
-
-  app.use("*", async (_c, next) => {
-    if (!shouldBypassRuntimeBootstrap(_c.req.raw)) {
-      await ensureRuntimeBootstrapped();
-    }
-    await next();
-  });
-
-  app.get("/", (c) => c.redirect("/dashboard"));
-
   const dashboardRoutes = mountDefaultSdrDashboardRoutes(app, {
     dashboardCookieName,
     getPassword: () => getDashboardPassword(context),
@@ -70,149 +62,43 @@ export function createApp() {
     dashboardState,
   });
 
-  app.get("/healthz", async (c) => {
-    await context.repository.ensureDefaultCampaign();
-    return c.json({
-      ok: true,
-      service: "trellis",
-      localSmokeMode: context.localSmokeMode,
-    });
+  mountDefaultSdrRuntimeRoutes(app, {
+    ensureRuntimeBootstrapped,
+    shouldUseRemoteRivetRuntime,
+    shouldSkipLocalRivetRuntime,
+    handleRemoteRivetRequest: (request) => registry.handler(request),
+    getHealth: async () => {
+      await context.repository.ensureDefaultCampaign();
+      return {
+        ok: true,
+        service: "trellis",
+        localSmokeMode: context.localSmokeMode,
+      };
+    },
   });
 
   mountDefaultSdrDashboardActionRoutes(app, {
     requireAuth: dashboardRoutes.requireAuth,
-    actions: [
-      {
-        path: "/api/dashboard/discovery-tick",
-        handle: async ({ body }) => {
-          if (context.localSmokeMode) {
-            return {
-              status: 409,
-              body: { error: "discovery is disabled in local smoke mode" },
-            };
-          }
-
-          const campaign = await context.repository.ensureDefaultCampaign();
-          const automationPauseReason = getAutomationPauseReason(
-            await context.repository.getControlFlags(),
-            campaign.id,
-          );
-          if (automationPauseReason) {
-            return {
-              status: 409,
-              body: { error: `automation paused: ${automationPauseReason}` },
-            };
-          }
-
-          const source = body.source === "x_public_post" ? "x_public_post" : "linkedin_public_post";
-          const client = getActorClient();
-          const actor = client.discoveryCoordinator.getOrCreate([campaign.id, source]) as any;
-          const result = await actor.enqueueTick({
-            reason: "dashboard_manual",
-          });
-
-          return {
-            status: 202,
-            body: {
-              ...result,
-              source,
-            },
-          };
+    actions: buildDefaultSdrStandardDashboardActions({
+      localSmokeMode: context.localSmokeMode,
+      discoveryLinkedinEnabled: context.config.DISCOVERY_LINKEDIN_ENABLED,
+      discoveryXEnabled: context.config.DISCOVERY_X_ENABLED,
+      ensureDefaultCampaign: () => context.repository.ensureDefaultCampaign(),
+      getControlFlags: () => context.repository.getControlFlags(),
+      getAutomationPauseReason: (controlFlags, campaignId) => getAutomationPauseReason(controlFlags as any, campaignId),
+      getActorClient: () => getActorClient() as any,
+      buildSandboxProbeRequest: ({ campaignId }) => ({
+        turnId: `dashboard-firecrawl-probe-${Date.now()}`,
+        prospectId: "dashboard",
+        campaignId,
+        stage: "build_research_brief",
+        systemPrompt: "Use available tools when needed. Keep the final answer to one short line.",
+        prompt: "Use the Firecrawl MCP server to inspect https://playkit.sh and reply with the page title only.",
+        metadata: {
+          kind: "dashboard-firecrawl-probe",
         },
-      },
-      {
-        path: "/api/dashboard/sandbox-probe",
-        handle: async () => {
-          const campaign = await context.repository.ensureDefaultCampaign();
-          const automationPauseReason = getAutomationPauseReason(
-            await context.repository.getControlFlags(),
-            campaign.id,
-          );
-          if (automationPauseReason) {
-            return {
-              status: 409,
-              body: { error: `automation paused: ${automationPauseReason}` },
-            };
-          }
-
-          const client = getActorClient();
-          const actor = client.sandboxBroker.getOrCreate() as any;
-          const job = await actor.enqueueTurn({
-            turnId: `dashboard-firecrawl-probe-${Date.now()}`,
-            prospectId: "dashboard",
-            campaignId: campaign.id,
-            stage: "build_research_brief",
-            systemPrompt: "Use available tools when needed. Keep the final answer to one short line.",
-            prompt: "Use the Firecrawl MCP server to inspect https://playkit.sh and reply with the page title only.",
-            metadata: {
-              kind: "dashboard-firecrawl-probe",
-            },
-          });
-
-          return {
-            status: 202,
-            body: job,
-          };
-        },
-      },
-      {
-        path: "/api/dashboard/automation-pause",
-        handle: async ({ body }) => {
-          const paused = Boolean(body.paused);
-          const campaign = await context.repository.ensureDefaultCampaign();
-          const client = getActorClient();
-          const actor = client.campaignOps.getOrCreate() as any;
-          const discoverySources = [
-            ...(context.config.DISCOVERY_LINKEDIN_ENABLED ? (["linkedin_public_post"] as const) : []),
-            ...(context.config.DISCOVERY_X_ENABLED ? (["x_public_post"] as const) : []),
-          ];
-          const result = paused
-            ? await actor.pauseCampaign(campaign.id)
-            : await actor.resumeCampaign(campaign.id);
-          const pausedDiscoveryResults = paused
-            ? await Promise.all(
-              discoverySources.map(async (source) => {
-                const coordinator = client.discoveryCoordinator.getOrCreate([campaign.id, source]) as any;
-                const pauseResult = await coordinator.pauseAutomation({
-                  campaignId: campaign.id,
-                  source,
-                });
-                return {
-                  source,
-                  sourcePaused: pauseResult.ok === true,
-                };
-              }),
-            )
-            : [];
-          const resumedDiscoveryResults = paused
-            ? []
-            : await Promise.all(
-              discoverySources.map(async (source) => {
-                const coordinator = client.discoveryCoordinator.getOrCreate([campaign.id, source]) as any;
-                const resumeResult = await coordinator.initialize({
-                  campaignId: campaign.id,
-                  source,
-                  runNow: false,
-                });
-                return {
-                  source,
-                  scheduledNextTickAt: resumeResult.scheduledNextTickAt ?? null,
-                };
-              }),
-            );
-
-          return {
-            body: {
-              paused,
-              campaignId: campaign.id,
-              ...result,
-              discovery: paused ? pausedDiscoveryResults : resumedDiscoveryResults,
-              flags: await context.repository.getControlFlags(),
-            },
-          };
-        },
-      },
-    ],
+      }),
+    }),
   });
 
   mountDefaultSdrMcpHttpRoute(app, {
@@ -250,67 +136,6 @@ export function createApp() {
 }
 
 export default createApp();
-
-async function proxyRivetManagerRequest(request: Request) {
-  const incomingUrl = new URL(request.url);
-  const managerUrl = new URL(`http://127.0.0.1:6420${stripRivetPrefix(incomingUrl.pathname)}${incomingUrl.search}`);
-  return await fetch(
-    new Request(managerUrl, {
-      method: request.method,
-      headers: request.headers,
-      body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
-      duplex: request.method === "GET" || request.method === "HEAD" ? undefined : "half",
-      redirect: "manual",
-    }),
-  );
-}
-
-async function handleRivetRequest(request: Request) {
-  if (shouldUseRemoteRivetRuntime()) {
-    return registry.handler(request);
-  }
-
-  if (shouldSkipLocalRivetRuntime()) {
-    return new Response(
-      JSON.stringify({
-        error: "RIVET_ENDPOINT is required when trellis runs on Vercel.",
-      }),
-      {
-        status: 503,
-        headers: {
-          "content-type": "application/json",
-        },
-      },
-    );
-  }
-
-  return proxyRivetManagerRequest(request);
-}
-
-function stripRivetPrefix(pathname: string) {
-  if (pathname === "/api/rivet") {
-    return "/";
-  }
-
-  if (pathname.startsWith("/api/rivet/")) {
-    const stripped = pathname.slice("/api/rivet".length);
-    return stripped.length > 0 ? stripped : "/";
-  }
-
-  return pathname;
-}
-
-function shouldBypassRuntimeBootstrap(request: Request) {
-  const { pathname } = new URL(request.url);
-
-  return pathname === "/"
-    || pathname === "/dashboard"
-    || pathname === "/dashboard/login"
-    || pathname === "/dashboard/logout"
-    || pathname === "/healthz"
-    || pathname === "/api/rivet"
-    || pathname.startsWith("/api/rivet/");
-}
 
 function getDashboardPassword(context: ReturnType<typeof getAppContext>) {
   return resolveDashboardPassword({
