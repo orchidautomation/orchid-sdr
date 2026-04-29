@@ -78,6 +78,125 @@ export function createOrchidMcpServer(context: AppContext) {
   );
 
   server.registerTool(
+    "crm.getList",
+    {
+      description: "Get one CRM list plus its writable/readable attributes through the configured provider.",
+      inputSchema: {
+        listId: z.string(),
+        includeAttributes: z.boolean().optional(),
+      },
+    },
+    async ({ listId, includeAttributes }) =>
+      toToolResult(await context.mcpTools.handleTool("crm.getList", { listId, includeAttributes })),
+  );
+
+  server.registerTool(
+    "crm.listEntries",
+    {
+      description: "Read CRM list entries and optionally hydrate the parent records behind those entries.",
+      inputSchema: {
+        listId: z.string(),
+        limit: z.number().int().min(1).max(500).optional(),
+        offset: z.number().int().min(0).optional(),
+        includeRecords: z.boolean().optional(),
+      },
+    },
+    async ({ listId, limit, offset, includeRecords }) =>
+      toToolResult(await context.mcpTools.handleTool("crm.listEntries", { listId, limit, offset, includeRecords })),
+  );
+
+  server.registerTool(
+    "crm.getRecord",
+    {
+      description: "Get one CRM record and optionally inspect the CRM lists it currently belongs to.",
+      inputSchema: {
+        object: z.string(),
+        recordId: z.string(),
+        includeListEntries: z.boolean().optional(),
+      },
+    },
+    async ({ object, recordId, includeListEntries }) =>
+      toToolResult(await context.mcpTools.handleTool("crm.getRecord", { object, recordId, includeListEntries })),
+  );
+
+  server.registerTool(
+    "crm.queryCompanies",
+    {
+      description: "Query CRM company/account records by domain or exact name.",
+      inputSchema: {
+        domain: z.string().optional(),
+        name: z.string().optional(),
+        limit: z.number().int().min(1).max(50).optional(),
+        includeListEntries: z.boolean().optional(),
+      },
+    },
+    async ({ domain, name, limit, includeListEntries }) =>
+      toToolResult(await context.mcpTools.handleTool("crm.queryCompanies", { domain, name, limit, includeListEntries })),
+  );
+
+  server.registerTool(
+    "crm.queryPeople",
+    {
+      description: "Query CRM people/contact records by email, LinkedIn, Twitter/X, or name plus company context.",
+      inputSchema: {
+        email: z.string().optional(),
+        linkedinUrl: z.string().optional(),
+        twitterUrl: z.string().optional(),
+        fullName: z.string().optional(),
+        companyRecordId: z.string().optional(),
+        companyDomain: z.string().optional(),
+        limit: z.number().int().min(1).max(50).optional(),
+        includeListEntries: z.boolean().optional(),
+      },
+    },
+    async ({ email, linkedinUrl, twitterUrl, fullName, companyRecordId, companyDomain, limit, includeListEntries }) =>
+      toToolResult(
+        await context.mcpTools.handleTool("crm.queryPeople", {
+          email,
+          linkedinUrl,
+          twitterUrl,
+          fullName,
+          companyRecordId,
+          companyDomain,
+          limit,
+          includeListEntries,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "crm.dedupeProspect",
+    {
+      description: "Check CRM company/contact matches and list memberships before writing a prospect back into the CRM.",
+      inputSchema: {
+        companyDomain: z.string().optional(),
+        companyName: z.string().optional(),
+        email: z.string().optional(),
+        linkedinUrl: z.string().optional(),
+        twitterUrl: z.string().optional(),
+        fullName: z.string().optional(),
+        targetListId: z.string().optional(),
+        activeListIds: z.array(z.string()).optional(),
+        limit: z.number().int().min(1).max(25).optional(),
+      },
+    },
+    async ({ companyDomain, companyName, email, linkedinUrl, twitterUrl, fullName, targetListId, activeListIds, limit }) =>
+      toToolResult(
+        await context.mcpTools.handleTool("crm.dedupeProspect", {
+          companyDomain,
+          companyName,
+          email,
+          linkedinUrl,
+          twitterUrl,
+          fullName,
+          targetListId,
+          activeListIds,
+          limit,
+        }),
+      ),
+  );
+
+  server.registerTool(
     "crm.syncProspect",
     {
       description: "Sync one prospect into the configured CRM provider. Today this writes to Attio when configured.",

@@ -28,6 +28,11 @@ interface AttioListEntryReference {
   raw: Record<string, unknown>;
 }
 
+interface AttioListEntryQueryResult extends AttioListEntryReference {
+  createdAt: string | null;
+  entryValues: Record<string, unknown>;
+}
+
 interface NormalizedSourceSignal {
   sourceRef: string;
   url: string;
@@ -516,7 +521,7 @@ export class AttioAdapter {
     domain: string | null;
     recordId?: string | null;
   }): Promise<(AttioRecordReference & { mode: "assert" | "query" | "create" | "update"; matchedBy: string; warnings: string[] }) | null> {
-    const domain = normalizeDomain(input.domain);
+    const domain = normalizeDomain(input.domain ?? null);
     const name = input.name?.trim() || null;
     if (!domain && !name) {
       return null;
@@ -613,7 +618,7 @@ export class AttioAdapter {
       values.email_addresses = [email];
     }
 
-    const companyDomain = normalizeDomain(input.companyDomain);
+    const companyDomain = normalizeDomain(input.companyDomain ?? null);
     if (input.companyRecordId) {
       values.company = [
         {
@@ -783,6 +788,164 @@ export class AttioAdapter {
     };
   }
 
+  async listEntries(input: {
+    listId: string;
+    filter?: Record<string, unknown>;
+    sorts?: Array<Record<string, unknown>>;
+    limit?: number;
+    offset?: number;
+  }) {
+    const response = await this.request(`/lists/${encodeURIComponent(input.listId)}/entries/query`, "POST", {
+      filter: input.filter ?? {},
+      sorts: input.sorts ?? [],
+      limit: input.limit ?? 100,
+      offset: input.offset ?? 0,
+    });
+    const data = Array.isArray(response.data) ? response.data : [];
+    return data.map((entry) => this.mapQueriedListEntryResponse(coerceRecord(entry)));
+  }
+
+  async getRecord(object: string, recordId: string) {
+    const response = await this.request(
+      `/objects/${encodeURIComponent(object)}/records/${encodeURIComponent(recordId)}`,
+      "GET",
+    );
+    const data = coerceRecord(response.data);
+    const id = coerceRecord(data.id);
+
+    return {
+      recordId: pickString(id, ["record_id", "id"]) ?? recordId,
+      object,
+      webUrl: pickString(data, ["web_url"]),
+      values: coerceRecord(data.values),
+      raw: response,
+    };
+  }
+
+  async queryCompanies(input: {
+    domain?: string | null;
+    name?: string | null;
+    limit?: number;
+  }) {
+    const domain = normalizeDomain(input.domain ?? null);
+    const name = input.name?.trim() || null;
+
+    const filters: Record<string, unknown>[] = [];
+    if (domain) {
+      filters.push({
+        domains: {
+          $contains: domain,
+        },
+      });
+    }
+    if (name) {
+      filters.push({
+        name: {
+          $eq: name,
+        },
+      });
+    }
+
+    if (filters.length === 0) {
+      return [];
+    }
+
+    const filter = filters.length === 1 ? filters[0]! : { $or: filters };
+    return this.queryRecords("companies", filter, input.limit ?? 10);
+  }
+
+  async queryPeople(input: {
+    email?: string | null;
+    linkedinUrl?: string | null;
+    twitterUrl?: string | null;
+    fullName?: string | null;
+    companyRecordId?: string | null;
+    companyDomain?: string | null;
+    limit?: number;
+  }) {
+    const email = input.email?.trim() || null;
+    const linkedinUrl = canonicalizeLinkedinUrl(input.linkedinUrl);
+    const twitterUrl = canonicalizeTwitterProfileUrl(input.twitterUrl);
+    const fullName = input.fullName?.trim() || null;
+    const companyDomain = normalizeDomain(input.companyDomain ?? null);
+
+    const filters: Record<string, unknown>[] = [];
+    if (email) {
+      filters.push({
+        email_addresses: {
+          $contains: email,
+        },
+      });
+    }
+    if (linkedinUrl) {
+      filters.push({
+        linkedin: {
+          $eq: linkedinUrl,
+        },
+      });
+    }
+    if (twitterUrl) {
+      filters.push({
+        twitter: {
+          $eq: twitterUrl,
+        },
+      });
+    }
+    if (fullName && input.companyRecordId) {
+      filters.push({
+        $and: [
+          {
+            name: {
+              full_name: {
+                $eq: fullName,
+              },
+            },
+          },
+          {
+            company: {
+              target_object: "companies",
+              target_record_id: input.companyRecordId,
+            },
+          },
+        ],
+      });
+    } else if (fullName && companyDomain) {
+      filters.push({
+        $and: [
+          {
+            name: {
+              full_name: {
+                $eq: fullName,
+              },
+            },
+          },
+          {
+            company: {
+              domains: {
+                $contains: companyDomain,
+              },
+            },
+          },
+        ],
+      });
+    } else if (fullName) {
+      filters.push({
+        name: {
+          full_name: {
+            $eq: fullName,
+          },
+        },
+      });
+    }
+
+    if (filters.length === 0) {
+      return [];
+    }
+
+    const filter = filters.length === 1 ? filters[0]! : { $or: filters };
+    return this.queryRecords("people", filter, input.limit ?? 10);
+  }
+
   async listStatuses(listId: string, attribute = "status") {
     const response = await this.request(`/lists/${encodeURIComponent(listId)}/attributes/${encodeURIComponent(attribute)}/statuses`, "GET");
     const data = Array.isArray(response.data) ? response.data : [];
@@ -860,6 +1023,20 @@ export class AttioAdapter {
     };
   }
 
+  private mapQueriedListEntryResponse(entry: Record<string, unknown>): AttioListEntryQueryResult {
+    const id = coerceRecord(entry.id);
+
+    return {
+      entryId: pickString(id, ["entry_id", "id"]) ?? "",
+      listId: pickString(id, ["list_id"]) ?? "",
+      parentRecordId: pickString(entry, ["parent_record_id"]) ?? "",
+      parentObject: pickString(entry, ["parent_object"]) ?? "",
+      createdAt: pickString(entry, ["created_at"]),
+      entryValues: coerceRecord(entry.entry_values),
+      raw: entry,
+    };
+  }
+
   private mapListEntryResponse(response: Record<string, unknown>): AttioListEntryReference {
     const data = coerceRecord(response.data);
     const id = coerceRecord(data.id);
@@ -873,10 +1050,10 @@ export class AttioAdapter {
     };
   }
 
-  private async queryRecords(object: "people" | "companies", filter: Record<string, unknown>) {
+  private async queryRecords(object: string, filter: Record<string, unknown>, limit = 3) {
     const response = await this.request(`/objects/${object}/records/query`, "POST", {
       filter,
-      limit: 3,
+      limit,
       offset: 0,
     });
     const data = Array.isArray(response.data) ? response.data : [];
@@ -891,7 +1068,7 @@ export class AttioAdapter {
     }).filter((record) => Boolean(record.recordId));
   }
 
-  private async updateRecord(object: "people" | "companies", recordId: string, values: Record<string, unknown>) {
+  private async updateRecord(object: string, recordId: string, values: Record<string, unknown>) {
     const response = await this.request(`/objects/${object}/records/${encodeURIComponent(recordId)}`, "PATCH", {
       data: {
         values,

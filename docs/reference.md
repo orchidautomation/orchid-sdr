@@ -207,6 +207,12 @@ Workflow and actuation tools:
 - `research.search`
 - `research.extract`
 - `email.enrich`
+- `crm.getList`
+- `crm.listEntries`
+- `crm.getRecord`
+- `crm.queryCompanies`
+- `crm.queryPeople`
+- `crm.dedupeProspect`
 - `crm.syncProspect`
 - `mail.send`
 - `mail.reply`
@@ -290,6 +296,15 @@ Manual operator sync still exists through `crm.syncProspect`. The automatic beha
 - `prospects.attio_company_record_id`
 - `prospects.attio_person_record_id`
 - `prospects.attio_list_entry_id`
+
+New CRM read-side tools exposed through the same first-party MCP:
+
+- `crm.getList` returns a list plus its attributes
+- `crm.listEntries` reads list entries and can hydrate parent records
+- `crm.getRecord` reads a specific CRM record and optionally its list memberships
+- `crm.queryCompanies` matches companies by domain or exact name
+- `crm.queryPeople` matches people by email, LinkedIn, Twitter/X, or name plus company context
+- `crm.dedupeProspect` combines company/contact matching with list-membership checks before sync
 
 ### 2. Direct Attio MCP
 

@@ -23,6 +23,18 @@ export class OrchidMcpToolService {
         return this.handleLeadInspect(args);
       case "lead.updateState":
         return this.handleLeadUpdate(args);
+      case "crm.getList":
+        return this.handleCrmGetList(args);
+      case "crm.listEntries":
+        return this.handleCrmListEntries(args);
+      case "crm.getRecord":
+        return this.handleCrmGetRecord(args);
+      case "crm.queryCompanies":
+        return this.handleCrmQueryCompanies(args);
+      case "crm.queryPeople":
+        return this.handleCrmQueryPeople(args);
+      case "crm.dedupeProspect":
+        return this.handleCrmDedupeProspect(args);
       case "crm.syncProspect":
         return this.handleCrmSync(args);
       case "email.enrich":
@@ -556,14 +568,261 @@ export class OrchidMcpToolService {
     return { ok: true };
   }
 
+  private requireAttioConfigured() {
+    if (!this.context.attio.isConfigured()) {
+      throw new Error("ATTIO_API_KEY is not configured");
+    }
+  }
+
+  private async handleCrmGetList(args: Record<string, unknown>) {
+    this.requireAttioConfigured();
+
+    const listId = String(args.listId ?? "").trim();
+    if (!listId) {
+      throw new Error("listId is required");
+    }
+
+    const [list, attributes] = await Promise.all([
+      this.context.attio.getList(listId),
+      args.includeAttributes === false ? Promise.resolve([]) : this.context.attio.listAttributes(listId),
+    ]);
+
+    return {
+      ok: true,
+      provider: "attio",
+      list,
+      attributes,
+    };
+  }
+
+  private async handleCrmListEntries(args: Record<string, unknown>) {
+    this.requireAttioConfigured();
+
+    const listId = String(args.listId ?? "").trim();
+    if (!listId) {
+      throw new Error("listId is required");
+    }
+
+    const entries = await this.context.attio.listEntries({
+      listId,
+      limit: this.readLimit(args.limit, 25, 500),
+      offset: Number.isFinite(Number(args.offset)) ? Math.max(0, Math.trunc(Number(args.offset))) : 0,
+    });
+    const includeRecords = args.includeRecords === true;
+    const records = includeRecords
+      ? await Promise.all(entries.map((entry) => this.context.attio.getRecord(entry.parentObject, entry.parentRecordId)))
+      : [];
+
+    return {
+      ok: true,
+      provider: "attio",
+      listId,
+      count: entries.length,
+      entries,
+      records,
+    };
+  }
+
+  private async handleCrmGetRecord(args: Record<string, unknown>) {
+    this.requireAttioConfigured();
+
+    const object = String(args.object ?? "").trim();
+    const recordId = String(args.recordId ?? "").trim();
+    if (!object) {
+      throw new Error("object is required");
+    }
+    if (!recordId) {
+      throw new Error("recordId is required");
+    }
+
+    const [record, listEntries] = await Promise.all([
+      this.context.attio.getRecord(object, recordId),
+      args.includeListEntries === false || (object !== "companies" && object !== "people")
+        ? Promise.resolve([])
+        : this.context.attio.listRecordEntries(object, recordId),
+    ]);
+
+    return {
+      ok: true,
+      provider: "attio",
+      record,
+      listEntries,
+    };
+  }
+
+  private async handleCrmQueryCompanies(args: Record<string, unknown>) {
+    this.requireAttioConfigured();
+
+    const domain = typeof args.domain === "string" ? args.domain : null;
+    const name = typeof args.name === "string" ? args.name : null;
+    if (!domain?.trim() && !name?.trim()) {
+      throw new Error("domain or name is required");
+    }
+
+    const records = await this.context.attio.queryCompanies({
+      domain,
+      name,
+      limit: this.readLimit(args.limit, 10, 50),
+    });
+    const includeListEntries = args.includeListEntries === true;
+    const enriched = includeListEntries
+      ? await Promise.all(
+          records.map(async (record) => ({
+            ...record,
+            listEntries: await this.context.attio.listRecordEntries("companies", record.recordId),
+          })),
+        )
+      : records;
+
+    return {
+      ok: true,
+      provider: "attio",
+      count: enriched.length,
+      records: enriched,
+    };
+  }
+
+  private async handleCrmQueryPeople(args: Record<string, unknown>) {
+    this.requireAttioConfigured();
+
+    const email = typeof args.email === "string" ? args.email : null;
+    const linkedinUrl = typeof args.linkedinUrl === "string" ? args.linkedinUrl : null;
+    const twitterUrl = typeof args.twitterUrl === "string" ? args.twitterUrl : null;
+    const fullName = typeof args.fullName === "string" ? args.fullName : null;
+    const companyRecordId = typeof args.companyRecordId === "string" ? args.companyRecordId : null;
+    const companyDomain = typeof args.companyDomain === "string" ? args.companyDomain : null;
+    if (
+      !email?.trim()
+      && !linkedinUrl?.trim()
+      && !twitterUrl?.trim()
+      && !fullName?.trim()
+    ) {
+      throw new Error("at least one person query field is required");
+    }
+
+    const records = await this.context.attio.queryPeople({
+      email,
+      linkedinUrl,
+      twitterUrl,
+      fullName,
+      companyRecordId,
+      companyDomain,
+      limit: this.readLimit(args.limit, 10, 50),
+    });
+    const includeListEntries = args.includeListEntries === true;
+    const enriched = includeListEntries
+      ? await Promise.all(
+          records.map(async (record) => ({
+            ...record,
+            listEntries: await this.context.attio.listRecordEntries("people", record.recordId),
+          })),
+        )
+      : records;
+
+    return {
+      ok: true,
+      provider: "attio",
+      count: enriched.length,
+      records: enriched,
+    };
+  }
+
+  private async handleCrmDedupeProspect(args: Record<string, unknown>) {
+    this.requireAttioConfigured();
+
+    const companyDomain = typeof args.companyDomain === "string" ? args.companyDomain : null;
+    const companyName = typeof args.companyName === "string" ? args.companyName : null;
+    const email = typeof args.email === "string" ? args.email : null;
+    const linkedinUrl = typeof args.linkedinUrl === "string" ? args.linkedinUrl : null;
+    const twitterUrl = typeof args.twitterUrl === "string" ? args.twitterUrl : null;
+    const fullName = typeof args.fullName === "string" ? args.fullName : null;
+    const targetListId = typeof args.targetListId === "string" && args.targetListId.trim()
+      ? args.targetListId.trim()
+      : null;
+    const activeListIds = Array.isArray(args.activeListIds)
+      ? args.activeListIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      : [];
+
+    const companyMatches = await this.context.attio.queryCompanies({
+      domain: companyDomain,
+      name: companyName,
+      limit: this.readLimit(args.limit, 10, 25),
+    });
+    const primaryCompanyRecordId = companyMatches[0]?.recordId ?? null;
+    const personMatches = await this.context.attio.queryPeople({
+      email,
+      linkedinUrl,
+      twitterUrl,
+      fullName,
+      companyRecordId: primaryCompanyRecordId,
+      companyDomain,
+      limit: this.readLimit(args.limit, 10, 25),
+    });
+
+    const companyMemberships = await Promise.all(
+      companyMatches.map(async (record) => ({
+        recordId: record.recordId,
+        listEntries: await this.context.attio.listRecordEntries("companies", record.recordId),
+      })),
+    );
+    const personMemberships = await Promise.all(
+      personMatches.map(async (record) => ({
+        recordId: record.recordId,
+        listEntries: await this.context.attio.listRecordEntries("people", record.recordId),
+      })),
+    );
+
+    const matchedListIds = new Set<string>();
+    for (const membership of [...companyMemberships, ...personMemberships]) {
+      for (const entry of membership.listEntries) {
+        if (entry.listId) {
+          matchedListIds.add(entry.listId);
+        }
+      }
+    }
+
+    const inTargetList = targetListId ? matchedListIds.has(targetListId) : false;
+    const activeWorkflowLists = activeListIds.filter((listId) => matchedListIds.has(listId));
+    const reasons: string[] = [];
+    if (companyMatches.length > 0) {
+      reasons.push(`matched ${companyMatches.length} company record${companyMatches.length === 1 ? "" : "s"}`);
+    }
+    if (personMatches.length > 0) {
+      reasons.push(`matched ${personMatches.length} person record${personMatches.length === 1 ? "" : "s"}`);
+    }
+    if (inTargetList && targetListId) {
+      reasons.push(`already present in target list ${targetListId}`);
+    }
+    if (activeWorkflowLists.length > 0) {
+      reasons.push(`already present in active workflow lists: ${activeWorkflowLists.join(", ")}`);
+    }
+
+    return {
+      ok: true,
+      provider: "attio",
+      companyMatches,
+      personMatches,
+      memberships: {
+        companies: companyMemberships,
+        people: personMemberships,
+      },
+      flags: {
+        companyExists: companyMatches.length > 0,
+        personExists: personMatches.length > 0,
+        inTargetList,
+        inActiveWorkflowList: activeWorkflowLists.length > 0,
+        shouldSync: companyMatches.length === 0 && personMatches.length === 0 && !inTargetList && activeWorkflowLists.length === 0,
+      },
+      reasons,
+    };
+  }
+
   private async handleCrmSync(args: Record<string, unknown>) {
     const prospectId = String(args.prospectId ?? "");
     if (!prospectId) {
       throw new Error("prospectId is required");
     }
-    if (!this.context.attio.isConfigured()) {
-      throw new Error("ATTIO_API_KEY is not configured");
-    }
+    this.requireAttioConfigured();
 
     const createNote = args.createNote !== false;
     const addToList = args.addToList === true;
