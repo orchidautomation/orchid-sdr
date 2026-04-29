@@ -91,6 +91,7 @@ export interface DashboardActiveThreadRow {
   status: string;
   qualificationReason: string | null;
   qualification: QualificationAssessment | null;
+  pausedReason: string | null;
   nextFollowUpAt: string | null;
   updatedAt: string;
 }

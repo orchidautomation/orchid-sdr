@@ -290,6 +290,7 @@ export class LocalSmokeRepository implements TrellisRepositoryPort {
           status: thread.status,
           qualificationReason: prospect.qualificationReason,
           qualification: prospect.qualification,
+          pausedReason: thread.pausedReason ?? prospect.pausedReason,
           nextFollowUpAt: thread.nextFollowUpAt,
           updatedAt: thread.updatedAt,
         } satisfies DashboardActiveThreadRow;

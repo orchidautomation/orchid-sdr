@@ -23,6 +23,8 @@ export interface DefaultSdrSandboxTurnResponse {
 export interface DefaultSdrWorkflowOutcome {
   action: string;
   followupDelayMs?: number;
+  prospectId?: string;
+  threadId?: string;
 }
 
 export interface DefaultSdrInboundReplyOutcome extends DefaultSdrWorkflowOutcome {
@@ -47,6 +49,10 @@ export interface DefaultSdrRegistryDependencies<Context extends DefaultSdrReposi
     input: {
       context: Context;
       runSandboxTurn: (request: DefaultSdrSandboxTurnRequest) => Promise<DefaultSdrSandboxTurnResponse>;
+      dispatchProspectLifecycle?: (input: {
+        prospectId: string;
+        forceFollowup?: boolean;
+      }) => Promise<DefaultSdrWorkflowOutcome>;
     },
     payload: {
       actorRunId: string;
@@ -217,6 +223,8 @@ export function createDefaultSdrRegistry<Context extends DefaultSdrRepositoryCon
           prospectId,
         );
 
+        c.state.prospectId = outcome.prospectId ?? prospectId;
+        c.state.threadId = outcome.threadId ?? threadId;
         c.state.lastOutcome = outcome.action;
         if (outcome.followupDelayMs) {
           await c.schedule.after(outcome.followupDelayMs, "runScheduledFollowup");
@@ -248,6 +256,8 @@ export function createDefaultSdrRegistry<Context extends DefaultSdrRepositoryCon
             forceFollowup: input?.forceFollowup,
           },
         );
+        c.state.prospectId = outcome.prospectId ?? prospectId;
+        c.state.threadId = outcome.threadId ?? c.state.threadId;
         c.state.lastOutcome = outcome.action;
         if (outcome.followupDelayMs) {
           await c.schedule.after(outcome.followupDelayMs, "runScheduledFollowup");
@@ -273,6 +283,8 @@ export function createDefaultSdrRegistry<Context extends DefaultSdrRepositoryCon
             forceFollowup: true,
           },
         );
+        c.state.prospectId = outcome.prospectId ?? c.state.prospectId;
+        c.state.threadId = outcome.threadId ?? c.state.threadId;
         c.state.lastOutcome = outcome.action;
         if (outcome.followupDelayMs) {
           await c.schedule.after(outcome.followupDelayMs, "runScheduledFollowup");

@@ -165,6 +165,82 @@ describe("normalizeSignalWebhookPayload", () => {
     }));
   });
 
+  it("dispatches lifecycle work through the actor-backed dispatcher when provided", async () => {
+    const repository = {
+      ensureDefaultCampaign: vi.fn(async () => ({ id: "cmp_default" })),
+      getControlFlags: vi.fn(async () => ({
+        globalKillSwitch: false,
+        noSendsMode: false,
+        pausedCampaignIds: [],
+      })),
+      recordProviderRun: vi.fn(async () => "run_1"),
+      insertSignal: vi.fn(async () => "sig_1"),
+      appendAuditEvent: vi.fn(async () => undefined),
+      pauseThread: vi.fn(async () => undefined),
+      createOrUpdateProspectFromSignal: vi.fn(async () => ({ prospectId: "pros_1", threadId: "thr_1" })),
+      updateProviderRun: vi.fn(async () => undefined),
+    };
+    const state = {
+      recordSignal: vi.fn(async () => ({
+        providerId: "convex",
+        stateSignalId: "state_sig_1",
+        stored: true,
+      })),
+      recordWorkflowCheckpoint: vi.fn(async () => ({
+        providerId: "convex",
+        checkpointId: "chk_1",
+        stored: true,
+      })),
+      appendAuditEvent: vi.fn(async () => ({
+        providerId: "convex",
+        auditEventId: "aud_1",
+        stored: true,
+      })),
+    };
+    const dispatchProspectLifecycle = vi.fn(async ({ prospectId }: { prospectId: string }) => ({
+      action: "researched" as const,
+      prospectId,
+      threadId: "thr_1",
+      reason: "actor-dispatched",
+    }));
+
+    const result = await ingestSignalWebhook(
+      {
+        context: {
+          repository,
+          state,
+        },
+        runSandboxTurn: vi.fn(),
+        dispatchProspectLifecycle,
+      } as any,
+      {
+        provider: "custom-source",
+        source: "reddit_post",
+        signal: {
+          url: "https://reddit.com/r/example/post",
+          authorName: "Casey",
+          authorTitle: "Growth Operator",
+          authorCompany: "Launch Labs",
+          companyDomain: "launchlabs.io",
+          topic: "signal-based GTM",
+          content: "We are rebuilding our outbound workflow stack.",
+        },
+      },
+    );
+
+    expect(dispatchProspectLifecycle).toHaveBeenCalledWith({
+      prospectId: "pros_1",
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      results: [
+        expect.objectContaining({
+          prospectsProcessed: 1,
+        }),
+      ],
+    });
+  });
+
   it("accepts signals but defers new prospect work while the campaign is paused", async () => {
     const repository = {
       ensureDefaultCampaign: vi.fn(async () => ({ id: "cmp_default" })),

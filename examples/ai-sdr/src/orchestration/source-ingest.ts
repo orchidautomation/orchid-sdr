@@ -158,7 +158,9 @@ async function ingestNormalizedSignals(
       const { prospectId, threadId } = await deps.context.repository.createOrUpdateProspectFromSignal(signalId, campaign.id);
 
       try {
-        const outcome = await executeProspectWorkflow(deps, prospectId);
+        const outcome = deps.dispatchProspectLifecycle
+          ? await deps.dispatchProspectLifecycle({ prospectId })
+          : await executeProspectWorkflow(deps, prospectId);
         await deps.context.state.recordWorkflowCheckpoint({
           workflowName: "prospect-workflow",
           entityType: "prospect",

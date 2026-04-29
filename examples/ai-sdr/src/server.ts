@@ -34,25 +34,33 @@ import {
   buildDefaultSdrStandardDashboardActions,
   mountDefaultSdrDashboardActionRoutes,
 } from "../../../packages/default-sdr/src/dashboard-actions.js";
+import {
+  createActorBackedDiscoveryCompletionHandler,
+  createActorBackedProspectLifecycleDispatcher,
+} from "../../../packages/default-sdr/src/runtime-dispatch.js";
 import { mountDefaultSdrWebhookRoutes } from "../../../packages/default-sdr/src/webhook-bootstrap.js";
 import type { DefaultSdrDashboardActorClient } from "../../../packages/default-sdr/src/dashboard-state.js";
+import type { WorkflowDependencies } from "./orchestration/types.js";
 
 export function createApp() {
   const app = new Hono();
   const context = getAppContext();
+  const actorClient = getActorClient();
   const dashboardCookieName = "trellis_dashboard_auth";
   const dashboardState = createDashboardStateController({
     buildCoreState: () => buildDefaultSdrDashboardCoreState(context),
     buildRuntimeState: () =>
       buildDefaultSdrDashboardRuntimeState(context, {
-        getActorClient: () => getActorClient() as unknown as DefaultSdrDashboardActorClient,
+        getActorClient: () => actorClient as unknown as DefaultSdrDashboardActorClient,
       }),
   });
 
-  const workflowDeps = {
+  const workflowDeps: WorkflowDependencies = {
     context,
     runSandboxTurn: (request: Parameters<typeof runSandboxTurn>[1]) => runSandboxTurn(context, request),
+    dispatchProspectLifecycle: createActorBackedProspectLifecycleDispatcher(actorClient as any) as WorkflowDependencies["dispatchProspectLifecycle"],
   };
+  const handleApifyCompletion = createActorBackedDiscoveryCompletionHandler(actorClient);
 
   const dashboardRoutes = mountDefaultSdrDashboardRoutes(app, {
     dashboardCookieName,
@@ -121,11 +129,7 @@ export function createApp() {
       providers: context.providers,
     },
     handlers: {
-      onApifyRunCompleted: async (payload) => {
-        const client = getActorClient();
-        const actor = client.discoveryCoordinator.getOrCreate([payload.campaignId, payload.source]) as any;
-        return actor.handleApifyRunCompleted(payload);
-      },
+      onApifyRunCompleted: handleApifyCompletion,
       onSignal: async (payload) => handleSignalWebhook(workflowDeps, payload),
       onAgentMail: async (payload) => handleAgentMailWebhook(workflowDeps, payload),
       onHandoff: async (payload) => handleHandoffWebhook(workflowDeps, payload),

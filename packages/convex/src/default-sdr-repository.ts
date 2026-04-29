@@ -480,6 +480,7 @@ export const listActiveThreads = query({
         status: thread.status,
         qualificationReason: prospect.qualificationReason ?? null,
         qualification: mapQualification(prospect.qualification),
+        pausedReason: thread.pausedReason ?? prospect.pausedReason ?? null,
         nextFollowUpAt: thread.nextFollowUpAt ?? null,
         updatedAt: new Date(prospect.updatedAt).toISOString(),
       });
