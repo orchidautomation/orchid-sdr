@@ -5,6 +5,7 @@ import { deleteCookie, setCookie } from "hono/cookie";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
 import { renderDashboardLoginPage, renderDashboardPage } from "./dashboard/page.js";
+import { decorateDashboardProspects } from "./dashboard/operator-state.js";
 import { getAppContext } from "./services/runtime-context.js";
 import { getActorClient } from "./services/actor-client.js";
 import { createOrchidMcpServer } from "./mcp/server-factory.js";
@@ -381,10 +382,10 @@ async function buildDashboardState(context: ReturnType<typeof getAppContext>) {
     xDiscovery,
   ] = await Promise.all([
     context.repository.getDashboardSummary(),
-    context.repository.listRecentSignals(12),
-    context.repository.listRecentProspects(12),
+    context.repository.listRecentSignals(20),
+    context.repository.listRecentProspects(40),
     context.repository.listQualifiedLeads(12),
-    context.repository.listActiveThreads(12),
+    context.repository.listActiveThreads(20),
     context.repository.listRecentProviderRuns(12),
     context.repository.listRecentAuditEvents(16),
     sandboxActor.listJobs({ limit: 12 }),
@@ -398,10 +399,14 @@ async function buildDashboardState(context: ReturnType<typeof getAppContext>) {
       ? client.discoveryCoordinator.getOrCreate([campaign.id, "x_public_post"]).getSnapshot().catch(() => null)
       : Promise.resolve(null),
   ]);
+  const workflow = decorateDashboardProspects(recentProspects, providerRuns);
 
   return {
     generatedAt: new Date().toISOString(),
     summary,
+    workflowStats: workflow.stats,
+    burstWindowStart: workflow.burstWindowStart,
+    freshestTimestamp: workflow.freshestTimestamp,
     actors: {
       sourceIngest,
       campaignOps,
@@ -418,7 +423,7 @@ async function buildDashboardState(context: ReturnType<typeof getAppContext>) {
     providerRuns,
     qualifiedLeads,
     activeThreads,
-    recentProspects,
+    recentProspects: workflow.rows,
     recentSignals,
     auditEvents,
   };

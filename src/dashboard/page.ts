@@ -493,6 +493,13 @@ export function renderDashboardPage() {
         background: var(--surface);
         overflow: hidden;
       }
+      .metric-note {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 10px;
+        grid-column: 1 / -1;
+        padding: 10px 16px 0;
+      }
       .summary-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -731,6 +738,33 @@ export function renderDashboardPage() {
       .empty {
         color: var(--muted);
         font-style: italic;
+      }
+      .toolbar-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .filter-button {
+        appearance: none;
+        min-height: 30px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--muted);
+        cursor: pointer;
+        font: 600 0.62rem/1 "IBM Plex Mono", ui-monospace, monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .filter-button.active {
+        border-color: var(--line-strong);
+        background: var(--surface-3);
+        color: var(--ink);
+      }
+      .filter-button:hover {
+        border-color: var(--line-strong);
+        color: var(--ink-soft);
       }
       .toast {
         position: fixed;
@@ -983,14 +1017,17 @@ export function renderDashboardPage() {
 
             <article class="card span-12">
               <div class="card-head">
-                <h2>Recent Records</h2>
-                <p>Newest qualification entries</p>
+                <div>
+                  <h2>Workflow Rows</h2>
+                  <p>Fresh burst rows, paused rows, and workflow state</p>
+                </div>
+                <div id="workflow-filters" class="toolbar-actions"></div>
               </div>
               <div class="card-body tight">
                 <div class="table-shell">
                   <table>
                     <thead>
-                      <tr><th>Name</th><th>Qualification</th><th>Status</th><th>Updated</th></tr>
+                      <tr><th>Name</th><th>Workflow State</th><th>Qualification</th><th>Freshness</th><th>Updated</th></tr>
                     </thead>
                     <tbody id="recent-prospects"></tbody>
                   </table>
@@ -1183,16 +1220,28 @@ export function renderDashboardPage() {
         target.innerHTML = rows.map(renderRow).join("");
       }
 
-      function renderStats(summary) {
+      let dashboardState = null;
+      let workflowFilter = "fresh";
+
+      function renderStats(summary, workflowStats, burstWindowStart, freshestTimestamp) {
         const cards = [
-          ["Signals", summary.signals],
-          ["Prospects", summary.prospects],
-          ["Qualified", summary.qualifiedLeads],
-          ["Active Threads", summary.activeThreads],
-          ["Paused Threads", summary.pausedThreads],
-          ["Provider Runs / 24h", summary.providerRuns24h],
+          ["Fresh Rows", workflowStats.freshRows],
+          ["Qualifying", workflowStats.qualifyingRows],
+          ["Progressing", workflowStats.progressingRows],
+          ["Paused", workflowStats.pausedRows],
+          ["Failed", workflowStats.failedRows],
+          ["Rejected", workflowStats.rejectedRows],
         ];
-        byId("stats").innerHTML = cards.map(([label, value]) => \`
+        const note = freshestTimestamp
+          ? \`
+            <div class="metric-note">
+              <span class="meta-pill">Burst window \${escapeHtml(timeLabel(burstWindowStart))} to \${escapeHtml(timeLabel(freshestTimestamp))}</span>
+              <span class="meta-pill">Total prospects \${escapeHtml(summary.prospects)}</span>
+              <span class="meta-pill">Provider failures \${escapeHtml(workflowStats.providerFailures)}</span>
+            </div>
+          \`
+          : "";
+        byId("stats").innerHTML = note + cards.map(([label, value]) => \`
           <article class="stat">
             <span class="label">\${escapeHtml(label)}</span>
             <span class="value">\${escapeHtml(value)}</span>
@@ -1354,6 +1403,98 @@ export function renderDashboardPage() {
         return \`<a class="inline-link" href="\${escapeHtml(url)}" target="_blank" rel="noreferrer">Open profile</a>\`;
       }
 
+      function renderWorkflowFilters(rows) {
+        const target = byId("workflow-filters");
+        const counts = {
+          all: rows.length,
+          fresh: rows.filter((row) => row.isFresh).length,
+          active: rows.filter((row) => row.operatorState === "qualifying" || row.operatorState === "progressing").length,
+          paused: rows.filter((row) => row.operatorState === "paused").length,
+          failed: rows.filter((row) => row.operatorState === "failed").length,
+          rejected: rows.filter((row) => row.operatorState === "rejected").length,
+        };
+        if (workflowFilter === "fresh" && counts.fresh === 0) {
+          workflowFilter = "all";
+        }
+        const filters = [
+          ["fresh", "Fresh", counts.fresh],
+          ["active", "Active", counts.active],
+          ["paused", "Paused", counts.paused],
+          ["failed", "Failed", counts.failed],
+          ["rejected", "Rejected", counts.rejected],
+          ["all", "All", counts.all],
+        ];
+        target.innerHTML = filters.map(([key, label, count]) => \`
+          <button class="filter-button \${workflowFilter === key ? "active" : ""}" type="button" data-workflow-filter="\${key}">
+            \${escapeHtml(label)} \${escapeHtml(count)}
+          </button>
+        \`).join("");
+        Array.from(target.querySelectorAll("[data-workflow-filter]")).forEach((button) => {
+          button.addEventListener("click", () => {
+            workflowFilter = button.dataset.workflowFilter || "all";
+            renderWorkflowFilters(dashboardState?.recentProspects || []);
+            renderRecentProspects(dashboardState?.recentProspects || []);
+          });
+        });
+      }
+
+      function filteredWorkflowRows(rows) {
+        switch (workflowFilter) {
+          case "fresh":
+            return rows.filter((row) => row.isFresh);
+          case "active":
+            return rows.filter((row) => row.operatorState === "qualifying" || row.operatorState === "progressing");
+          case "paused":
+            return rows.filter((row) => row.operatorState === "paused");
+          case "failed":
+            return rows.filter((row) => row.operatorState === "failed");
+          case "rejected":
+            return rows.filter((row) => row.operatorState === "rejected");
+          case "all":
+          default:
+            return rows;
+        }
+      }
+
+      function renderRecentProspects(rows) {
+        renderRows("recent-prospects", filteredWorkflowRows(rows), (prospect) => \`
+          <tr>
+            <td>
+              <div class="cell-stack">
+                <strong>\${escapeHtml(prospect.fullName)}</strong>
+                <span class="feed-subtle">\${escapeHtml([prospect.company || "Unknown company", prospect.title].filter(Boolean).join(" · "))}</span>
+              </div>
+            </td>
+            <td>
+              <div class="cell-stack">
+                <div class="chip-row">
+                  <span class="badge \${escapeHtml(prospect.operatorTone)}">\${escapeHtml(prospect.operatorLabel)}</span>
+                  <span class="badge">\${escapeHtml(prospect.workflowLabel)}</span>
+                </div>
+                <span class="feed-subtle">\${escapeHtml(prospect.workflowDetail || "No workflow note")}</span>
+              </div>
+            </td>
+            <td>
+              <div class="cell-stack">
+                <span>\${escapeHtml(prospect.qualification?.summary || prospect.qualificationReason || "No qualification note")}</span>
+                <span class="feed-subtle">\${escapeHtml(prospect.qualification?.engine || "unstructured")}</span>
+                <div class="chip-row">
+                  <span class="chip \${prospect.isQualified ? "success" : prospect.operatorState === "rejected" ? "danger" : ""}">\${prospect.isQualified ? "qualified" : prospect.operatorState === "rejected" ? "rejected" : "pending"}</span>
+                  \${renderQualificationChips(prospect.qualification)}
+                </div>
+              </div>
+            </td>
+            <td>
+              <div class="compact-stack">
+                <span>\${badge(prospect.isFresh ? "fresh" : "stale")}</span>
+                <span class="feed-subtle">\${escapeHtml(prospect.sourceLabel)} · \${escapeHtml(timeLabel(prospect.sourceCapturedAt || prospect.rowTimestamp))}</span>
+              </div>
+            </td>
+            <td>\${escapeHtml(timeLabel(prospect.updatedAt))}</td>
+          </tr>
+        \`, 5);
+      }
+
       function updateTopline(summary) {
         byId("service-status").textContent = "Dashboard online";
         byId("sends-status").textContent = summary.noSendsMode ? "No sends mode ON" : "Sending enabled";
@@ -1393,11 +1534,13 @@ export function renderDashboardPage() {
         }
 
         const state = await response.json();
-        renderStats(state.summary);
+        dashboardState = state;
+        renderStats(state.summary, state.workflowStats, state.burstWindowStart, state.freshestTimestamp);
         renderActors(state.actors, state.discovery);
         renderFeed(state.auditEvents);
         renderQualificationOverview(state.recentProspects);
         updateTopline(state.summary);
+        renderWorkflowFilters(state.recentProspects);
         byId("generated-at").textContent = "Updated " + timeLabel(state.generatedAt);
 
         renderRows("sandbox-jobs", state.sandboxJobs, (job) => \`
@@ -1483,33 +1626,7 @@ export function renderDashboardPage() {
           </tr>
         \`, 6);
 
-        renderRows("recent-prospects", state.recentProspects, (prospect) => \`
-          <tr>
-            <td>
-              <div class="cell-stack">
-                <strong>\${escapeHtml(prospect.fullName)}</strong>
-                <span class="feed-subtle">\${escapeHtml(prospect.company || "Unknown company")}</span>
-              </div>
-            </td>
-            <td>
-              <div class="cell-stack">
-                <span>\${escapeHtml(prospect.qualification?.summary || prospect.qualificationReason || "No qualification note")}</span>
-                <span class="feed-subtle">\${escapeHtml(prospect.qualification?.engine || prospect.stage)}</span>
-                <div class="chip-row">
-                  <span class="chip \${prospect.isQualified ? "success" : "danger"}">\${prospect.isQualified ? "qualified" : "rejected"}</span>
-                  \${renderQualificationChips(prospect.qualification)}
-                </div>
-              </div>
-            </td>
-            <td>
-              <div class="compact-stack">
-                <span>\${badge(prospect.status)}</span>
-                <span class="feed-subtle">\${escapeHtml(prospect.pausedReason || "—")}</span>
-              </div>
-            </td>
-            <td>\${escapeHtml(timeLabel(prospect.updatedAt))}</td>
-          </tr>
-        \`, 4);
+        renderRecentProspects(state.recentProspects);
 
         renderRows("recent-signals", state.recentSignals, (signal) => \`
           <tr>
