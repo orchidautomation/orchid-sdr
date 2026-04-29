@@ -12,6 +12,7 @@ import type {
   MessageInsertInput,
   ProspectSnapshot,
   TrellisRepositoryPort,
+  WorkflowProspectMatchRow,
 } from "./repository-contracts.js";
 import type {
   ContactEmail,
@@ -31,6 +32,10 @@ function createId(prefix: string) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function normalizeComparable(value: string | null | undefined) {
+  return value?.trim().toLowerCase() || null;
 }
 
 function firstNameFromFullName(fullName: string) {
@@ -311,6 +316,68 @@ export class LocalSmokeRepository implements TrellisRepositoryPort {
       .filter((event) => event.entityType === entityType && event.entityId === entityId)
       .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
       .slice(0, limit);
+
+  findWorkflowProspectMatches: TrellisRepositoryPort["findWorkflowProspectMatches"] = async (input) => {
+    const companyDomain = normalizeComparable(input.companyDomain);
+    const companyName = normalizeComparable(input.companyName);
+    const email = normalizeComparable(input.email);
+    const linkedinUrl = normalizeComparable(input.linkedinUrl);
+    const twitterUrl = normalizeComparable(input.twitterUrl);
+    const fullName = input.fullName?.trim() || null;
+    const limit = Math.max(1, Math.min(input.limit ?? 25, 100));
+
+    if (!companyDomain && !companyName && !email && !linkedinUrl && !twitterUrl && !fullName) {
+      return [];
+    }
+
+    const results: WorkflowProspectMatchRow[] = [];
+    for (const thread of this.threads.values()) {
+      if (thread.status !== "active" && thread.status !== "paused") {
+        continue;
+      }
+      const prospect = this.prospects.get(thread.prospectId);
+      if (!prospect) {
+        continue;
+      }
+      const bestEmail = this.emails.get(prospect.prospectId)?.address ?? null;
+      const matched =
+        (companyDomain && normalizeComparable(prospect.companyDomain) === companyDomain)
+        || (email && normalizeComparable(bestEmail) === email)
+        || (linkedinUrl && normalizeComparable(prospect.linkedinUrl) === linkedinUrl)
+        || (twitterUrl && normalizeComparable(prospect.twitterUrl) === twitterUrl)
+        || (
+          fullName
+          && prospect.fullName === fullName
+          && (
+            !companyDomain
+            || normalizeComparable(prospect.companyDomain) === companyDomain
+            || normalizeComparable(prospect.company) === companyName
+          )
+        );
+
+      if (!matched) {
+        continue;
+      }
+
+      results.push({
+        prospectId: prospect.prospectId,
+        threadId: thread.id,
+        fullName: prospect.fullName,
+        company: prospect.company,
+        companyDomain: prospect.companyDomain,
+        linkedinUrl: prospect.linkedinUrl,
+        twitterUrl: prospect.twitterUrl,
+        email: bestEmail,
+        stage: thread.stage,
+        status: thread.status,
+        updatedAt: prospect.updatedAt,
+      });
+    }
+
+    return results
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+      .slice(0, limit);
+  };
 
   recordProviderRun: TrellisRepositoryPort["recordProviderRun"] = async (input) => {
     const id = createId("prov");

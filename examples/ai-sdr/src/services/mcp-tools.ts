@@ -17,6 +17,18 @@ function coerceRecordArg(value: unknown) {
     : undefined;
 }
 
+type DedupeDecision = "allow" | "skip" | "merge" | "needs_review";
+
+function normalizeComparable(value: string | null | undefined) {
+  return value?.trim().toLowerCase() || null;
+}
+
+function nonEmptyStrings(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    : [];
+}
+
 export class TrellisMcpToolService extends DefaultSdrMcpToolService<AppContext> {
   constructor(protected override readonly context: AppContext) {
     super(context, {
@@ -28,6 +40,20 @@ export class TrellisMcpToolService extends DefaultSdrMcpToolService<AppContext> 
     switch (name) {
       case "knowledge.search":
         return this.context.knowledge.search(String(args.query ?? ""), Number(args.limit ?? 5));
+      case "crm.getList":
+        return this.handleCrmGetList(args);
+      case "crm.listEntries":
+        return this.handleCrmListEntries(args);
+      case "crm.getRecord":
+        return this.handleCrmGetRecord(args);
+      case "crm.queryCompanies":
+        return this.handleCrmQueryCompanies(args);
+      case "crm.queryPeople":
+        return this.handleCrmQueryPeople(args);
+      case "crm.queryProcesses":
+        return this.handleCrmQueryProcesses(args);
+      case "crm.dedupeProspect":
+        return this.handleCrmDedupeProspect(args);
       case "crm.syncProspect":
         return this.handleCrmSync(args);
       case "email.enrich":
@@ -159,6 +185,374 @@ export class TrellisMcpToolService extends DefaultSdrMcpToolService<AppContext> 
       company,
       fields: this.readStringArray(args.fields),
     });
+  }
+
+  private requireAttioConfigured() {
+    if (!this.context.attio.isConfigured()) {
+      throw new Error("ATTIO_API_KEY is not configured");
+    }
+  }
+
+  private async handleCrmGetList(args: Record<string, unknown>) {
+    this.requireAttioConfigured();
+
+    const listId = String(args.listId ?? "").trim();
+    if (!listId) {
+      throw new Error("listId is required");
+    }
+
+    const [list, attributes] = await Promise.all([
+      this.context.attio.getList(listId),
+      args.includeAttributes === false ? Promise.resolve([]) : this.context.attio.listAttributes(listId),
+    ]);
+
+    return {
+      ok: true,
+      provider: "attio",
+      list,
+      attributes,
+    };
+  }
+
+  private async handleCrmListEntries(args: Record<string, unknown>) {
+    this.requireAttioConfigured();
+
+    const listId = String(args.listId ?? "").trim();
+    if (!listId) {
+      throw new Error("listId is required");
+    }
+
+    const entries = await this.context.attio.listEntries({
+      listId,
+      limit: this.readLimit(args.limit, 25, 500),
+      offset: Number.isFinite(Number(args.offset)) ? Math.max(0, Math.trunc(Number(args.offset))) : 0,
+    });
+    const includeRecords = args.includeRecords === true;
+    const records = includeRecords
+      ? await Promise.all(entries.map((entry) => this.context.attio.getRecord(entry.parentObject, entry.parentRecordId)))
+      : [];
+
+    return {
+      ok: true,
+      provider: "attio",
+      listId,
+      count: entries.length,
+      entries,
+      records,
+    };
+  }
+
+  private async handleCrmGetRecord(args: Record<string, unknown>) {
+    this.requireAttioConfigured();
+
+    const object = String(args.object ?? "").trim();
+    const recordId = String(args.recordId ?? "").trim();
+    if (!object) {
+      throw new Error("object is required");
+    }
+    if (!recordId) {
+      throw new Error("recordId is required");
+    }
+
+    const [record, listEntries] = await Promise.all([
+      this.context.attio.getRecord(object, recordId),
+      args.includeListEntries === false || (object !== "companies" && object !== "people")
+        ? Promise.resolve([])
+        : this.context.attio.listRecordEntries(object, recordId),
+    ]);
+
+    return {
+      ok: true,
+      provider: "attio",
+      record,
+      listEntries,
+    };
+  }
+
+  private async handleCrmQueryCompanies(args: Record<string, unknown>) {
+    this.requireAttioConfigured();
+
+    const domain = typeof args.domain === "string" ? args.domain : null;
+    const name = typeof args.name === "string" ? args.name : null;
+    if (!domain?.trim() && !name?.trim()) {
+      throw new Error("domain or name is required");
+    }
+
+    const records = await this.context.attio.queryCompanies({
+      domain,
+      name,
+      limit: this.readLimit(args.limit, 10, 50),
+    });
+    const includeListEntries = args.includeListEntries === true;
+    const enriched = includeListEntries
+      ? await Promise.all(
+          records.map(async (record) => ({
+            ...record,
+            listEntries: await this.context.attio.listRecordEntries("companies", record.recordId),
+          })),
+        )
+      : records;
+
+    return {
+      ok: true,
+      provider: "attio",
+      count: enriched.length,
+      records: enriched,
+    };
+  }
+
+  private async handleCrmQueryPeople(args: Record<string, unknown>) {
+    this.requireAttioConfigured();
+
+    const email = typeof args.email === "string" ? args.email : null;
+    const linkedinUrl = typeof args.linkedinUrl === "string" ? args.linkedinUrl : null;
+    const twitterUrl = typeof args.twitterUrl === "string" ? args.twitterUrl : null;
+    const fullName = typeof args.fullName === "string" ? args.fullName : null;
+    const companyRecordId = typeof args.companyRecordId === "string" ? args.companyRecordId : null;
+    const companyDomain = typeof args.companyDomain === "string" ? args.companyDomain : null;
+    if (
+      !email?.trim()
+      && !linkedinUrl?.trim()
+      && !twitterUrl?.trim()
+      && !fullName?.trim()
+    ) {
+      throw new Error("at least one person query field is required");
+    }
+
+    const records = await this.context.attio.queryPeople({
+      email,
+      linkedinUrl,
+      twitterUrl,
+      fullName,
+      companyRecordId,
+      companyDomain,
+      limit: this.readLimit(args.limit, 10, 50),
+    });
+    const includeListEntries = args.includeListEntries === true;
+    const enriched = includeListEntries
+      ? await Promise.all(
+          records.map(async (record) => ({
+            ...record,
+            listEntries: await this.context.attio.listRecordEntries("people", record.recordId),
+          })),
+        )
+      : records;
+
+    return {
+      ok: true,
+      provider: "attio",
+      count: enriched.length,
+      records: enriched,
+    };
+  }
+
+  private async handleCrmQueryProcesses(args: Record<string, unknown>) {
+    this.requireAttioConfigured();
+
+    const companyRecordIds = nonEmptyStrings(args.companyRecordIds);
+    const personRecordIds = nonEmptyStrings(args.personRecordIds);
+    if (companyRecordIds.length === 0 && personRecordIds.length === 0) {
+      throw new Error("companyRecordIds or personRecordIds is required");
+    }
+
+    const targetListId = typeof args.targetListId === "string" && args.targetListId.trim()
+      ? args.targetListId.trim()
+      : null;
+    const activeListIds = nonEmptyStrings(args.activeListIds);
+
+    const companies = await Promise.all(
+      companyRecordIds.map(async (recordId) => ({
+        recordId,
+        listEntries: await this.context.attio.listRecordEntries("companies", recordId),
+      })),
+    );
+    const people = await Promise.all(
+      personRecordIds.map(async (recordId) => ({
+        recordId,
+        listEntries: await this.context.attio.listRecordEntries("people", recordId),
+      })),
+    );
+
+    const matchedListIds = new Set<string>();
+    for (const membership of [...companies, ...people]) {
+      for (const entry of membership.listEntries) {
+        if (entry.listId) {
+          matchedListIds.add(entry.listId);
+        }
+      }
+    }
+
+    const inTargetList = targetListId ? matchedListIds.has(targetListId) : false;
+    const activeWorkflowLists = activeListIds.filter((listId) => matchedListIds.has(listId));
+
+    return {
+      ok: true,
+      provider: "attio",
+      memberships: {
+        companies,
+        people,
+      },
+      flags: {
+        inTargetList,
+        inActiveWorkflowList: activeWorkflowLists.length > 0,
+      },
+      targetListId,
+      activeWorkflowLists,
+    };
+  }
+
+  private async handleCrmDedupeProspect(args: Record<string, unknown>) {
+    this.requireAttioConfigured();
+
+    const companyDomain = typeof args.companyDomain === "string" ? args.companyDomain : null;
+    const companyName = typeof args.companyName === "string" ? args.companyName : null;
+    const email = typeof args.email === "string" ? args.email : null;
+    const linkedinUrl = typeof args.linkedinUrl === "string" ? args.linkedinUrl : null;
+    const twitterUrl = typeof args.twitterUrl === "string" ? args.twitterUrl : null;
+    const fullName = typeof args.fullName === "string" ? args.fullName : null;
+    const targetListId = typeof args.targetListId === "string" && args.targetListId.trim()
+      ? args.targetListId.trim()
+      : null;
+    const activeListIds = nonEmptyStrings(args.activeListIds);
+
+    const companyMatches = await this.context.attio.queryCompanies({
+      domain: companyDomain,
+      name: companyName,
+      limit: this.readLimit(args.limit, 10, 25),
+    });
+    const primaryCompanyRecordId = companyMatches[0]?.recordId ?? null;
+    const personMatches = await this.context.attio.queryPeople({
+      email,
+      linkedinUrl,
+      twitterUrl,
+      fullName,
+      companyRecordId: primaryCompanyRecordId,
+      companyDomain,
+      limit: this.readLimit(args.limit, 10, 25),
+    });
+
+    const processState = companyMatches.length > 0 || personMatches.length > 0
+      ? await this.handleCrmQueryProcesses({
+          companyRecordIds: companyMatches.map((record) => record.recordId),
+          personRecordIds: personMatches.map((record) => record.recordId),
+          targetListId,
+          activeListIds,
+        }) as {
+          memberships: {
+            companies: Array<{ recordId: string; listEntries: Array<{ listId: string }> }>;
+            people: Array<{ recordId: string; listEntries: Array<{ listId: string }> }>;
+          };
+          flags: {
+            inTargetList: boolean;
+            inActiveWorkflowList: boolean;
+          };
+          activeWorkflowLists: string[];
+        }
+      : {
+          memberships: {
+            companies: [],
+            people: [],
+          },
+          flags: {
+            inTargetList: false,
+            inActiveWorkflowList: false,
+          },
+          activeWorkflowLists: [],
+        };
+
+    const trellisMatches = await this.context.repository.findWorkflowProspectMatches({
+      companyDomain,
+      companyName,
+      email,
+      linkedinUrl,
+      twitterUrl,
+      fullName,
+      limit: this.readLimit(args.limit, 10, 25),
+    });
+
+    const trellisAccountMatches = trellisMatches.filter((match) =>
+      Boolean(companyDomain && normalizeComparable(match.companyDomain) === normalizeComparable(companyDomain))
+      || Boolean(companyName && normalizeComparable(match.company) === normalizeComparable(companyName)),
+    );
+    const trellisContactMatches = trellisMatches.filter((match) =>
+      Boolean(email && normalizeComparable(match.email) === normalizeComparable(email))
+      || Boolean(linkedinUrl && normalizeComparable(match.linkedinUrl) === normalizeComparable(linkedinUrl))
+      || Boolean(twitterUrl && normalizeComparable(match.twitterUrl) === normalizeComparable(twitterUrl))
+      || Boolean(
+        fullName
+          && normalizeComparable(match.fullName) === normalizeComparable(fullName)
+          && (
+            !companyDomain
+            || normalizeComparable(match.companyDomain) === normalizeComparable(companyDomain)
+            || normalizeComparable(match.company) === normalizeComparable(companyName)
+          ),
+      ),
+    );
+
+    const inTargetList = processState.flags.inTargetList;
+    const activeWorkflowLists = processState.activeWorkflowLists;
+    const hasTrellisActiveWork = trellisMatches.length > 0;
+    const reasons: string[] = [];
+    if (companyMatches.length > 0) {
+      reasons.push(`matched ${companyMatches.length} company record${companyMatches.length === 1 ? "" : "s"}`);
+    }
+    if (personMatches.length > 0) {
+      reasons.push(`matched ${personMatches.length} person record${personMatches.length === 1 ? "" : "s"}`);
+    }
+    if (inTargetList && targetListId) {
+      reasons.push(`already present in target list ${targetListId}`);
+    }
+    if (activeWorkflowLists.length > 0) {
+      reasons.push(`already present in active workflow lists: ${activeWorkflowLists.join(", ")}`);
+    }
+    if (hasTrellisActiveWork) {
+      reasons.push(`matched ${trellisMatches.length} Trellis active/paused workflow record${trellisMatches.length === 1 ? "" : "s"}`);
+    }
+
+    let decision: DedupeDecision = "allow";
+    if (companyMatches.length > 1 || personMatches.length > 1 || trellisMatches.length > 1) {
+      decision = "needs_review";
+    } else if (inTargetList || activeWorkflowLists.length > 0 || hasTrellisActiveWork) {
+      decision = "skip";
+    } else if (companyMatches.length > 0 || personMatches.length > 0) {
+      decision = "merge";
+    }
+
+    return {
+      ok: true,
+      provider: "attio",
+      decision,
+      companyMatches,
+      personMatches,
+      processMatches: {
+        crm: processState.memberships,
+        trellis: trellisMatches,
+      },
+      matchedState: {
+        account: {
+          crm: companyMatches,
+          trellis: trellisAccountMatches,
+        },
+        contact: {
+          crm: personMatches,
+          trellis: trellisContactMatches,
+        },
+        process: {
+          inTargetList,
+          activeWorkflowLists,
+          trellis: trellisMatches,
+        },
+      },
+      flags: {
+        companyExists: companyMatches.length > 0,
+        personExists: personMatches.length > 0,
+        inTargetList,
+        inActiveWorkflowList: activeWorkflowLists.length > 0,
+        hasTrellisActiveWork,
+        shouldSync: decision === "allow",
+      },
+      reasons,
+    };
   }
 
   private async handleCrmSync(args: Record<string, unknown>) {

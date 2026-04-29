@@ -245,6 +245,13 @@ Workflow and actuation tools:
 - `ocean.searchPeople`
 - `ocean.enrichCompany`
 - `email.enrich`
+- `crm.getList`
+- `crm.listEntries`
+- `crm.getRecord`
+- `crm.queryCompanies`
+- `crm.queryPeople`
+- `crm.queryProcesses`
+- `crm.dedupeProspect`
 - `crm.syncProspect`
 - `mail.send`
 - `mail.reply`
@@ -334,6 +341,23 @@ Manual operator sync still exists through `crm.syncProspect`. The automatic beha
 - `prospects.attio_company_record_id`
 - `prospects.attio_person_record_id`
 - `prospects.attio_list_entry_id`
+
+New CRM read-side tools exposed through the same first-party MCP:
+
+- `crm.getList` returns a list plus its attributes
+- `crm.listEntries` reads list entries and can hydrate parent records
+- `crm.getRecord` reads a specific CRM record and optionally its list memberships
+- `crm.queryCompanies` matches companies by domain or exact name
+- `crm.queryPeople` matches people by email, LinkedIn, Twitter/X, or name plus company context
+- `crm.queryProcesses` inspects CRM list memberships for matched records and reports target-list and active-workflow collisions
+- `crm.dedupeProspect` combines account, contact, CRM process-state, and Trellis active-workflow checks before sync
+
+`crm.dedupeProspect` returns a deterministic decision contract:
+
+- `allow` when no meaningful CRM or Trellis collision is present
+- `merge` when a company/person already exists but there is no active-process conflict
+- `skip` when the record is already in the target list, an active workflow list, or an active/paused Trellis workflow
+- `needs_review` when multiple competing matches make the dedupe result ambiguous
 
 ### 2. Direct Attio MCP
 

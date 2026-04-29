@@ -24,6 +24,7 @@ import type {
   MessageInsertInput,
   TrellisRepositoryPort,
   ProspectSnapshot,
+  WorkflowProspectMatchRow,
 } from "./repository-contracts.js";
 
 const convexQueries = {
@@ -38,6 +39,7 @@ const convexQueries = {
   listRecentProviderRuns: makeFunctionReference<"query">("repository:listRecentProviderRuns"),
   listRecentAuditEvents: makeFunctionReference<"query">("repository:listRecentAuditEvents"),
   listAuditEventsForEntity: makeFunctionReference<"query">("repository:listAuditEventsForEntity"),
+  findWorkflowProspectMatches: makeFunctionReference<"query">("repository:findWorkflowProspectMatches"),
   getSignal: makeFunctionReference<"query">("repository:getSignal"),
   getProspectSnapshot: makeFunctionReference<"query">("repository:getProspectSnapshot"),
   getProspectIdByProviderThreadId: makeFunctionReference<"query">("repository:getProspectIdByProviderThreadId"),
@@ -166,6 +168,21 @@ export class ConvexRepository implements TrellisRepositoryPort {
       entityId,
       limit,
     });
+  }
+
+  findWorkflowProspectMatches(input: {
+    companyDomain?: string | null;
+    companyName?: string | null;
+    email?: string | null;
+    linkedinUrl?: string | null;
+    twitterUrl?: string | null;
+    fullName?: string | null;
+    limit?: number;
+  }): Promise<WorkflowProspectMatchRow[]> {
+    return this.client.query(
+      convexQueries.findWorkflowProspectMatches,
+      stripUndefinedDeep(input),
+    );
   }
 
   recordProviderRun(input: {

@@ -561,6 +561,79 @@ export const listAuditEventsForEntity = query({
   },
 });
 
+export const findWorkflowProspectMatches = query({
+  args: {
+    companyDomain: v.optional(nullableString),
+    companyName: v.optional(nullableString),
+    email: v.optional(nullableString),
+    linkedinUrl: v.optional(nullableString),
+    twitterUrl: v.optional(nullableString),
+    fullName: v.optional(nullableString),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const companyDomain = normalizeDomain(args.companyDomain);
+    const companyName = args.companyName?.trim().toLowerCase() || null;
+    const email = args.email?.trim().toLowerCase() || null;
+    const linkedinUrl = args.linkedinUrl?.trim().toLowerCase() || null;
+    const twitterUrl = args.twitterUrl?.trim().toLowerCase() || null;
+    const fullName = args.fullName?.trim() || null;
+    const limit = Math.max(1, Math.min(args.limit ?? 25, 100));
+
+    if (!companyDomain && !companyName && !email && !linkedinUrl && !twitterUrl && !fullName) {
+      return [];
+    }
+
+    const threads = (await ctx.db.query("threads").collect())
+      .filter((thread) => thread.status === "active" || thread.status === "paused");
+
+    const results = [];
+    for (const thread of threads) {
+      const prospect = await getProspectDocById(ctx, thread.prospectId);
+      if (!prospect) {
+        continue;
+      }
+      const bestEmail = await getBestContactEmailDoc(ctx, prospect.id);
+      const matched =
+        (companyDomain && normalizeDomain(prospect.companyDomain) === companyDomain)
+        || (email && (bestEmail?.value?.trim().toLowerCase() || null) === email)
+        || (linkedinUrl && (prospect.linkedinUrl?.trim().toLowerCase() || null) === linkedinUrl)
+        || (twitterUrl && (prospect.twitterUrl?.trim().toLowerCase() || null) === twitterUrl)
+        || (
+          fullName
+          && prospect.fullName === fullName
+          && (
+            !companyDomain
+            || normalizeDomain(prospect.companyDomain) === companyDomain
+            || (prospect.company?.trim().toLowerCase() || null) === companyName
+          )
+        );
+
+      if (!matched) {
+        continue;
+      }
+
+      results.push({
+        prospectId: prospect.id,
+        threadId: thread.id,
+        fullName: prospect.fullName,
+        company: prospect.company ?? null,
+        companyDomain: prospect.companyDomain ?? null,
+        linkedinUrl: prospect.linkedinUrl ?? null,
+        twitterUrl: prospect.twitterUrl ?? null,
+        email: bestEmail?.value ?? null,
+        stage: thread.stage,
+        status: thread.status,
+        updatedAt: new Date(prospect.updatedAt).toISOString(),
+      });
+    }
+
+    return results
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+      .slice(0, limit);
+  },
+});
+
 export const recordProviderRun = mutation({
   args: {
     provider: v.string(),

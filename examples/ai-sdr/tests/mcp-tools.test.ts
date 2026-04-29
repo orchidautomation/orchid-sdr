@@ -204,6 +204,7 @@ describe("TrellisMcpToolService operator tools", () => {
         noSendsMode: true,
         pausedCampaignIds: [],
       })),
+      findWorkflowProspectMatches: vi.fn(async () => []),
       getProspectSnapshot: vi.fn(async () => ({
         prospect: {
           prospectId: "pros_1",
@@ -395,6 +396,48 @@ describe("TrellisMcpToolService operator tools", () => {
         parentObject: ["companies"],
         raw: {},
       })),
+      listEntries: vi.fn(async () => [
+        {
+          entryId: "attio_entry_1",
+          listId: "list_default",
+          parentRecordId: "attio_company_1",
+          parentObject: "companies",
+          createdAt: "2026-04-23T12:00:00.000Z",
+          entryValues: {
+            stage: [{ title: "Qualification" }],
+          },
+          raw: {},
+        },
+      ]),
+      getRecord: vi.fn(async (object: string, recordId: string) => ({
+        recordId,
+        object,
+        webUrl: `https://app.attio.com/${object}/${recordId}`,
+        values: {
+          name: object === "companies" ? "Analytical Engines" : "Ada Lovelace",
+        },
+        raw: {},
+      })),
+      queryCompanies: vi.fn(async (input: { domain?: string | null; name?: string | null }) =>
+        input.domain || input.name
+          ? [
+              {
+                recordId: "attio_company_1",
+                webUrl: "https://app.attio.com/companies/attio_company_1",
+                raw: {},
+              },
+            ]
+          : []),
+      queryPeople: vi.fn(async (input: { email?: string | null; linkedinUrl?: string | null; fullName?: string | null }) =>
+        input.email || input.linkedinUrl || input.fullName
+          ? [
+              {
+                recordId: "attio_person_1",
+                webUrl: "https://app.attio.com/people/attio_person_1",
+                raw: {},
+              },
+            ]
+          : []),
       listRecordEntries: vi.fn(async () => []),
       listAttributes: vi.fn(async () => [
         {
@@ -792,6 +835,246 @@ describe("TrellisMcpToolService operator tools", () => {
         listId: "list_default",
       },
       warnings: [],
+    });
+  });
+
+  it("reads a CRM list with attributes through the generic surface", async () => {
+    const { service, attio } = createService();
+
+    const result = await service.handleTool("crm.getList", {
+      listId: "list_default",
+    });
+
+    expect(attio.getList).toHaveBeenCalledWith("list_default");
+    expect(attio.listAttributes).toHaveBeenCalledWith("list_default");
+    expect(result).toMatchObject({
+      ok: true,
+      provider: "attio",
+      list: {
+        listId: "list_default",
+        name: "AISDR",
+      },
+      attributes: expect.arrayContaining([
+        expect.objectContaining({
+          apiSlug: "stage",
+        }),
+      ]),
+    });
+  });
+
+  it("lists CRM entries and hydrates parent records when requested", async () => {
+    const { service, attio } = createService();
+
+    const result = await service.handleTool("crm.listEntries", {
+      listId: "list_default",
+      includeRecords: true,
+    });
+
+    expect(attio.listEntries).toHaveBeenCalledWith({
+      listId: "list_default",
+      limit: 25,
+      offset: 0,
+    });
+    expect(attio.getRecord).toHaveBeenCalledWith("companies", "attio_company_1");
+    expect(result).toMatchObject({
+      ok: true,
+      provider: "attio",
+      count: 1,
+      entries: [
+        expect.objectContaining({
+          entryId: "attio_entry_1",
+          parentRecordId: "attio_company_1",
+        }),
+      ],
+      records: [
+        expect.objectContaining({
+          recordId: "attio_company_1",
+          object: "companies",
+        }),
+      ],
+    });
+  });
+
+  it("queries CRM people with optional membership hydration", async () => {
+    const { service, attio } = createService();
+    attio.listRecordEntries = vi.fn(async () => [
+      {
+        listId: "list_default",
+        listApiSlug: "aisdr",
+        entryId: "attio_entry_1",
+        createdAt: "2026-04-23T12:00:00.000Z",
+        raw: {},
+      },
+    ]);
+
+    const result = await service.handleTool("crm.queryPeople", {
+      linkedinUrl: "https://linkedin.com/in/ada",
+      includeListEntries: true,
+    });
+
+    expect(attio.queryPeople).toHaveBeenCalledWith({
+      email: null,
+      linkedinUrl: "https://linkedin.com/in/ada",
+      twitterUrl: null,
+      fullName: null,
+      companyRecordId: null,
+      companyDomain: null,
+      limit: 10,
+    });
+    expect(attio.listRecordEntries).toHaveBeenCalledWith("people", "attio_person_1");
+    expect(result).toMatchObject({
+      ok: true,
+      provider: "attio",
+      count: 1,
+      records: [
+        expect.objectContaining({
+          recordId: "attio_person_1",
+          listEntries: [
+            expect.objectContaining({
+              listId: "list_default",
+            }),
+          ],
+        }),
+      ],
+    });
+  });
+
+  it("queries CRM process-state memberships through the generic surface", async () => {
+    const { service, attio } = createService();
+    attio.listRecordEntries = vi.fn(async (object: string) =>
+      object === "companies"
+        ? [
+            {
+              listId: "list_default",
+              listApiSlug: "aisdr",
+              entryId: "attio_entry_1",
+              createdAt: "2026-04-23T12:00:00.000Z",
+              raw: {},
+            },
+          ]
+        : [
+            {
+              listId: "list_active_1",
+              listApiSlug: "open-opps",
+              entryId: "attio_entry_2",
+              createdAt: "2026-04-23T12:01:00.000Z",
+              raw: {},
+            },
+          ]);
+
+    const result = await service.handleTool("crm.queryProcesses", {
+      companyRecordIds: ["attio_company_1"],
+      personRecordIds: ["attio_person_1"],
+      targetListId: "list_default",
+      activeListIds: ["list_active_1", "list_active_2"],
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      provider: "attio",
+      flags: {
+        inTargetList: true,
+        inActiveWorkflowList: true,
+      },
+      activeWorkflowLists: ["list_active_1"],
+    });
+  });
+
+  it("dedupes a prospect against CRM matches and active workflow lists", async () => {
+    const { service, attio, repository } = createService();
+    attio.listRecordEntries = vi.fn(async (object: string) =>
+      object === "companies"
+        ? [
+            {
+              listId: "list_default",
+              listApiSlug: "aisdr",
+              entryId: "attio_entry_1",
+              createdAt: "2026-04-23T12:00:00.000Z",
+              raw: {},
+            },
+          ]
+        : [
+            {
+              listId: "list_active_1",
+              listApiSlug: "open-opps",
+              entryId: "attio_entry_2",
+              createdAt: "2026-04-23T12:01:00.000Z",
+              raw: {},
+            },
+          ]);
+    repository.findWorkflowProspectMatches = vi.fn(async () => [
+      {
+        prospectId: "pros_existing_1",
+        threadId: "thr_existing_1",
+        fullName: "Ada Lovelace",
+        company: "Analytical Engines",
+        companyDomain: "analyticalengines.com",
+        linkedinUrl: "https://linkedin.com/in/ada",
+        twitterUrl: null,
+        email: null,
+        stage: "await_reply",
+        status: "active",
+        updatedAt: "2026-04-23T12:10:00.000Z",
+      },
+    ]);
+
+    const result = await service.handleTool("crm.dedupeProspect", {
+      companyDomain: "analyticalengines.com",
+      companyName: "Analytical Engines",
+      linkedinUrl: "https://linkedin.com/in/ada",
+      fullName: "Ada Lovelace",
+      targetListId: "list_default",
+      activeListIds: ["list_active_1", "list_active_2"],
+    });
+
+    expect(attio.queryCompanies).toHaveBeenCalledWith({
+      domain: "analyticalengines.com",
+      name: "Analytical Engines",
+      limit: 10,
+    });
+    expect(attio.queryPeople).toHaveBeenCalledWith({
+      email: null,
+      linkedinUrl: "https://linkedin.com/in/ada",
+      twitterUrl: null,
+      fullName: "Ada Lovelace",
+      companyRecordId: "attio_company_1",
+      companyDomain: "analyticalengines.com",
+      limit: 10,
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      provider: "attio",
+      decision: "skip",
+      flags: {
+        companyExists: true,
+        personExists: true,
+        inTargetList: true,
+        inActiveWorkflowList: true,
+        hasTrellisActiveWork: true,
+        shouldSync: false,
+      },
+      matchedState: {
+        account: {
+          crm: [expect.objectContaining({ recordId: "attio_company_1" })],
+          trellis: [expect.objectContaining({ prospectId: "pros_existing_1" })],
+        },
+        contact: {
+          crm: [expect.objectContaining({ recordId: "attio_person_1" })],
+          trellis: [expect.objectContaining({ prospectId: "pros_existing_1" })],
+        },
+        process: {
+          inTargetList: true,
+          activeWorkflowLists: ["list_active_1"],
+          trellis: [expect.objectContaining({ prospectId: "pros_existing_1" })],
+        },
+      },
+      reasons: expect.arrayContaining([
+        "matched 1 company record",
+        "matched 1 person record",
+        "already present in target list list_default",
+        "already present in active workflow lists: list_active_1",
+        "matched 1 Trellis active/paused workflow record",
+      ]),
     });
   });
 

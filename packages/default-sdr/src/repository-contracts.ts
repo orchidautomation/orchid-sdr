@@ -95,6 +95,20 @@ export interface DashboardActiveThreadRow {
   updatedAt: string;
 }
 
+export interface WorkflowProspectMatchRow {
+  prospectId: string;
+  threadId: string;
+  fullName: string;
+  company: string | null;
+  companyDomain: string | null;
+  linkedinUrl: string | null;
+  twitterUrl: string | null;
+  email: string | null;
+  stage: string;
+  status: string;
+  updatedAt: string;
+}
+
 export interface DashboardProviderRunRow {
   id: string;
   provider: string;
@@ -179,6 +193,15 @@ export interface TrellisRepositoryPort {
   listRecentProviderRuns(limit?: number): Promise<DashboardProviderRunRow[]>;
   listRecentAuditEvents(limit?: number): Promise<DashboardAuditEventRow[]>;
   listAuditEventsForEntity(entityType: string, entityId: string, limit?: number): Promise<DashboardAuditEventRow[]>;
+  findWorkflowProspectMatches(input: {
+    companyDomain?: string | null;
+    companyName?: string | null;
+    email?: string | null;
+    linkedinUrl?: string | null;
+    twitterUrl?: string | null;
+    fullName?: string | null;
+    limit?: number;
+  }): Promise<WorkflowProspectMatchRow[]>;
   recordProviderRun(input: {
     provider: string;
     kind: string;
