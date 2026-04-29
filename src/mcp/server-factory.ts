@@ -27,6 +27,18 @@ export function createOrchidMcpServer(context: AppContext) {
   });
 
   server.registerTool(
+    "example.closedWonLookalike",
+    {
+      description: "Load the first-class closed-won lookalike outbound example, including native support, adapter gaps, and optional live runtime guidance.",
+      inputSchema: {
+        includeRuntime: z.boolean().optional(),
+      },
+    },
+    async ({ includeRuntime }) =>
+      toToolResult(await context.mcpTools.handleTool("example.closedWonLookalike", { includeRuntime })),
+  );
+
+  server.registerTool(
     "knowledge.search",
     {
       description: "Search the Orchid repo-managed ICP, product, compliance, and handoff docs.",

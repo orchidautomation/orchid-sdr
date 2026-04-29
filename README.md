@@ -4,6 +4,8 @@
 
 It wakes up on a schedule, finds leads from public signals, researches the person and company, qualifies them against `knowledge/icp.md`, writes everything to Postgres, and can optionally draft, send, and track outreach.
 
+The repo also ships a first-class workflow example for closed-won expansion at `examples/closed-won-lookalike/`.
+
 ## What It Does
 
 - runs hourly weekday discovery with Rivet actors
@@ -156,10 +158,24 @@ In that setup, keep one deployed control plane and create multiple campaigns ins
 
 Separate deploys are safer when the underlying product or knowledge pack is different, because the current `knowledge/` files and tracked `skills/` are still repo-global rather than campaign-scoped.
 
+## Example Workflow
+
+`examples/closed-won-lookalike/` turns the closed-won -> lookalikes -> personas -> dedupe -> enrich -> CRM upsert motion into a concrete Trellis package.
+
+It includes:
+
+- a manifest with native support vs adapter gaps
+- an example knowledge pack and overlay skills
+- a CLI operator surface: `npm run example:closed-won-lookalike -- --mode blueprint`
+- a live inspection mode: `npm run example:closed-won-lookalike -- --mode operator`
+- a first-party MCP tool: `example.closedWonLookalike`
+
 ## Repo Layout
 
 - `src/`
   API, actors, orchestration, adapters, MCP server, and dashboard.
+- `examples/`
+  First-class workflow examples, starting with the closed-won lookalike outbound package.
 - `knowledge/`
   Product context that feeds qualification, research, and drafting.
 - `skills/`
@@ -176,6 +192,7 @@ Separate deploys are safer when the underlying product or knowledge pack is diff
 ## Read Next
 
 - [Reference](docs/reference.md)
+- [Closed-Won Lookalike Example](examples/closed-won-lookalike/README.md)
 - [Email Providers](docs/email-providers.md)
 - [Blog Series](blog/README.md)
 - [The AI SDR Market Is Broken](docs/blog/the-ai-sdr-market-is-broken.md)

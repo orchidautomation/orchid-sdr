@@ -54,7 +54,21 @@ npm test
 npm run build
 npm run discovery:tick
 npm run sandbox:probe
+npm run example:closed-won-lookalike -- --mode blueprint
 ```
+
+## First-Class Example
+
+The repo ships a first-class workflow example at `examples/closed-won-lookalike/`.
+
+Use:
+
+```bash
+npm run example:closed-won-lookalike -- --mode blueprint
+npm run example:closed-won-lookalike -- --mode operator
+```
+
+The first mode prints the example package and support map. The second mode inspects the current runtime through the same backend services the app uses.
 
 ## Campaign Timezones and Quiet Hours
 
@@ -183,6 +197,7 @@ Current `orchid-sdr` tool groups:
 
 Operator and pipeline tools:
 
+- `example.closedWonLookalike`
 - `pipeline.summary`
 - `pipeline.activeThreads`
 - `pipeline.qualifiedLeads`

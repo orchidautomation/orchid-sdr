@@ -1,6 +1,7 @@
 import type { MessageInsertInput } from "../repository.js";
 import type { ProspectSnapshot } from "../repository.js";
 import type { DiscoverySource } from "../domain/types.js";
+import { getClosedWonLookalikeExample } from "../examples/closed-won-lookalike.js";
 import { previewDraftForProspect } from "../orchestration/prospect-workflow.js";
 import { runSandboxTurn } from "../orchestration/sandbox-broker.js";
 import { getActorClient } from "./actor-client.js";
@@ -33,6 +34,8 @@ export class OrchidMcpToolService {
         return this.context.firecrawl.extract(String(args.url ?? ""));
       case "pipeline.summary":
         return this.handlePipelineSummary(args);
+      case "example.closedWonLookalike":
+        return this.handleClosedWonLookalikeExample(args);
       case "pipeline.activeThreads":
         return this.context.repository.listActiveThreads(this.readLimit(args.limit, 12, 50));
       case "pipeline.qualifiedLeads":
@@ -259,6 +262,32 @@ export class OrchidMcpToolService {
       providerRuns,
       workflowFeed,
       recentProspects,
+    };
+  }
+
+  private async handleClosedWonLookalikeExample(args: Record<string, unknown>) {
+    const example = getClosedWonLookalikeExample();
+    if (!Boolean(args.includeRuntime)) {
+      return example;
+    }
+
+    const [flags, discoveryHealth] = await Promise.all([
+      this.handleRuntimeFlags(),
+      this.handleRuntimeDiscoveryHealth(),
+    ]);
+
+    return {
+      ...example,
+      runtime: {
+        flags,
+        discoveryHealth,
+        suggestedNextTools: [
+          "pipeline.summary",
+          "pipeline.workflowFeed",
+          "pipeline.qualifiedLeads",
+          "crm.syncProspect",
+        ],
+      },
     };
   }
 

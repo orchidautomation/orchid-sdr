@@ -1,0 +1,87 @@
+{
+  "id": "closed-won-lookalike-outbound",
+  "name": "Closed-Won Lookalike Outbound",
+  "summary": "Turn a best-customer closed-won cohort into a ready-to-contact outbound pipeline using Trellis primitives.",
+  "runtime": {
+    "actors": [
+      "discoveryCoordinator",
+      "sourceIngest",
+      "prospectThread",
+      "campaignOps"
+    ],
+    "state": [
+      "campaigns",
+      "signals",
+      "prospects",
+      "threads",
+      "research_briefs",
+      "contact_emails",
+      "messages",
+      "audit_events",
+      "provider_runs"
+    ],
+    "mcpTools": [
+      "example.closedWonLookalike",
+      "pipeline.summary",
+      "pipeline.workflowFeed",
+      "pipeline.qualifiedLeads",
+      "runtime.flags",
+      "research.search",
+      "research.extract",
+      "email.enrich",
+      "crm.syncProspect",
+      "handoff.slack",
+      "handoff.webhook"
+    ]
+  },
+  "workflow": [
+    {
+      "key": "pull_closed_won",
+      "support": "adapter_gap",
+      "title": "Pull closed-won deals",
+      "outcome": "Fetch a seed account set from CRM."
+    },
+    {
+      "key": "segment_best_customers",
+      "support": "placeholder",
+      "title": "Segment best customers",
+      "outcome": "Reduce the seed set to the strongest cohort."
+    },
+    {
+      "key": "find_lookalikes",
+      "support": "adapter_gap",
+      "title": "Find lookalike companies",
+      "outcome": "Expand the best-customer cohort into net-new target accounts."
+    },
+    {
+      "key": "identify_personas",
+      "support": "adapter_gap",
+      "title": "Identify personas",
+      "outcome": "Find the right people at each account."
+    },
+    {
+      "key": "dedupe_against_crm",
+      "support": "adapter_gap",
+      "title": "Deduplicate against CRM",
+      "outcome": "Filter out already-worked accounts and contacts."
+    },
+    {
+      "key": "enrich_accounts_and_contacts",
+      "support": "native",
+      "title": "Enrich accounts and contacts",
+      "outcome": "Add research and work-email coverage."
+    },
+    {
+      "key": "upsert_crm_pipeline",
+      "support": "native",
+      "title": "Upsert CRM pipeline",
+      "outcome": "Write a tagged pipeline back into the CRM."
+    },
+    {
+      "key": "handoff_ready_pipeline",
+      "support": "native",
+      "title": "Hand off the ready queue",
+      "outcome": "Review or hand off the pipeline before send."
+    }
+  ]
+}

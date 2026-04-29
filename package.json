@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "db:migrate": "tsx scripts/migrate.ts",
     "discovery:tick": "tsx scripts/discovery-tick.ts",
-    "sandbox:probe": "tsx scripts/sandbox-probe.ts"
+    "sandbox:probe": "tsx scripts/sandbox-probe.ts",
+    "example:closed-won-lookalike": "tsx scripts/closed-won-lookalike.ts"
   },
   "dependencies": {
     "@ai-sdk/gateway": "^3.0.104",
