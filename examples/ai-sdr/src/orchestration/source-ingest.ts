@@ -8,6 +8,7 @@ import {
 import type { WorkflowDependencies } from "./types.js";
 import { executeProspectWorkflow } from "./prospect-workflow.js";
 import { getAutomationPauseReason } from "./workflow-control.js";
+import { pauseThreadWithAudit } from "../../../../packages/default-sdr/src/prospect-workflow-helpers.js";
 
 export type NormalizedInboundSignal = NormalizedSignal;
 export type SignalWebhookPayload = FrameworkSignalWebhookPayload;
@@ -154,7 +155,7 @@ async function ingestNormalizedSignals(
         continue;
       }
 
-      const { prospectId } = await deps.context.repository.createOrUpdateProspectFromSignal(signalId, campaign.id);
+      const { prospectId, threadId } = await deps.context.repository.createOrUpdateProspectFromSignal(signalId, campaign.id);
 
       try {
         const outcome = await executeProspectWorkflow(deps, prospectId);
@@ -180,6 +181,7 @@ async function ingestNormalizedSignals(
           prospectId,
           error: errorMessage,
         });
+        await pauseThreadWithAudit(deps.context.repository, threadId, `workflow failed: ${errorMessage}`);
         await deps.context.repository.appendAuditEvent("prospect", prospectId, "ProspectWorkflowFailed", {
           signalId,
           error: errorMessage,

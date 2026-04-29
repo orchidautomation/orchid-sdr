@@ -10,6 +10,7 @@ vi.mock("../src/orchestration/prospect-workflow.js", () => ({
 }));
 
 import { ingestSignalWebhook, normalizeSignalWebhookPayload } from "../src/orchestration/source-ingest.js";
+import { executeProspectWorkflow } from "../src/orchestration/prospect-workflow.js";
 
 describe("normalizeSignalWebhookPayload", () => {
   it("normalizes a single arbitrary-source signal payload", () => {
@@ -75,7 +76,8 @@ describe("normalizeSignalWebhookPayload", () => {
       recordProviderRun: vi.fn(async () => "run_1"),
       insertSignal: vi.fn(async () => "sig_1"),
       appendAuditEvent: vi.fn(async () => undefined),
-      createOrUpdateProspectFromSignal: vi.fn(async () => ({ prospectId: "pros_1" })),
+      pauseThread: vi.fn(async () => undefined),
+      createOrUpdateProspectFromSignal: vi.fn(async () => ({ prospectId: "pros_1", threadId: "thr_1" })),
       updateProviderRun: vi.fn(async () => undefined),
     };
     const state = {
@@ -174,7 +176,8 @@ describe("normalizeSignalWebhookPayload", () => {
       recordProviderRun: vi.fn(async () => "run_1"),
       insertSignal: vi.fn(async () => "sig_1"),
       appendAuditEvent: vi.fn(async () => undefined),
-      createOrUpdateProspectFromSignal: vi.fn(async () => ({ prospectId: "pros_1" })),
+      pauseThread: vi.fn(async () => undefined),
+      createOrUpdateProspectFromSignal: vi.fn(async () => ({ prospectId: "pros_1", threadId: "thr_1" })),
       updateProviderRun: vi.fn(async () => undefined),
     };
     const state = {
@@ -241,5 +244,84 @@ describe("normalizeSignalWebhookPayload", () => {
       step: "deferred",
       status: "succeeded",
     }));
+  });
+
+  it("pauses the thread when the prospect workflow throws after signal capture", async () => {
+    vi.mocked(executeProspectWorkflow).mockRejectedValueOnce(new Error("knowledge path missing"));
+
+    const repository = {
+      ensureDefaultCampaign: vi.fn(async () => ({ id: "cmp_default" })),
+      getControlFlags: vi.fn(async () => ({
+        globalKillSwitch: false,
+        noSendsMode: false,
+        pausedCampaignIds: [],
+      })),
+      recordProviderRun: vi.fn(async () => "run_1"),
+      insertSignal: vi.fn(async () => "sig_1"),
+      appendAuditEvent: vi.fn(async () => undefined),
+      pauseThread: vi.fn(async () => undefined),
+      createOrUpdateProspectFromSignal: vi.fn(async () => ({ prospectId: "pros_1", threadId: "thr_1" })),
+      updateProviderRun: vi.fn(async () => undefined),
+    };
+    const state = {
+      recordSignal: vi.fn(async () => ({
+        providerId: "convex",
+        stateSignalId: "state_sig_1",
+        stored: true,
+      })),
+      recordWorkflowCheckpoint: vi.fn(async () => ({
+        providerId: "convex",
+        checkpointId: "chk_1",
+        stored: true,
+      })),
+      appendAuditEvent: vi.fn(async () => ({
+        providerId: "convex",
+        auditEventId: "aud_1",
+        stored: true,
+      })),
+    };
+
+    const result = await ingestSignalWebhook(
+      {
+        context: {
+          repository,
+          state,
+        },
+        runSandboxTurn: vi.fn(),
+      } as any,
+      {
+        provider: "custom-source",
+        source: "reddit_post",
+        signal: {
+          url: "https://reddit.com/r/example/post",
+          authorName: "Casey",
+          authorTitle: "Growth Operator",
+          authorCompany: "Launch Labs",
+          companyDomain: "launchlabs.io",
+          topic: "signal-based GTM",
+          content: "We are rebuilding our outbound workflow stack.",
+        },
+      },
+    );
+
+    expect(repository.pauseThread).toHaveBeenCalledWith("thr_1", "workflow failed: knowledge path missing");
+    expect(repository.appendAuditEvent).toHaveBeenCalledWith("thread", "thr_1", "ThreadPaused", {
+      reason: "workflow failed: knowledge path missing",
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      results: [
+        expect.objectContaining({
+          prospectsProcessed: 0,
+          workflowFailures: [
+            expect.objectContaining({
+              signalId: "sig_1",
+              prospectId: "pros_1",
+              error: "knowledge path missing",
+            }),
+          ],
+        }),
+      ],
+    });
   });
 });
