@@ -63,12 +63,17 @@ export interface DashboardProspectRow {
   fullName: string;
   company: string | null;
   title: string | null;
+  source: string | null;
+  sourceCapturedAt: string | null;
   stage: string;
   status: string;
   isQualified: boolean;
   qualificationReason: string | null;
   qualification: QualificationAssessment | null;
   pausedReason: string | null;
+  threadStage?: string;
+  threadStatus?: string;
+  threadPausedReason?: string | null;
   updatedAt: string;
 }
 
@@ -424,19 +429,26 @@ export class OrchidRepository {
     const result = await this.db.query(
       `
       select
-        id,
-        full_name,
-        company,
-        title,
-        stage,
-        status,
-        is_qualified,
-        qualification_reason,
-        metadata->'qualification' as qualification,
-        paused_reason,
-        updated_at
-      from prospects
-      order by updated_at desc
+        p.id,
+        p.full_name,
+        p.company,
+        p.title,
+        s.source,
+        s.captured_at as source_captured_at,
+        p.stage,
+        p.status,
+        p.is_qualified,
+        p.qualification_reason,
+        p.metadata->'qualification' as qualification,
+        p.paused_reason,
+        t.stage as thread_stage,
+        t.status as thread_status,
+        t.paused_reason as thread_paused_reason,
+        p.updated_at
+      from prospects p
+      left join signals s on s.id = p.source_signal_id
+      left join threads t on t.prospect_id = p.id
+      order by greatest(p.updated_at, coalesce(s.captured_at, p.updated_at)) desc
       limit $1
       `,
       [limit],
@@ -447,12 +459,17 @@ export class OrchidRepository {
       fullName: row.full_name,
       company: row.company,
       title: row.title,
+      source: row.source,
+      sourceCapturedAt: row.source_captured_at ? new Date(row.source_captured_at).toISOString() : null,
       stage: row.stage,
       status: row.status,
       isQualified: Boolean(row.is_qualified),
       qualificationReason: row.qualification_reason,
       qualification: coerceQualification(row.qualification),
       pausedReason: row.paused_reason,
+      threadStage: row.thread_stage,
+      threadStatus: row.thread_status,
+      threadPausedReason: row.thread_paused_reason,
       updatedAt: new Date(row.updated_at).toISOString(),
     }));
   }
@@ -461,19 +478,26 @@ export class OrchidRepository {
     const result = await this.db.query(
       `
       select
-        id,
-        full_name,
-        company,
-        title,
-        stage,
-        status,
-        is_qualified,
-        qualification_reason,
-        metadata->'qualification' as qualification,
-        paused_reason,
-        updated_at
-      from prospects
-      where id = $1
+        p.id,
+        p.full_name,
+        p.company,
+        p.title,
+        s.source,
+        s.captured_at as source_captured_at,
+        p.stage,
+        p.status,
+        p.is_qualified,
+        p.qualification_reason,
+        p.metadata->'qualification' as qualification,
+        p.paused_reason,
+        t.stage as thread_stage,
+        t.status as thread_status,
+        t.paused_reason as thread_paused_reason,
+        p.updated_at
+      from prospects p
+      left join signals s on s.id = p.source_signal_id
+      left join threads t on t.prospect_id = p.id
+      where p.id = $1
       limit 1
       `,
       [prospectId],
@@ -489,12 +513,17 @@ export class OrchidRepository {
       fullName: row.full_name,
       company: row.company,
       title: row.title,
+      source: row.source,
+      sourceCapturedAt: row.source_captured_at ? new Date(row.source_captured_at).toISOString() : null,
       stage: row.stage,
       status: row.status,
       isQualified: Boolean(row.is_qualified),
       qualificationReason: row.qualification_reason,
       qualification: coerceQualification(row.qualification),
       pausedReason: row.paused_reason,
+      threadStage: row.thread_stage,
+      threadStatus: row.thread_status,
+      threadPausedReason: row.thread_paused_reason,
       updatedAt: new Date(row.updated_at).toISOString(),
     };
   }
