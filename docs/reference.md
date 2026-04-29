@@ -28,7 +28,7 @@ For the full sandbox lane:
 
 - `AI_GATEWAY_API_KEY` or `VERCEL_AI_GATEWAY_KEY`
 - Vercel Sandbox auth: `VERCEL_OIDC_TOKEN` or `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`
-- provider keys such as `APIFY_TOKEN`, `FIRECRAWL_API_KEY`, `AGENTMAIL_API_KEY`, `ATTIO_API_KEY`
+- provider keys such as `APIFY_TOKEN`, `FIRECRAWL_API_KEY`, `OCEAN_API_TOKEN`, `AGENTMAIL_API_KEY`, `ATTIO_API_KEY`
 - discovery config such as `APIFY_LINKEDIN_TASK_ID` or `APIFY_LINKEDIN_ACTOR_ID`
 - optional exact-post discovery config such as `APIFY_LINKEDIN_POSTS_TASK_ID` or `APIFY_LINKEDIN_POSTS_ACTOR_ID`
 - optional LinkedIn profile/company research config such as `APIFY_LINKEDIN_PROFILE_TASK_ID` or `APIFY_LINKEDIN_PROFILE_ACTOR_ID`
@@ -59,6 +59,31 @@ npm test
 npm run build
 npm run discovery:tick
 npm run sandbox:probe
+npm run example:closed-won-lookalike -- --mode blueprint
+```
+
+## First-Class Example
+
+The repo ships a first-class workflow example at `examples/closed-won-lookalike/`.
+
+Use:
+
+```bash
+npm run example:closed-won-lookalike -- --mode blueprint
+npm run example:closed-won-lookalike -- --mode operator
+```
+
+The first mode prints the example package and support map. The second mode inspects the current runtime through the same backend services the app uses.
+
+Ocean can now be used as the first-party lookalike provider for this example:
+
+```json
+ocean.searchCompanies({ "lookalikeDomains": ["example.com"], "size": 25 })
+ocean.searchPeople({
+  "companiesFilters": { "lookalikeDomains": ["example.com"] },
+  "peopleFilters": { "jobTitleKeywords": { "anyOf": ["Engineering Manager"] } },
+  "size": 25
+})
 ```
 
 ## Campaign Timezones and Quiet Hours
@@ -192,6 +217,7 @@ Current `trellis` tool groups:
 
 Operator and pipeline tools:
 
+- `example.closedWonLookalike`
 - `pipeline.summary`
 - `pipeline.activeThreads`
 - `pipeline.qualifiedLeads`
@@ -215,6 +241,9 @@ Workflow and actuation tools:
 - `knowledge.search`
 - `research.search`
 - `research.extract`
+- `ocean.searchCompanies`
+- `ocean.searchPeople`
+- `ocean.enrichCompany`
 - `email.enrich`
 - `crm.syncProspect`
 - `mail.send`

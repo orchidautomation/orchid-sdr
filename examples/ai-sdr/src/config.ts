@@ -105,6 +105,8 @@ const envSchema = z.object({
 
   FIRECRAWL_API_KEY: z.string().optional(),
   FIRECRAWL_BASE_URL: z.string().default("https://api.firecrawl.dev"),
+  OCEAN_API_TOKEN: z.string().optional(),
+  OCEAN_BASE_URL: z.string().default("https://app.ocean.io"),
 
   AGENTMAIL_API_KEY: z.string().optional(),
   AGENTMAIL_BASE_URL: z.string().default("https://api.agentmail.to"),

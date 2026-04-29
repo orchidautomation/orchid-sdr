@@ -3,6 +3,7 @@ import {
   AgentMailAdapter,
   ApifySourceAdapter,
   FirecrawlExtractAdapter,
+  OceanAdapter,
   ParallelResearchAdapter,
   ProspeoEmailEnricher,
   SlackWebhookAdapter,
@@ -65,6 +66,7 @@ export interface AppContext {
   prospeo: ProspeoEmailEnricher;
   parallel: ParallelResearchAdapter;
   firecrawl: FirecrawlExtractAdapter;
+  ocean: OceanAdapter;
   attio: AttioAdapter;
   agentMail: AgentMailAdapter;
   slack: SlackWebhookAdapter;
@@ -115,6 +117,7 @@ export function getAppContext(): AppContext {
   const prospeo = new ProspeoEmailEnricher();
   const parallel = new ParallelResearchAdapter();
   const firecrawl = new FirecrawlExtractAdapter();
+  const ocean = new OceanAdapter();
   const attio = new AttioAdapter();
   const agentMail = new AgentMailAdapter();
   const slack = new SlackWebhookAdapter();
@@ -146,6 +149,7 @@ export function getAppContext(): AppContext {
     prospeo,
     parallel,
     firecrawl,
+    ocean,
     attio,
     agentMail,
     slack,

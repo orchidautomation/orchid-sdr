@@ -60,6 +60,39 @@ export interface ApifyLinkedinCompanyResearch {
   raw: Record<string, unknown>;
 }
 
+interface OceanSearchResultCompany {
+  domain: string;
+  name: string | null;
+  relevance: "A" | "B" | "C" | null;
+  primaryCountry: string | null;
+  companySize: string | null;
+  description: string | null;
+  linkedinUrl: string | null;
+  technologies: string[];
+  industries: string[];
+  keywords: string[];
+  raw: Record<string, unknown>;
+}
+
+interface OceanSearchResultPerson {
+  id: string | null;
+  domain: string;
+  name: string | null;
+  jobTitle: string | null;
+  linkedinUrl: string | null;
+  relevance: "A" | "B" | "C" | null;
+  email: {
+    address: string | null;
+    status: string | null;
+  } | null;
+  company: {
+    name: string | null;
+    companySize: string | null;
+    logo: string | null;
+  } | null;
+  raw: Record<string, unknown>;
+}
+
 interface AttioRecordReference {
   recordId: string;
   webUrl: string | null;
@@ -846,6 +879,159 @@ export class FirecrawlExtractAdapter implements WebExtractProvider, Configurable
   }
 }
 
+export class OceanAdapter {
+  private readonly config = getConfig();
+
+  isConfigured() {
+    return Boolean(this.config.OCEAN_API_TOKEN);
+  }
+
+  async searchCompanies(input: {
+    size?: number;
+    searchAfter?: string;
+    lookalikeDomains?: string[];
+    companyMatchingMode?: "precise" | "broad";
+    companiesFilters?: Record<string, unknown>;
+    peopleFilters?: Record<string, unknown>;
+    fields?: string[];
+  }) {
+    const json = await this.request("/v3/search/companies", {
+      size: input.size,
+      searchAfter: input.searchAfter,
+      lookalikeDomains: input.lookalikeDomains?.map((domain) => normalizeDomain(domain)).filter(Boolean),
+      companyMatchingMode: input.companyMatchingMode,
+      companiesFilters: input.companiesFilters,
+      peopleFilters: input.peopleFilters,
+      fields: input.fields,
+    });
+
+    const companies = Array.isArray(json.companies) ? json.companies : [];
+    return {
+      detail: pickString(json, ["detail"]) ?? "ok",
+      total: typeof json.total === "number" ? json.total : null,
+      searchAfter: pickString(json, ["searchAfter"]),
+      missingDomains: coerceRecord(json.missingDomains),
+      redirectMap: coerceRecord(json.redirectMap),
+      companies: companies.map((entry) => this.mapOceanCompanyResult(entry as Record<string, unknown>)),
+    };
+  }
+
+  async searchPeople(input: {
+    size?: number;
+    searchAfter?: string;
+    peoplePerCompany?: number;
+    jobTitleThreshold?: number;
+    peopleFilters?: Record<string, unknown>;
+    companiesFilters?: Record<string, unknown>;
+    fields?: string[];
+  }) {
+    const json = await this.request("/v3/search/people", {
+      size: input.size,
+      searchAfter: input.searchAfter,
+      peoplePerCompany: input.peoplePerCompany,
+      jobTitleThreshold: input.jobTitleThreshold,
+      peopleFilters: input.peopleFilters,
+      companiesFilters: input.companiesFilters,
+      fields: input.fields,
+    });
+
+    const people = Array.isArray(json.people) ? json.people : [];
+    return {
+      detail: pickString(json, ["detail"]) ?? "ok",
+      total: typeof json.total === "number" ? json.total : null,
+      searchAfter: pickString(json, ["searchAfter"]),
+      redirectMap: coerceRecord(json.redirectMap),
+      includeDomainsStatuses: coerceRecord(json.includeDomainsStatuses),
+      lookalikePeopleStatuses: coerceRecord(json.lookalikePeopleStatuses),
+      people: people.map((entry) => this.mapOceanPersonResult(entry as Record<string, unknown>)),
+    };
+  }
+
+  async enrichCompany(input: {
+    company: Record<string, unknown>;
+    fields?: string[];
+  }) {
+    return this.request("/v2/enrich/company", {
+      company: input.company,
+      fields: input.fields,
+    });
+  }
+
+  private mapOceanCompanyResult(entry: Record<string, unknown>): OceanSearchResultCompany {
+    const companyRecord = coerceRecord(entry.company);
+    const medias = coerceRecord(companyRecord.medias);
+    const linkedin = coerceRecord(medias.linkedin);
+
+    return {
+      domain: pickString(companyRecord, ["domain"]) ?? "",
+      name: pickString(companyRecord, ["name"]),
+      relevance: this.readRelevance(entry.relevance),
+      primaryCountry: pickString(companyRecord, ["primaryCountry"]),
+      companySize: pickString(companyRecord, ["companySize"]),
+      description: pickString(companyRecord, ["description"]),
+      linkedinUrl: pickString(linkedin, ["url"]),
+      technologies: pickStringArray(companyRecord.technologies),
+      industries: pickStringArray(companyRecord.industries),
+      keywords: pickStringArray(companyRecord.keywords),
+      raw: entry,
+    };
+  }
+
+  private mapOceanPersonResult(entry: Record<string, unknown>): OceanSearchResultPerson {
+    const email = coerceRecord(entry.email);
+    const company = coerceRecord(entry.company);
+
+    return {
+      id: pickString(entry, ["id"]),
+      domain: pickString(entry, ["domain"]) ?? "",
+      name: pickString(entry, ["name"]),
+      jobTitle: pickString(entry, ["jobTitle", "jobTitleEnglish", "headline"]),
+      linkedinUrl: canonicalizeLinkedinUrl(pickString(entry, ["linkedinUrl"])),
+      relevance: this.readRelevance(entry.relevance),
+      email: Object.keys(email).length > 0
+        ? {
+            address: pickString(email, ["address"]),
+            status: pickString(email, ["status"]),
+          }
+        : null,
+      company: Object.keys(company).length > 0
+        ? {
+            name: pickString(company, ["name"]),
+            companySize: pickString(company, ["companySize"]),
+            logo: pickString(company, ["logo"]),
+          }
+        : null,
+      raw: entry,
+    };
+  }
+
+  private readRelevance(value: unknown) {
+    return value === "A" || value === "B" || value === "C" ? value : null;
+  }
+
+  private async request(path: string, body: Record<string, unknown>) {
+    if (!this.config.OCEAN_API_TOKEN) {
+      throw new Error("OCEAN_API_TOKEN is not configured");
+    }
+
+    const response = await fetch(`${this.config.OCEAN_BASE_URL}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-token": this.config.OCEAN_API_TOKEN,
+      },
+      body: JSON.stringify(stripUndefined(body)),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Ocean request failed with ${response.status}: ${text}`);
+    }
+
+    return (await response.json()) as Record<string, unknown>;
+  }
+}
+
 export class AttioAdapter implements CrmProvider {
   private readonly config = getConfig();
 
@@ -1543,6 +1729,10 @@ function pickStringArray(value: unknown) {
 
 function unique(values: string[]) {
   return Array.from(new Set(values));
+}
+
+function stripUndefined(input: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
 }
 
 function inferCompanyFromHeadline(value: string | null) {

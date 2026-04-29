@@ -4,6 +4,8 @@ Trellis is a composable agentic GTM framework.
 
 Developed by Orchid Labs.
 
+The repo also ships a first-class workflow example for closed-won expansion at `examples/closed-won-lookalike/`.
+
 ## The Problem
 
 Most GTM automation still falls into one of two buckets:
@@ -262,6 +264,7 @@ The reference AI SDR is the first concrete example, not the boundary of the fram
 ## Read Next
 
 - [examples/ai-sdr/README.md](examples/ai-sdr/README.md)
+- [examples/closed-won-lookalike/README.md](examples/closed-won-lookalike/README.md)
 - [docs/ownership-model.md](docs/ownership-model.md)
 - [docs/turnkey-roadmap.md](docs/turnkey-roadmap.md)
 - [docs/ai-sdr-go-live.md](docs/ai-sdr-go-live.md)
