@@ -199,20 +199,24 @@ describe("previewDraftForProspect", () => {
 });
 
 describe("executeProspectWorkflow", () => {
-  it("pauses before qualification and research when the campaign is paused", async () => {
+  it("continues qualification and research work while a campaign is paused, then stops before output", async () => {
     const snapshot = {
       ...createSnapshot(),
       prospect: {
         ...createSnapshot().prospect,
-        stage: "qualify",
+        stage: "build_research_brief",
       },
       thread: {
         ...createSnapshot().thread,
-        stage: "qualify",
+        stage: "build_research_brief",
       },
-      qualification: null,
-      qualificationReason: null,
       researchBrief: null,
+      email: {
+        address: "ada@analyticalengines.com",
+        confidence: 0.95,
+        source: "manual",
+      },
+      messages: [],
     };
     const repository = {
       getProspectSnapshot: vi.fn(async () => snapshot),
@@ -221,16 +225,74 @@ describe("executeProspectWorkflow", () => {
         globalKillSwitch: false,
         pausedCampaignIds: ["cmp_default"],
       })),
-      getSignal: vi.fn(async () => null),
+      getSignal: vi.fn(async () => ({
+        id: "sig_1",
+        source: "linkedin_public_post",
+        sourceRef: "post_1",
+        actorRunId: null,
+        url: "https://linkedin.com/posts/1",
+        authorName: "Ada Lovelace",
+        authorTitle: "RevOps Lead",
+        authorCompany: "Analytical Engines",
+        companyDomain: "analyticalengines.com",
+        twitterUrl: null,
+        topic: "revops",
+        content: "Testing pause drain semantics",
+        capturedAt: Date.now(),
+        metadata: {},
+      })),
+      saveResearchBrief: vi.fn(async () => "rb_new"),
+      updateThreadState: vi.fn(async () => undefined),
+      updateProspectState: vi.fn(async () => undefined),
       pauseThread: vi.fn(async () => undefined),
       appendAuditEvent: vi.fn(async () => undefined),
     };
-    const runSandboxTurn = vi.fn();
+    const runSandboxTurn = vi.fn(async () => ({
+      outputText: JSON.stringify({
+        summary: "Strong technical fit.",
+        confidence: 0.88,
+        copyGuidance: {
+          primaryAngle: "Clay workflow architecture",
+          bestOpeningHook: "their Clay workflow architecture",
+          whyNow: "They already publish strong GTM systems thinking.",
+          avoidMentioning: ["internal acquisition mechanics"],
+          ctaSuggestion: "Worth a brief look?",
+        },
+        evidence: [
+          {
+            title: "Clay workflow",
+            url: "https://example.com/post",
+            note: "Relevant buying signal",
+          },
+        ],
+      }),
+      transcript: [],
+      usage: {},
+    }));
 
     const result = await executeProspectWorkflow(
       {
         context: {
           repository,
+          knowledge: {
+            composeKnowledgeContext: vi.fn(async () => "Knowledge context"),
+          },
+          apify: {
+            hasLinkedinResearchTarget: vi.fn(() => false),
+          },
+          providers: {
+            search: {
+              search: vi.fn(async () => []),
+            },
+            extract: {
+              searchCompanyNews: vi.fn(async () => []),
+              extract: vi.fn(async () => ({ url: "https://linkedin.com/posts/1", markdown: "" })),
+            },
+            enrichment: null,
+          },
+          mcpTools: {
+            handleTool: vi.fn(),
+          },
         },
         runSandboxTurn,
       } as any,
@@ -238,10 +300,8 @@ describe("executeProspectWorkflow", () => {
     );
 
     expect(repository.pauseThread).toHaveBeenCalledWith("thr_1", "campaign is paused");
-    expect(repository.appendAuditEvent).toHaveBeenCalledWith("thread", "thr_1", "ThreadPaused", {
-      reason: "campaign is paused",
-    });
-    expect(runSandboxTurn).not.toHaveBeenCalled();
+    expect(repository.saveResearchBrief).toHaveBeenCalled();
+    expect(runSandboxTurn).toHaveBeenCalled();
     expect(result).toMatchObject({
       action: "paused",
       prospectId: "pros_1",

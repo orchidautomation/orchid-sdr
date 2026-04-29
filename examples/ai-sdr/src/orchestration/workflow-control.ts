@@ -19,3 +19,11 @@ export function getAutomationPauseReason(controlFlags: ControlFlags, campaignId:
 export function isAutomationPaused(controlFlags: ControlFlags, campaignId: string) {
   return getAutomationPauseReason(controlFlags, campaignId) !== null;
 }
+
+export function getWorkflowDrainStopReason(controlFlags: ControlFlags) {
+  if (controlFlags.globalKillSwitch) {
+    return "global kill switch enabled";
+  }
+
+  return null;
+}

@@ -67,6 +67,11 @@ describe("normalizeSignalWebhookPayload", () => {
   it("writes signal and workflow checkpoints to the state plane", async () => {
     const repository = {
       ensureDefaultCampaign: vi.fn(async () => ({ id: "cmp_default" })),
+      getControlFlags: vi.fn(async () => ({
+        globalKillSwitch: false,
+        noSendsMode: false,
+        pausedCampaignIds: [],
+      })),
       recordProviderRun: vi.fn(async () => "run_1"),
       insertSignal: vi.fn(async () => "sig_1"),
       appendAuditEvent: vi.fn(async () => undefined),
@@ -155,6 +160,86 @@ describe("normalizeSignalWebhookPayload", () => {
       entityType: "signal",
       entityId: "sig_1",
       eventName: "SignalCaptured",
+    }));
+  });
+
+  it("accepts signals but defers new prospect work while the campaign is paused", async () => {
+    const repository = {
+      ensureDefaultCampaign: vi.fn(async () => ({ id: "cmp_default" })),
+      getControlFlags: vi.fn(async () => ({
+        globalKillSwitch: false,
+        noSendsMode: false,
+        pausedCampaignIds: ["cmp_default"],
+      })),
+      recordProviderRun: vi.fn(async () => "run_1"),
+      insertSignal: vi.fn(async () => "sig_1"),
+      appendAuditEvent: vi.fn(async () => undefined),
+      createOrUpdateProspectFromSignal: vi.fn(async () => ({ prospectId: "pros_1" })),
+      updateProviderRun: vi.fn(async () => undefined),
+    };
+    const state = {
+      recordSignal: vi.fn(async () => ({
+        providerId: "convex",
+        stateSignalId: "state_sig_1",
+        stored: true,
+      })),
+      recordWorkflowCheckpoint: vi.fn(async () => ({
+        providerId: "convex",
+        checkpointId: "chk_1",
+        stored: true,
+      })),
+      appendAuditEvent: vi.fn(async () => ({
+        providerId: "convex",
+        auditEventId: "aud_1",
+        stored: true,
+      })),
+    };
+
+    const result = await ingestSignalWebhook(
+      {
+        context: {
+          repository,
+          state,
+        },
+        runSandboxTurn: vi.fn(),
+      } as any,
+      {
+        provider: "custom-source",
+        source: "reddit_post",
+        signal: {
+          url: "https://reddit.com/r/example/post",
+          authorName: "Casey",
+          authorTitle: "Growth Operator",
+          authorCompany: "Launch Labs",
+          companyDomain: "launchlabs.io",
+          topic: "signal-based GTM",
+          content: "We are rebuilding our outbound workflow stack.",
+        },
+      },
+    );
+
+    expect(repository.createOrUpdateProspectFromSignal).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      ok: true,
+      signalsReceived: 1,
+      results: [
+        expect.objectContaining({
+          prospectsProcessed: 0,
+          deferredSignals: [
+            expect.objectContaining({
+              signalId: "sig_1",
+              reason: "campaign is paused",
+            }),
+          ],
+        }),
+      ],
+    });
+    expect(state.recordWorkflowCheckpoint).toHaveBeenCalledWith(expect.objectContaining({
+      workflowName: "signal-ingest",
+      entityType: "signal",
+      entityId: "sig_1",
+      step: "deferred",
+      status: "succeeded",
     }));
   });
 });

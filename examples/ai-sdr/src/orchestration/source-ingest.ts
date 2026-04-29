@@ -7,6 +7,7 @@ import {
 } from "@ai-sdr/framework/signals";
 import type { WorkflowDependencies } from "./types.js";
 import { executeProspectWorkflow } from "./prospect-workflow.js";
+import { getAutomationPauseReason } from "./workflow-control.js";
 
 export type NormalizedInboundSignal = NormalizedSignal;
 export type SignalWebhookPayload = FrameworkSignalWebhookPayload;
@@ -29,6 +30,8 @@ async function ingestNormalizedSignals(
   const campaign = input.campaignId
     ? await deps.context.repository.getCampaign(input.campaignId)
     : await deps.context.repository.ensureDefaultCampaign();
+  const controlFlags = await deps.context.repository.getControlFlags();
+  const automationPauseReason = getAutomationPauseReason(controlFlags, campaign.id);
   const providerRunId = await deps.context.repository.recordProviderRun({
     provider: input.provider,
     kind: input.kind,
@@ -59,6 +62,10 @@ async function ingestNormalizedSignals(
       signalId: string;
       prospectId: string;
       error: string;
+    }> = [];
+    const skippedSignals: Array<{
+      signalId: string;
+      reason: string;
     }> = [];
 
     for (const inbound of input.signals) {
@@ -123,6 +130,30 @@ async function ingestNormalizedSignals(
         },
       });
 
+      if (automationPauseReason) {
+        skippedSignals.push({
+          signalId,
+          reason: automationPauseReason,
+        });
+        await deps.context.repository.appendAuditEvent("signal", signalId, "SignalDeferred", {
+          reason: automationPauseReason,
+          campaignId: campaign.id,
+        });
+        await deps.context.state.recordWorkflowCheckpoint({
+          workflowName: "signal-ingest",
+          entityType: "signal",
+          entityId: signalId,
+          step: "deferred",
+          status: "succeeded",
+          runtimeProvider: runtimeProviderId,
+          output: {
+            reason: automationPauseReason,
+            campaignId: campaign.id,
+          },
+        });
+        continue;
+      }
+
       const { prospectId } = await deps.context.repository.createOrUpdateProspectFromSignal(signalId, campaign.id);
 
       try {
@@ -176,6 +207,7 @@ async function ingestNormalizedSignals(
         signalsReceived: input.signals.length,
         prospectsProcessed: outcomes.length,
         workflowFailures: workflowFailures.length,
+        deferredSignals: skippedSignals.length,
         warnings: workflowFailures,
       },
     });
@@ -190,6 +222,7 @@ async function ingestNormalizedSignals(
         signalsReceived: input.signals.length,
         prospectsProcessed: outcomes.length,
         workflowFailures: workflowFailures.length,
+        deferredSignals: skippedSignals.length,
       },
     });
 
@@ -199,6 +232,7 @@ async function ingestNormalizedSignals(
       signalsReceived: input.signals.length,
       prospectsProcessed: outcomes.length,
       workflowFailures,
+      deferredSignals: skippedSignals,
       outcomes,
     };
   } catch (error) {

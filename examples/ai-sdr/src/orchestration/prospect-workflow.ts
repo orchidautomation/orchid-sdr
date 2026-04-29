@@ -14,7 +14,7 @@ import {
   scheduleFollowupAfterDelay,
 } from "../../../../packages/default-sdr/src/prospect-workflow-helpers.js";
 import type { WorkflowDependencies, WorkflowOutcome } from "./types.js";
-import { getAutomationPauseReason } from "./workflow-control.js";
+import { getAutomationPauseReason, getWorkflowDrainStopReason } from "./workflow-control.js";
 
 const FOLLOWUP_DELAY_MS = 3 * 24 * 60 * 60 * 1000;
 
@@ -161,19 +161,20 @@ export async function executeProspectWorkflow(
     ? await deps.context.repository.getSignal(snapshot.prospect.sourceSignalId)
     : null;
   const automationPauseReason = getAutomationPauseReason(controlFlags, snapshot.prospect.campaignId);
+  const workflowDrainStopReason = getWorkflowDrainStopReason(controlFlags);
 
   if (sourceSignal?.source === "linkedin_public_post" && !snapshot.campaign.sourceLinkedinEnabled) {
     await pauseThreadWithAudit(deps.context.repository, threadId, "linkedin source disabled");
     return pausedWorkflowOutcome(snapshot, "linkedin source disabled");
   }
 
-  if (automationPauseReason) {
-    if (snapshot.thread.status !== "paused" || snapshot.thread.pausedReason !== automationPauseReason) {
-      await pauseThreadWithAudit(deps.context.repository, threadId, automationPauseReason);
+  if (workflowDrainStopReason) {
+    if (snapshot.thread.status !== "paused" || snapshot.thread.pausedReason !== workflowDrainStopReason) {
+      await pauseThreadWithAudit(deps.context.repository, threadId, workflowDrainStopReason);
       snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
     }
 
-    return pausedWorkflowOutcome(snapshot, automationPauseReason);
+    return pausedWorkflowOutcome(snapshot, workflowDrainStopReason);
   }
 
   if (needsQualification(snapshot)) {
@@ -228,6 +229,15 @@ export async function executeProspectWorkflow(
     }
 
     return pausedWorkflowOutcome(snapshot, "no sends mode");
+  }
+
+  if (automationPauseReason) {
+    if (snapshot.thread.status !== "paused" || snapshot.thread.pausedReason !== automationPauseReason) {
+      await pauseThreadWithAudit(deps.context.repository, threadId, automationPauseReason);
+      snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
+    }
+
+    return pausedWorkflowOutcome(snapshot, automationPauseReason);
   }
 
   if (!snapshot.email) {
