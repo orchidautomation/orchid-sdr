@@ -10,6 +10,18 @@ import type { AppContext } from "./runtime-context.js";
 
 const MAIL_PREVIEW_TIMEOUT_MS = 90_000;
 
+type DedupeDecision = "allow" | "skip" | "merge" | "needs_review";
+
+function normalizeComparable(value: string | null | undefined) {
+  return value?.trim().toLowerCase() || null;
+}
+
+function nonEmptyStrings(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    : [];
+}
+
 export class OrchidMcpToolService {
   constructor(private readonly context: AppContext) {}
 
@@ -33,6 +45,8 @@ export class OrchidMcpToolService {
         return this.handleCrmQueryCompanies(args);
       case "crm.queryPeople":
         return this.handleCrmQueryPeople(args);
+      case "crm.queryProcesses":
+        return this.handleCrmQueryProcesses(args);
       case "crm.dedupeProspect":
         return this.handleCrmDedupeProspect(args);
       case "crm.syncProspect":
@@ -727,6 +741,61 @@ export class OrchidMcpToolService {
     };
   }
 
+  private async handleCrmQueryProcesses(args: Record<string, unknown>) {
+    this.requireAttioConfigured();
+
+    const companyRecordIds = nonEmptyStrings(args.companyRecordIds);
+    const personRecordIds = nonEmptyStrings(args.personRecordIds);
+    if (companyRecordIds.length === 0 && personRecordIds.length === 0) {
+      throw new Error("companyRecordIds or personRecordIds is required");
+    }
+
+    const targetListId = typeof args.targetListId === "string" && args.targetListId.trim()
+      ? args.targetListId.trim()
+      : null;
+    const activeListIds = nonEmptyStrings(args.activeListIds);
+
+    const companies = await Promise.all(
+      companyRecordIds.map(async (recordId) => ({
+        recordId,
+        listEntries: await this.context.attio.listRecordEntries("companies", recordId),
+      })),
+    );
+    const people = await Promise.all(
+      personRecordIds.map(async (recordId) => ({
+        recordId,
+        listEntries: await this.context.attio.listRecordEntries("people", recordId),
+      })),
+    );
+
+    const matchedListIds = new Set<string>();
+    for (const membership of [...companies, ...people]) {
+      for (const entry of membership.listEntries) {
+        if (entry.listId) {
+          matchedListIds.add(entry.listId);
+        }
+      }
+    }
+
+    const inTargetList = targetListId ? matchedListIds.has(targetListId) : false;
+    const activeWorkflowLists = activeListIds.filter((listId) => matchedListIds.has(listId));
+
+    return {
+      ok: true,
+      provider: "attio",
+      memberships: {
+        companies,
+        people,
+      },
+      flags: {
+        inTargetList,
+        inActiveWorkflowList: activeWorkflowLists.length > 0,
+      },
+      targetListId,
+      activeWorkflowLists,
+    };
+  }
+
   private async handleCrmDedupeProspect(args: Record<string, unknown>) {
     this.requireAttioConfigured();
 
@@ -739,9 +808,7 @@ export class OrchidMcpToolService {
     const targetListId = typeof args.targetListId === "string" && args.targetListId.trim()
       ? args.targetListId.trim()
       : null;
-    const activeListIds = Array.isArray(args.activeListIds)
-      ? args.activeListIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-      : [];
+    const activeListIds = nonEmptyStrings(args.activeListIds);
 
     const companyMatches = await this.context.attio.queryCompanies({
       domain: companyDomain,
@@ -759,30 +826,67 @@ export class OrchidMcpToolService {
       limit: this.readLimit(args.limit, 10, 25),
     });
 
-    const companyMemberships = await Promise.all(
-      companyMatches.map(async (record) => ({
-        recordId: record.recordId,
-        listEntries: await this.context.attio.listRecordEntries("companies", record.recordId),
-      })),
-    );
-    const personMemberships = await Promise.all(
-      personMatches.map(async (record) => ({
-        recordId: record.recordId,
-        listEntries: await this.context.attio.listRecordEntries("people", record.recordId),
-      })),
-    );
-
-    const matchedListIds = new Set<string>();
-    for (const membership of [...companyMemberships, ...personMemberships]) {
-      for (const entry of membership.listEntries) {
-        if (entry.listId) {
-          matchedListIds.add(entry.listId);
+    const processState = companyMatches.length > 0 || personMatches.length > 0
+      ? await this.handleCrmQueryProcesses({
+          companyRecordIds: companyMatches.map((record) => record.recordId),
+          personRecordIds: personMatches.map((record) => record.recordId),
+          targetListId,
+          activeListIds,
+        }) as {
+          memberships: {
+            companies: Array<{ recordId: string; listEntries: Array<{ listId: string }> }>;
+            people: Array<{ recordId: string; listEntries: Array<{ listId: string }> }>;
+          };
+          flags: {
+            inTargetList: boolean;
+            inActiveWorkflowList: boolean;
+          };
+          activeWorkflowLists: string[];
         }
-      }
-    }
+      : {
+          memberships: {
+            companies: [],
+            people: [],
+          },
+          flags: {
+            inTargetList: false,
+            inActiveWorkflowList: false,
+          },
+          activeWorkflowLists: [],
+        };
 
-    const inTargetList = targetListId ? matchedListIds.has(targetListId) : false;
-    const activeWorkflowLists = activeListIds.filter((listId) => matchedListIds.has(listId));
+    const trellisMatches = await this.context.repository.findWorkflowProspectMatches({
+      companyDomain,
+      companyName,
+      email,
+      linkedinUrl,
+      twitterUrl,
+      fullName,
+      limit: this.readLimit(args.limit, 10, 25),
+    });
+
+    const trellisAccountMatches = trellisMatches.filter((match) =>
+      Boolean(companyDomain && normalizeComparable(match.companyDomain) === normalizeComparable(companyDomain))
+      || Boolean(companyName && normalizeComparable(match.company) === normalizeComparable(companyName)),
+    );
+    const trellisContactMatches = trellisMatches.filter((match) =>
+      Boolean(email && normalizeComparable(match.email) === normalizeComparable(email))
+      || Boolean(linkedinUrl && normalizeComparable(match.linkedinUrl) === normalizeComparable(linkedinUrl))
+      || Boolean(twitterUrl && normalizeComparable(match.twitterUrl) === normalizeComparable(twitterUrl))
+      || Boolean(
+        fullName
+          && normalizeComparable(match.fullName) === normalizeComparable(fullName)
+          && (
+            !companyDomain
+            || normalizeComparable(match.companyDomain) === normalizeComparable(companyDomain)
+            || normalizeComparable(match.company) === normalizeComparable(companyName)
+          ),
+      ),
+    );
+
+    const inTargetList = processState.flags.inTargetList;
+    const activeWorkflowLists = processState.activeWorkflowLists;
+    const hasTrellisActiveWork = trellisMatches.length > 0;
     const reasons: string[] = [];
     if (companyMatches.length > 0) {
       reasons.push(`matched ${companyMatches.length} company record${companyMatches.length === 1 ? "" : "s"}`);
@@ -796,22 +900,51 @@ export class OrchidMcpToolService {
     if (activeWorkflowLists.length > 0) {
       reasons.push(`already present in active workflow lists: ${activeWorkflowLists.join(", ")}`);
     }
+    if (hasTrellisActiveWork) {
+      reasons.push(`matched ${trellisMatches.length} Trellis active/paused workflow record${trellisMatches.length === 1 ? "" : "s"}`);
+    }
+
+    let decision: DedupeDecision = "allow";
+    if (companyMatches.length > 1 || personMatches.length > 1 || trellisMatches.length > 1) {
+      decision = "needs_review";
+    } else if (inTargetList || activeWorkflowLists.length > 0 || hasTrellisActiveWork) {
+      decision = "skip";
+    } else if (companyMatches.length > 0 || personMatches.length > 0) {
+      decision = "merge";
+    }
 
     return {
       ok: true,
       provider: "attio",
+      decision,
       companyMatches,
       personMatches,
-      memberships: {
-        companies: companyMemberships,
-        people: personMemberships,
+      processMatches: {
+        crm: processState.memberships,
+        trellis: trellisMatches,
+      },
+      matchedState: {
+        account: {
+          crm: companyMatches,
+          trellis: trellisAccountMatches,
+        },
+        contact: {
+          crm: personMatches,
+          trellis: trellisContactMatches,
+        },
+        process: {
+          inTargetList,
+          activeWorkflowLists,
+          trellis: trellisMatches,
+        },
       },
       flags: {
         companyExists: companyMatches.length > 0,
         personExists: personMatches.length > 0,
         inTargetList,
         inActiveWorkflowList: activeWorkflowLists.length > 0,
-        shouldSync: companyMatches.length === 0 && personMatches.length === 0 && !inTargetList && activeWorkflowLists.length === 0,
+        hasTrellisActiveWork,
+        shouldSync: decision === "allow",
       },
       reasons,
     };

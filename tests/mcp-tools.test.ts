@@ -204,6 +204,7 @@ describe("OrchidMcpToolService operator tools", () => {
         noSendsMode: true,
         pausedCampaignIds: [],
       })),
+      findWorkflowProspectMatches: vi.fn(async () => []),
       getProspectSnapshot: vi.fn(async () => ({
         prospect: {
           prospectId: "pros_1",
@@ -841,7 +842,7 @@ describe("OrchidMcpToolService operator tools", () => {
     });
   });
 
-  it("dedupes a prospect against CRM matches and active workflow lists", async () => {
+  it("queries CRM process-state memberships through the generic surface", async () => {
     const { service, attio } = createService();
     attio.listRecordEntries = vi.fn(async (object: string) =>
       object === "companies"
@@ -863,6 +864,62 @@ describe("OrchidMcpToolService operator tools", () => {
               raw: {},
             },
           ]);
+
+    const result = await service.handleTool("crm.queryProcesses", {
+      companyRecordIds: ["attio_company_1"],
+      personRecordIds: ["attio_person_1"],
+      targetListId: "list_default",
+      activeListIds: ["list_active_1", "list_active_2"],
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      provider: "attio",
+      flags: {
+        inTargetList: true,
+        inActiveWorkflowList: true,
+      },
+      activeWorkflowLists: ["list_active_1"],
+    });
+  });
+
+  it("dedupes a prospect against CRM matches and active workflow lists", async () => {
+    const { service, attio, repository } = createService();
+    attio.listRecordEntries = vi.fn(async (object: string) =>
+      object === "companies"
+        ? [
+            {
+              listId: "list_default",
+              listApiSlug: "aisdr",
+              entryId: "attio_entry_1",
+              createdAt: "2026-04-23T12:00:00.000Z",
+              raw: {},
+            },
+          ]
+        : [
+            {
+              listId: "list_active_1",
+              listApiSlug: "open-opps",
+              entryId: "attio_entry_2",
+              createdAt: "2026-04-23T12:01:00.000Z",
+              raw: {},
+            },
+          ]);
+    repository.findWorkflowProspectMatches = vi.fn(async () => [
+      {
+        prospectId: "pros_existing_1",
+        threadId: "thr_existing_1",
+        fullName: "Ada Lovelace",
+        company: "Analytical Engines",
+        companyDomain: "analyticalengines.com",
+        linkedinUrl: "https://linkedin.com/in/ada",
+        twitterUrl: null,
+        email: null,
+        stage: "await_reply",
+        status: "active",
+        updatedAt: "2026-04-23T12:10:00.000Z",
+      },
+    ]);
 
     const result = await service.handleTool("crm.dedupeProspect", {
       companyDomain: "analyticalengines.com",
@@ -890,18 +947,36 @@ describe("OrchidMcpToolService operator tools", () => {
     expect(result).toMatchObject({
       ok: true,
       provider: "attio",
+      decision: "skip",
       flags: {
         companyExists: true,
         personExists: true,
         inTargetList: true,
         inActiveWorkflowList: true,
+        hasTrellisActiveWork: true,
         shouldSync: false,
+      },
+      matchedState: {
+        account: {
+          crm: [expect.objectContaining({ recordId: "attio_company_1" })],
+          trellis: [expect.objectContaining({ prospectId: "pros_existing_1" })],
+        },
+        contact: {
+          crm: [expect.objectContaining({ recordId: "attio_person_1" })],
+          trellis: [expect.objectContaining({ prospectId: "pros_existing_1" })],
+        },
+        process: {
+          inTargetList: true,
+          activeWorkflowLists: ["list_active_1"],
+          trellis: [expect.objectContaining({ prospectId: "pros_existing_1" })],
+        },
       },
       reasons: expect.arrayContaining([
         "matched 1 company record",
         "matched 1 person record",
         "already present in target list list_default",
         "already present in active workflow lists: list_active_1",
+        "matched 1 Trellis active/paused workflow record",
       ]),
     });
   });

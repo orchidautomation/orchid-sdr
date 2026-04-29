@@ -212,6 +212,7 @@ Workflow and actuation tools:
 - `crm.getRecord`
 - `crm.queryCompanies`
 - `crm.queryPeople`
+- `crm.queryProcesses`
 - `crm.dedupeProspect`
 - `crm.syncProspect`
 - `mail.send`
@@ -304,7 +305,15 @@ New CRM read-side tools exposed through the same first-party MCP:
 - `crm.getRecord` reads a specific CRM record and optionally its list memberships
 - `crm.queryCompanies` matches companies by domain or exact name
 - `crm.queryPeople` matches people by email, LinkedIn, Twitter/X, or name plus company context
-- `crm.dedupeProspect` combines company/contact matching with list-membership checks before sync
+- `crm.queryProcesses` inspects CRM list memberships for matched records and reports target-list and active-workflow collisions
+- `crm.dedupeProspect` combines account, contact, CRM process-state, and Trellis active-workflow checks before sync
+
+`crm.dedupeProspect` returns a deterministic decision contract:
+
+- `allow` when no meaningful CRM or Trellis collision is present
+- `merge` when a company/person already exists but there is no active-process conflict
+- `skip` when the record is already in the target list, an active workflow list, or an active/paused Trellis workflow
+- `needs_review` when multiple competing matches make the dedupe result ambiguous
 
 ### 2. Direct Attio MCP
 

@@ -102,6 +102,20 @@ export interface DashboardActiveThreadRow {
   updatedAt: string;
 }
 
+export interface WorkflowProspectMatchRow {
+  prospectId: string;
+  threadId: string;
+  fullName: string;
+  company: string | null;
+  companyDomain: string | null;
+  linkedinUrl: string | null;
+  twitterUrl: string | null;
+  email: string | null;
+  stage: string;
+  status: string;
+  updatedAt: string;
+}
+
 export interface DashboardProviderRunRow {
   id: string;
   provider: string;
@@ -565,6 +579,109 @@ export class OrchidRepository {
       qualificationReason: row.qualification_reason as string | null,
       qualification: coerceQualification(row.qualification),
       nextFollowUpAt: row.next_follow_up_at ? new Date(row.next_follow_up_at).toISOString() : null,
+      updatedAt: new Date(row.updated_at).toISOString(),
+    }));
+  }
+
+  async findWorkflowProspectMatches(input: {
+    companyDomain?: string | null;
+    companyName?: string | null;
+    email?: string | null;
+    linkedinUrl?: string | null;
+    twitterUrl?: string | null;
+    fullName?: string | null;
+    limit?: number;
+  }): Promise<WorkflowProspectMatchRow[]> {
+    const companyDomain = normalizeDomain(input.companyDomain);
+    const companyName = input.companyName?.trim() || null;
+    const email = input.email?.trim().toLowerCase() || null;
+    const linkedinUrl = input.linkedinUrl?.trim().toLowerCase() || null;
+    const twitterUrl = input.twitterUrl?.trim().toLowerCase() || null;
+    const fullName = input.fullName?.trim() || null;
+
+    const predicates: string[] = [];
+    const values: unknown[] = [];
+    let index = 1;
+
+    if (companyDomain) {
+      predicates.push(`lower(coalesce(p.company_domain, '')) = $${index++}`);
+      values.push(companyDomain);
+    }
+    if (email) {
+      predicates.push(`lower(coalesce(cm.value, '')) = $${index++}`);
+      values.push(email);
+    }
+    if (linkedinUrl) {
+      predicates.push(`lower(coalesce(p.linkedin_url, '')) = $${index++}`);
+      values.push(linkedinUrl);
+    }
+    if (twitterUrl) {
+      predicates.push(`lower(coalesce(p.twitter_url, '')) = $${index++}`);
+      values.push(twitterUrl);
+    }
+    if (fullName && companyDomain) {
+      predicates.push(
+        `(p.full_name = $${index++} and lower(coalesce(p.company_domain, '')) = $${index++})`,
+      );
+      values.push(fullName, companyDomain);
+    } else if (fullName && companyName) {
+      predicates.push(
+        `(p.full_name = $${index++} and lower(coalesce(p.company, '')) = $${index++})`,
+      );
+      values.push(fullName, companyName.toLowerCase());
+    } else if (fullName) {
+      predicates.push(`p.full_name = $${index++}`);
+      values.push(fullName);
+    }
+
+    if (predicates.length === 0) {
+      return [];
+    }
+
+    values.push(Math.max(1, Math.min(input.limit ?? 25, 100)));
+
+    const result = await this.db.query(
+      `
+      select distinct
+        p.id as prospect_id,
+        t.id as thread_id,
+        p.full_name,
+        p.company,
+        p.company_domain,
+        p.linkedin_url,
+        p.twitter_url,
+        cm.value as email,
+        t.stage,
+        t.status,
+        p.updated_at
+      from prospects p
+      join threads t on t.prospect_id = p.id
+      left join lateral (
+        select value
+        from contact_methods
+        where prospect_id = p.id and kind = 'email'
+        order by confidence desc, updated_at desc
+        limit 1
+      ) cm on true
+      where t.status in ('active', 'paused')
+        and (${predicates.join(" or ")})
+      order by p.updated_at desc
+      limit $${index}
+      `,
+      values,
+    );
+
+    return result.rows.map((row) => ({
+      prospectId: row.prospect_id as string,
+      threadId: row.thread_id as string,
+      fullName: row.full_name as string,
+      company: row.company as string | null,
+      companyDomain: row.company_domain as string | null,
+      linkedinUrl: row.linkedin_url as string | null,
+      twitterUrl: row.twitter_url as string | null,
+      email: row.email as string | null,
+      stage: row.stage as string,
+      status: row.status as string,
       updatedAt: new Date(row.updated_at).toISOString(),
     }));
   }

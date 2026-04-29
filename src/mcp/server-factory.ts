@@ -165,6 +165,28 @@ export function createOrchidMcpServer(context: AppContext) {
   );
 
   server.registerTool(
+    "crm.queryProcesses",
+    {
+      description: "Inspect CRM and Trellis process-state memberships that could block or influence a new workflow write.",
+      inputSchema: {
+        companyRecordIds: z.array(z.string()).optional(),
+        personRecordIds: z.array(z.string()).optional(),
+        targetListId: z.string().optional(),
+        activeListIds: z.array(z.string()).optional(),
+      },
+    },
+    async ({ companyRecordIds, personRecordIds, targetListId, activeListIds }) =>
+      toToolResult(
+        await context.mcpTools.handleTool("crm.queryProcesses", {
+          companyRecordIds,
+          personRecordIds,
+          targetListId,
+          activeListIds,
+        }),
+      ),
+  );
+
+  server.registerTool(
     "crm.dedupeProspect",
     {
       description: "Check CRM company/contact matches and list memberships before writing a prospect back into the CRM.",
