@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { previewDraftForProspect, processInboundReply } from "../src/orchestration/prospect-workflow.js";
+import {
+  executeProspectWorkflow,
+  previewDraftForProspect,
+  processInboundReply,
+} from "../src/orchestration/prospect-workflow.js";
 
 function createSnapshot() {
   return {
@@ -294,6 +298,212 @@ describe("processInboundReply", () => {
       prospectId: "pros_1",
       threadId: "thr_1",
       reason: "no sends mode",
+    });
+  });
+});
+
+describe("executeProspectWorkflow", () => {
+  it("promotes capture_signal prospects into qualify before pausing on qualification failures", async () => {
+    const snapshot = {
+      ...createSnapshot(),
+      prospect: {
+        ...createSnapshot().prospect,
+        stage: "capture_signal",
+      },
+      thread: {
+        ...createSnapshot().thread,
+        stage: "capture_signal",
+      },
+      qualificationReason: null,
+      qualification: null,
+      researchBrief: null,
+    };
+    const repository = {
+      getProspectSnapshot: vi.fn(async () => snapshot),
+      getControlFlags: vi.fn(async () => ({
+        noSendsMode: false,
+        globalKillSwitch: false,
+      })),
+      getSignal: vi.fn(async () => ({
+        id: "sig_1",
+        source: "linkedin_public_post",
+        url: "https://linkedin.com/posts/1",
+        topic: "Clay workflow",
+        content: "Using Clay heavily",
+        authorName: "Ada Lovelace",
+        authorTitle: "RevOps Lead",
+        authorCompany: "Analytical Engines",
+        companyDomain: "analyticalengines.com",
+        metadata: {},
+      })),
+      updateThreadState: vi.fn(async () => undefined),
+      updateProspectState: vi.fn(async () => undefined),
+      pauseThread: vi.fn(async () => undefined),
+      appendAuditEvent: vi.fn(async () => undefined),
+    };
+
+    const result = await executeProspectWorkflow(
+      {
+        context: {
+          repository,
+          knowledge: {
+            getDocumentContent: vi.fn(async () => "ICP"),
+          },
+          firecrawl: {
+            extract: vi.fn(async () => ({ url: "https://example.com", markdown: "" })),
+          },
+        },
+        runSandboxTurn: vi.fn(async () => {
+          throw new Error("sandbox unavailable");
+        }),
+      } as any,
+      "pros_1",
+    );
+
+    expect(repository.updateThreadState).toHaveBeenCalledWith({
+      threadId: "thr_1",
+      stage: "qualify",
+      status: "active",
+      pausedReason: null,
+    });
+    expect(repository.updateProspectState).toHaveBeenCalledWith({
+      prospectId: "pros_1",
+      stage: "qualify",
+      status: "active",
+      pausedReason: null,
+    });
+    expect(repository.pauseThread).toHaveBeenCalledWith("thr_1", "qualification failed: sandbox unavailable");
+    expect(result).toMatchObject({
+      action: "paused",
+      prospectId: "pros_1",
+      threadId: "thr_1",
+      reason: "qualification failed: sandbox unavailable",
+    });
+  });
+
+  it("pauses explicitly when research fails after qualification succeeds", async () => {
+    const captureSnapshot = {
+      ...createSnapshot(),
+      prospect: {
+        ...createSnapshot().prospect,
+        stage: "capture_signal",
+      },
+      thread: {
+        ...createSnapshot().thread,
+        stage: "capture_signal",
+      },
+      qualificationReason: null,
+      qualification: null,
+      researchBrief: null,
+      messages: [],
+    };
+    const researchSnapshot = {
+      ...captureSnapshot,
+      prospect: {
+        ...captureSnapshot.prospect,
+        stage: "build_research_brief",
+      },
+      thread: {
+        ...captureSnapshot.thread,
+        stage: "build_research_brief",
+      },
+    };
+    const repository = {
+      getProspectSnapshot: vi
+        .fn()
+        .mockResolvedValueOnce(captureSnapshot)
+        .mockResolvedValueOnce(captureSnapshot)
+        .mockResolvedValueOnce(researchSnapshot),
+      getControlFlags: vi.fn(async () => ({
+        noSendsMode: false,
+        globalKillSwitch: false,
+      })),
+      getSignal: vi.fn(async () => ({
+        id: "sig_1",
+        source: "linkedin_public_post",
+        url: "https://linkedin.com/posts/1",
+        topic: "Clay workflow",
+        content: "Using Clay heavily",
+        authorName: "Ada Lovelace",
+        authorTitle: "RevOps Lead",
+        authorCompany: "Analytical Engines",
+        companyDomain: "analyticalengines.com",
+        metadata: {},
+      })),
+      updateThreadState: vi.fn(async () => undefined),
+      updateProspectState: vi.fn(async () => undefined),
+      applyQualificationAssessment: vi.fn(async () => undefined),
+      pauseThread: vi.fn(async () => undefined),
+      appendAuditEvent: vi.fn(async () => undefined),
+    };
+
+    const result = await executeProspectWorkflow(
+      {
+        context: {
+          repository,
+          knowledge: {
+            getDocumentContent: vi.fn(async () => "ICP"),
+            composeKnowledgeContext: vi.fn(async () => "knowledge"),
+          },
+          firecrawl: {
+            extract: vi.fn(async () => ({ url: "https://example.com", markdown: "" })),
+            searchCompanyNews: vi.fn(async () => {
+              throw new Error("news search down");
+            }),
+          },
+          parallel: {
+            search: vi.fn(async () => []),
+          },
+        },
+        runSandboxTurn: vi
+          .fn()
+          .mockResolvedValueOnce({
+            turnId: "turn_qualify",
+            outputText: JSON.stringify({
+              decision: "qualified",
+              reason: "Strong ICP fit",
+              summary: "Qualified against current ICP.",
+              confidence: 0.92,
+              matchedSegments: ["Agency and service providers"],
+              matchedSignals: ["Clay operator"],
+              disqualifiers: [],
+              dimensions: {
+                personQualified: true,
+                companyQualified: true,
+                signalQualified: true,
+                negativeSignalsPresent: false,
+              },
+              missingEvidence: [],
+              checks: [
+                {
+                  key: "person_fit",
+                  label: "Person fit",
+                  passed: true,
+                  detail: "RevOps lead at target account",
+                  kind: "fit",
+                },
+              ],
+            }),
+            transcript: [],
+          })
+          .mockRejectedValueOnce(new Error("research sandbox unavailable")),
+      } as any,
+      "pros_1",
+    );
+
+    expect(repository.applyQualificationAssessment).toHaveBeenCalledWith(
+      "pros_1",
+      expect.objectContaining({
+        ok: true,
+        summary: "Qualified against current ICP.",
+      }),
+    );
+    expect(repository.pauseThread).toHaveBeenCalledWith("thr_1", "research failed: research sandbox unavailable");
+    expect(result).toMatchObject({
+      action: "paused",
+      prospectId: "pros_1",
+      threadId: "thr_1",
+      reason: "research failed: research sandbox unavailable",
     });
   });
 });

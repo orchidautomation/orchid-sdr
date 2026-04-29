@@ -163,49 +163,79 @@ export async function executeProspectWorkflow(
   }
 
   if (needsQualification(snapshot)) {
-    const qualification = await qualifyProspect(deps, snapshot);
-    await deps.context.repository.applyQualificationAssessment(prospectId, qualification);
-    if (!qualification.ok) {
-      await deps.context.repository.pauseThread(threadId, qualification.reason);
-      await deps.context.repository.appendAuditEvent("thread", threadId, "ThreadPaused", {
-        reason: qualification.reason,
-        qualification,
-      });
-      return paused(snapshot, qualification.reason);
-    }
+    try {
+      if (snapshot.prospect.stage === "capture_signal") {
+        await setStage(deps, snapshot, "qualify");
+        snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
+      }
 
-    await setStage(deps, snapshot, "build_research_brief");
-    await deps.context.repository.appendAuditEvent("prospect", prospectId, "LeadQualified", {
-      reason: qualification.reason,
-      summary: qualification.summary,
-      confidence: qualification.confidence,
-      engine: qualification.engine,
-      matchedSegments: qualification.matchedSegments,
-      matchedSignals: qualification.matchedSignals,
-      checks: qualification.checks,
-    });
-    snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
+      const qualification = await qualifyProspect(deps, snapshot);
+      await deps.context.repository.applyQualificationAssessment(prospectId, qualification);
+      if (!qualification.ok) {
+        await deps.context.repository.pauseThread(threadId, qualification.reason);
+        await deps.context.repository.appendAuditEvent("thread", threadId, "ThreadPaused", {
+          reason: qualification.reason,
+          qualification,
+        });
+        return paused(snapshot, qualification.reason);
+      }
+
+      await setStage(deps, snapshot, "build_research_brief");
+      await deps.context.repository.appendAuditEvent("prospect", prospectId, "LeadQualified", {
+        reason: qualification.reason,
+        summary: qualification.summary,
+        confidence: qualification.confidence,
+        engine: qualification.engine,
+        matchedSegments: qualification.matchedSegments,
+        matchedSignals: qualification.matchedSignals,
+        checks: qualification.checks,
+      });
+      snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
+    } catch (error) {
+      const reason = buildStageFailureReason("qualification", error);
+      await deps.context.repository.pauseThread(threadId, reason);
+      await deps.context.repository.appendAuditEvent("thread", threadId, "ThreadPaused", {
+        reason,
+        stage: snapshot.prospect.stage,
+      });
+      return paused(snapshot, reason);
+    }
   }
 
   if (!snapshot.researchBrief || snapshot.prospect.stage === "build_research_brief") {
-    const research = await buildResearchBrief(deps, snapshot);
-    await deps.context.repository.saveResearchBrief({
-      prospectId,
-      campaignId: snapshot.prospect.campaignId,
-      summary: research.summary,
-      copyGuidance: research.copyGuidance,
-      evidence: research.evidence,
-      confidence: research.confidence,
-      metadata: {
-        generatedBy: "sandbox",
-      },
-    });
-    await deps.context.repository.appendAuditEvent("prospect", prospectId, "ResearchReady", {
-      confidence: research.confidence,
-      evidenceCount: research.evidence.length,
-    });
-    await setStage(deps, snapshot, "first_outbound");
-    snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
+    try {
+      if (snapshot.prospect.stage !== "build_research_brief") {
+        await setStage(deps, snapshot, "build_research_brief");
+        snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
+      }
+
+      const research = await buildResearchBrief(deps, snapshot);
+      await deps.context.repository.saveResearchBrief({
+        prospectId,
+        campaignId: snapshot.prospect.campaignId,
+        summary: research.summary,
+        copyGuidance: research.copyGuidance,
+        evidence: research.evidence,
+        confidence: research.confidence,
+        metadata: {
+          generatedBy: "sandbox",
+        },
+      });
+      await deps.context.repository.appendAuditEvent("prospect", prospectId, "ResearchReady", {
+        confidence: research.confidence,
+        evidenceCount: research.evidence.length,
+      });
+      await setStage(deps, snapshot, "first_outbound");
+      snapshot = await deps.context.repository.getProspectSnapshot(prospectId);
+    } catch (error) {
+      const reason = buildStageFailureReason("research", error);
+      await deps.context.repository.pauseThread(threadId, reason);
+      await deps.context.repository.appendAuditEvent("thread", threadId, "ThreadPaused", {
+        reason,
+        stage: snapshot.prospect.stage,
+      });
+      return paused(snapshot, reason);
+    }
   }
 
   if (controlFlags.noSendsMode) {
@@ -1172,4 +1202,9 @@ function clampConfidence(value: number | undefined) {
   }
 
   return Math.max(0, Math.min(1, value));
+}
+
+function buildStageFailureReason(stage: "qualification" | "research", error: unknown) {
+  const detail = error instanceof Error ? error.message : String(error);
+  return `${stage} failed: ${detail}`;
 }
