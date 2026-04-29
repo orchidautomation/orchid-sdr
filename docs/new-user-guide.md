@@ -283,17 +283,17 @@ For a new deployment:
 Add optional providers through the CLI:
 
 ```bash
-npm run ai-sdr -- add source apify --apply
-npm run ai-sdr -- add deep-research parallel --apply
-npm run ai-sdr -- add enrichment prospeo --apply
+npm run trellis -- add source apify --apply
+npm run trellis -- add deep-research parallel --apply
+npm run trellis -- add enrichment prospeo --apply
 ```
 
 For operator-triggered discovery:
 
 ```bash
-npm run ai-sdr -- discovery seed "clay workflow"
-npm run ai-sdr -- discovery run "https://www.linkedin.com/feed/update/urn:li:activity:123/"
-npm run ai-sdr -- discovery tick --source linkedin_public_post
+npm run trellis -- discovery seed "clay workflow"
+npm run trellis -- discovery run "https://www.linkedin.com/feed/update/urn:li:activity:123/"
+npm run trellis -- discovery tick --source linkedin_public_post
 ```
 
 These commands update `ai-sdr.config.ts` and `.env`.

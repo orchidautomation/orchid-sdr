@@ -1,6 +1,6 @@
 # MCP Capability Index
 
-This index maps hosted MCP servers to AI SDR capabilities. It is the working source of truth for what `ai-sdr add <capability> <provider>` should mount into the sandbox.
+This index maps hosted MCP servers to AI SDR capabilities. It is the working source of truth for what `trellis add <capability> <provider>` should mount into the sandbox.
 
 Provider packages can expose more than one capability. The CLI should install by capability/provider pair, but it should mount the provider's MCP servers from the package manifest.
 
@@ -26,12 +26,12 @@ MCP servers:
 Module commands:
 
 ```bash
-ai-sdr add search parallel
-ai-sdr add extract parallel
-ai-sdr add enrichment parallel
+trellis add search parallel
+trellis add extract parallel
+trellis add enrichment parallel
 ```
 
-`ai-sdr add research parallel` should remain an alias for search/extract/enrichment.
+`trellis add research parallel` should remain an alias for search/extract/enrichment.
 
 ## Firecrawl
 
@@ -61,9 +61,9 @@ MCP server:
 Module commands:
 
 ```bash
-ai-sdr add search firecrawl
-ai-sdr add extract firecrawl
-ai-sdr add enrichment firecrawl
+trellis add search firecrawl
+trellis add extract firecrawl
+trellis add enrichment firecrawl
 ```
 
 ## Config Direction

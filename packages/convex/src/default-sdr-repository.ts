@@ -458,7 +458,7 @@ export const listActiveThreads = query({
   },
   handler: async (ctx, args) => {
     const threads = (await ctx.db.query("threads").collect())
-      .filter((item) => item.status === "active")
+      .filter((item) => item.status === "active" || item.status === "paused")
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, args.limit ?? 20);
 

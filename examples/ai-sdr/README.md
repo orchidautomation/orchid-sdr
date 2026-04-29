@@ -62,17 +62,17 @@ Concrete commands:
 ```bash
 nvm use 22
 npx convex dev
-npm run ai-sdr:demo:smoke
-npm run ai-sdr:demo:check
+npm run trellis:demo:smoke
+npm run trellis:demo:check
 ```
 
 For real local development against Convex, keep `npx convex dev` running in one terminal and `npm run dev` in another. Use `TRELLIS_LOCAL_SMOKE_MODE=true` only when you want the in-memory local fallback instead of the Convex-backed runtime.
 
-- `ai-sdr:demo:smoke`
+- `trellis:demo:smoke`
   - local safe end-to-end verification
   - checks `/healthz`, dashboard auth/state, `/mcp/trellis`, and one safe `/webhooks/signals` ingest
   - keeps `NO_SENDS_MODE=true`, so the demo stops safely without outbound
-- `ai-sdr:demo:check`
+- `trellis:demo:check`
   - checks a running local or deployed app
   - verifies `/healthz`
   - logs into `/dashboard`
@@ -301,15 +301,15 @@ Smoke mode is only for boot and dashboard checks. It is not a real workflow runt
 To scaffold a new reference app from this repo:
 
 ```bash
-npm run ai-sdr -- init ../trellis-core --name trellis-core
+npm run trellis -- init ../trellis-core --name trellis-core
 ```
 
 Add providers incrementally as needed:
 
 ```bash
-npm run ai-sdr -- add source apify --apply
-npm run ai-sdr -- add deep-research parallel --apply
-npm run ai-sdr -- add enrichment prospeo --apply
+npm run trellis -- add source apify --apply
+npm run trellis -- add deep-research parallel --apply
+npm run trellis -- add enrichment prospeo --apply
 ```
 
 For the current repo:
@@ -371,7 +371,7 @@ Use this order for one live demo:
 For Claude Code local MCP setup:
 
 ```bash
-npm run ai-sdr -- mcp claude-code --local --write
+npm run trellis -- mcp claude-code --local --write
 ```
 
 For guided setup across hosts, use the Trellis plugin:

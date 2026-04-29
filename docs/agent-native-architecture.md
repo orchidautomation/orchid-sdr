@@ -140,16 +140,16 @@ If a value needs to survive as product truth, write it to Convex. If a value exi
 The default stack should compile from module commands such as:
 
 ```bash
-ai-sdr add state convex
-ai-sdr add runtime rivet
-ai-sdr add runtime vercel-sandbox
-ai-sdr add model vercel-ai-gateway
-ai-sdr add search parallel
-ai-sdr add extract firecrawl
-ai-sdr add email agentmail
-ai-sdr add crm attio
-ai-sdr add handoff slack
-ai-sdr add mcp trellis-mcp
+trellis add state convex
+trellis add runtime rivet
+trellis add runtime vercel-sandbox
+trellis add model vercel-ai-gateway
+trellis add search parallel
+trellis add extract firecrawl
+trellis add email agentmail
+trellis add crm attio
+trellis add handoff slack
+trellis add mcp trellis-mcp
 ```
 
 Rivet and Vercel Sandbox are both `runtime` providers, but they satisfy different contracts:
@@ -160,11 +160,11 @@ Rivet and Vercel Sandbox are both `runtime` providers, but they satisfy differen
 Optional swaps:
 
 ```bash
-ai-sdr add state neon
-ai-sdr add harness opencode
-ai-sdr add model openrouter
-ai-sdr add crm salesforce
-ai-sdr add crm hubspot
+trellis add state neon
+trellis add harness opencode
+trellis add model openrouter
+trellis add crm salesforce
+trellis add crm hubspot
 ```
 
 ## Composition Profiles
@@ -203,7 +203,7 @@ Parallel and Firecrawl intentionally overlap. Removing one may still leave resea
 Use:
 
 ```bash
-npm run ai-sdr -- check
+npm run trellis -- check
 npm run doctor
 ```
 
@@ -267,15 +267,16 @@ For a hosted version:
 For open source:
 
 ```bash
-npx create-ai-sdr@latest my-sdr
+npx trellis@latest init my-sdr
 cd my-sdr
-ai-sdr add state convex
-ai-sdr add runtime rivet
-ai-sdr add search parallel
-ai-sdr add extract firecrawl
-ai-sdr add email agentmail
-ai-sdr doctor
-ai-sdr dev
+npm install
+npm run trellis -- add state convex
+npm run trellis -- add runtime rivet
+npm run trellis -- add search parallel
+npm run trellis -- add extract firecrawl
+npm run trellis -- add email agentmail
+trellis doctor
+trellis dev
 ```
 
 ## Next Implementation Milestones

@@ -2,6 +2,82 @@ function escapeAttribute(value: string) {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
+export interface DashboardWorkflowStateDescriptor {
+  label: string;
+  kind: "success" | "warn" | "danger";
+}
+
+export function classifyDashboardWorkflowState(row: {
+  stage?: string | null;
+  status?: string | null;
+  pausedReason?: string | null;
+  qualification?: { ok?: boolean | null } | null;
+}): DashboardWorkflowStateDescriptor {
+  const stage = String(row?.stage || "");
+  const status = String(row?.status || "");
+  const pausedReason = row?.pausedReason || null;
+  const qualification = row?.qualification || null;
+
+  if (status === "paused") {
+    if (pausedReason && /workflow failed/i.test(pausedReason)) {
+      return { label: "workflow failed", kind: "danger" };
+    }
+    if (stage === "capture_signal" || stage === "qualify") {
+      return { label: "paused before qualification", kind: "warn" };
+    }
+    return { label: "paused", kind: "warn" };
+  }
+
+  if (qualification?.ok === true) {
+    return { label: "qualified", kind: "success" };
+  }
+
+  if (qualification?.ok === false) {
+    return { label: "rejected", kind: "danger" };
+  }
+
+  if (stage === "capture_signal" || stage === "qualify") {
+    return { label: "qualification pending", kind: "warn" };
+  }
+
+  if (stage === "build_research_brief") {
+    return { label: "research pending", kind: "warn" };
+  }
+
+  return {
+    label: stage || status || "pending",
+    kind: /failed|error/i.test(stage) ? "danger" : "warn",
+  };
+}
+
+export function describeDashboardWorkflowSummary(row: {
+  stage?: string | null;
+  qualificationReason?: string | null;
+  pausedReason?: string | null;
+  qualification?: { ok?: boolean | null; summary?: string | null } | null;
+}) {
+  if (row?.qualification?.summary) {
+    return row.qualification.summary;
+  }
+  if (row?.qualificationReason && row?.qualification?.ok === false) {
+    return row.qualificationReason;
+  }
+  if (row?.pausedReason) {
+    return row.pausedReason;
+  }
+  if (row?.stage === "capture_signal" || row?.stage === "qualify") {
+    return "Qualification pending";
+  }
+  if (row?.stage === "build_research_brief") {
+    return "Research brief pending";
+  }
+  return "No qualification summary";
+}
+
+function inlineFunctionSource<T extends (...args: any[]) => any>(fn: T) {
+  return fn.toString();
+}
+
 export function renderDashboardLoginPage(input?: {
   error?: string;
 }) {
@@ -1362,62 +1438,9 @@ export function renderDashboardPage() {
           .join("");
       }
 
-      function classifyWorkflowState(row) {
-        const stage = String(row?.stage || "");
-        const status = String(row?.status || "");
-        const pausedReason = row?.pausedReason || null;
-        const qualification = row?.qualification || null;
+      const classifyWorkflowState = ${inlineFunctionSource(classifyDashboardWorkflowState)};
 
-        if (qualification?.ok === true) {
-          return { label: "qualified", kind: "success" };
-        }
-
-        if (qualification?.ok === false) {
-          return { label: "rejected", kind: "danger" };
-        }
-
-        if (status === "paused") {
-          if (pausedReason && /workflow failed/i.test(pausedReason)) {
-            return { label: "workflow failed", kind: "danger" };
-          }
-          if (stage === "capture_signal" || stage === "qualify") {
-            return { label: "paused before qualification", kind: "warn" };
-          }
-          return { label: "paused", kind: "warn" };
-        }
-
-        if (stage === "capture_signal" || stage === "qualify") {
-          return { label: "qualification pending", kind: "warn" };
-        }
-
-        if (stage === "build_research_brief") {
-          return { label: "research pending", kind: "warn" };
-        }
-
-        return {
-          label: stage || status || "pending",
-          kind: /failed|error/i.test(stage) ? "danger" : "warn",
-        };
-      }
-
-      function describeWorkflowSummary(row) {
-        if (row?.qualification?.summary) {
-          return row.qualification.summary;
-        }
-        if (row?.qualificationReason && row?.qualification?.ok === false) {
-          return row.qualificationReason;
-        }
-        if (row?.pausedReason) {
-          return row.pausedReason;
-        }
-        if (row?.stage === "capture_signal" || row?.stage === "qualify") {
-          return "Qualification pending";
-        }
-        if (row?.stage === "build_research_brief") {
-          return "Research brief pending";
-        }
-        return "No qualification summary";
-      }
+      const describeWorkflowSummary = ${inlineFunctionSource(describeDashboardWorkflowSummary)};
 
       function renderWorkflowStateChip(row) {
         const state = classifyWorkflowState(row);

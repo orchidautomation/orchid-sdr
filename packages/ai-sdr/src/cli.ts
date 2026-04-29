@@ -113,52 +113,52 @@ async function main() {
 }
 
 function printHelp() {
-  console.log(`ai-sdr workspace commands:
+  console.log(`trellis workspace commands:
 
-  npm run ai-sdr -- modules
-  npm run ai-sdr -- check
-  npm run ai-sdr -- connect <module-id>
-  npm run ai-sdr -- connect <capability> <provider>
-  npm run ai-sdr -- deploy <local|vercel|self-hosted>
-  npm run ai-sdr -- discovery seed <term>
-  npm run ai-sdr -- discovery run <term>
-  npm run ai-sdr -- discovery tick
-  npm run ai-sdr -- mcp claude-code [--local|--remote] [--write]
-  npm run ai-sdr -- add <module-id>
-  npm run ai-sdr -- add <capability> <provider>
-  npm run ai-sdr -- init <target-dir> [--name my-app]
-  npm run ai-sdr -- <command> --json
+  npm run trellis -- modules
+  npm run trellis -- check
+  npm run trellis -- connect <module-id>
+  npm run trellis -- connect <capability> <provider>
+  npm run trellis -- deploy <local|vercel|self-hosted>
+  npm run trellis -- discovery seed <term>
+  npm run trellis -- discovery run <term>
+  npm run trellis -- discovery tick
+  npm run trellis -- mcp claude-code [--local|--remote] [--write]
+  npm run trellis -- add <module-id>
+  npm run trellis -- add <capability> <provider>
+  npm run trellis -- init <target-dir> [--name my-app]
+  npm run trellis -- <command> --json
 
 Examples:
 
-  npm run ai-sdr -- add crm attio
-  npm run ai-sdr -- add crm attio --apply
-  npm run ai-sdr -- add email agentmail
-  npm run ai-sdr -- add source apify --apply
-  npm run ai-sdr -- add search firecrawl
-  npm run ai-sdr -- add extract firecrawl
-  npm run ai-sdr -- add deep-research parallel
-  npm run ai-sdr -- add monitor parallel
-  npm run ai-sdr -- add enrichment prospeo
-  npm run ai-sdr -- add state convex
-  npm run ai-sdr -- add runtime rivet
-  npm run ai-sdr -- add source apify
-  npm run ai-sdr -- modules --json
-  npm run ai-sdr -- check --json
-  npm run ai-sdr -- discovery seed "https://www.linkedin.com/feed/update/urn:li:activity:123/"
-  npm run ai-sdr -- discovery run "https://www.linkedin.com/feed/update/urn:li:activity:123/" --source linkedin_public_post
-  npm run ai-sdr -- discovery tick --source linkedin_public_post
-  npm run ai-sdr -- add model vercel-ai-gateway
-  npm run ai-sdr -- add runtime vercel-sandbox
-  npm run ai-sdr -- add handoff slack
-  npm run ai-sdr -- connect source apify
-  npm run ai-sdr -- deploy vercel
-  npm run ai-sdr -- deploy vercel --json
-  npm run ai-sdr -- mcp claude-code --local --write
-  npm run ai-sdr -- mcp claude-code --local --write --json
-  npm run ai-sdr -- init ../trellis-core --name trellis-core
-  npm run ai-sdr -- init ../trellis-core --name trellis-core --json
-  npm run ai-sdr -- init ../trellis-core-plus --name trellis-core-plus --with-discovery --with-deep-research
+  npm run trellis -- add crm attio
+  npm run trellis -- add crm attio --apply
+  npm run trellis -- add email agentmail
+  npm run trellis -- add source apify --apply
+  npm run trellis -- add search firecrawl
+  npm run trellis -- add extract firecrawl
+  npm run trellis -- add deep-research parallel
+  npm run trellis -- add monitor parallel
+  npm run trellis -- add enrichment prospeo
+  npm run trellis -- add state convex
+  npm run trellis -- add runtime rivet
+  npm run trellis -- add source apify
+  npm run trellis -- modules --json
+  npm run trellis -- check --json
+  npm run trellis -- discovery seed "https://www.linkedin.com/feed/update/urn:li:activity:123/"
+  npm run trellis -- discovery run "https://www.linkedin.com/feed/update/urn:li:activity:123/" --source linkedin_public_post
+  npm run trellis -- discovery tick --source linkedin_public_post
+  npm run trellis -- add model vercel-ai-gateway
+  npm run trellis -- add runtime vercel-sandbox
+  npm run trellis -- add handoff slack
+  npm run trellis -- connect source apify
+  npm run trellis -- deploy vercel
+  npm run trellis -- deploy vercel --json
+  npm run trellis -- mcp claude-code --local --write
+  npm run trellis -- mcp claude-code --local --write --json
+  npm run trellis -- init ../trellis-core --name trellis-core
+  npm run trellis -- init ../trellis-core --name trellis-core --json
+  npm run trellis -- init ../trellis-core-plus --name trellis-core-plus --with-discovery --with-deep-research
 
 Simple labels stay short in the CLI: search, extract, deep-research, monitor, enrichment.
 The alias "research" resolves to the full research contract family.
@@ -189,7 +189,7 @@ async function handleDiscoveryCommand(
     case "seed": {
       const term = value ?? (typeof flags.term === "string" ? flags.term : undefined);
       if (!term) {
-        throw new Error("Missing discovery term. Example: npm run ai-sdr -- discovery seed \"clay workflow\"");
+        throw new Error("Missing discovery term. Example: npm run trellis -- discovery seed \"clay workflow\"");
       }
 
       const result = await actor.addSeedTerms({
@@ -203,7 +203,7 @@ async function handleDiscoveryCommand(
     case "run": {
       const term = value ?? (typeof flags.term === "string" ? flags.term : undefined);
       if (!term) {
-        throw new Error("Missing discovery term. Example: npm run ai-sdr -- discovery run \"https://www.linkedin.com/feed/update/urn:li:activity:123/\"");
+        throw new Error("Missing discovery term. Example: npm run trellis -- discovery run \"https://www.linkedin.com/feed/update/urn:li:activity:123/\"");
       }
 
       const reason = String(flags.reason ?? "manual_cli");
@@ -293,7 +293,7 @@ function resolveConfiguredCompositionProfiles() {
 
 function printAddPlan(moduleId: string | undefined) {
   if (!moduleId) {
-    console.error("Missing module or capability. Example: npm run ai-sdr -- add search firecrawl");
+    console.error("Missing module or capability. Example: npm run trellis -- add search firecrawl");
     process.exitCode = 1;
     return;
   }
@@ -320,14 +320,14 @@ function printAddPlan(moduleId: string | undefined) {
 function handleConnectCommand(moduleId: string | undefined) {
   if (!moduleId) {
     const guides = [
-      "npm run ai-sdr -- connect source apify",
-      "npm run ai-sdr -- connect search firecrawl",
-      "npm run ai-sdr -- connect deep-research parallel",
-      "npm run ai-sdr -- connect enrichment prospeo",
-      "npm run ai-sdr -- connect crm attio",
-      "npm run ai-sdr -- connect email agentmail",
-      "npm run ai-sdr -- connect handoff slack",
-      "npm run ai-sdr -- connect mcp trellis-mcp",
+      "npm run trellis -- connect source apify",
+      "npm run trellis -- connect search firecrawl",
+      "npm run trellis -- connect deep-research parallel",
+      "npm run trellis -- connect enrichment prospeo",
+      "npm run trellis -- connect crm attio",
+      "npm run trellis -- connect email agentmail",
+      "npm run trellis -- connect handoff slack",
+      "npm run trellis -- connect mcp trellis-mcp",
     ];
     if (jsonOutput) {
       emitJson({
@@ -341,14 +341,14 @@ function handleConnectCommand(moduleId: string | undefined) {
     }
     console.log(`Connection guides:
 
-  npm run ai-sdr -- connect source apify
-  npm run ai-sdr -- connect search firecrawl
-  npm run ai-sdr -- connect deep-research parallel
-  npm run ai-sdr -- connect enrichment prospeo
-  npm run ai-sdr -- connect crm attio
-  npm run ai-sdr -- connect email agentmail
-  npm run ai-sdr -- connect handoff slack
-  npm run ai-sdr -- connect mcp trellis-mcp
+  npm run trellis -- connect source apify
+  npm run trellis -- connect search firecrawl
+  npm run trellis -- connect deep-research parallel
+  npm run trellis -- connect enrichment prospeo
+  npm run trellis -- connect crm attio
+  npm run trellis -- connect email agentmail
+  npm run trellis -- connect handoff slack
+  npm run trellis -- connect mcp trellis-mcp
 
 Use --apply if you also want to add the module to a scaffolded workspace first.`);
     return;
@@ -549,7 +549,7 @@ async function handleMcpCommand(subcommand: string | undefined, flags: Record<st
       await handleClaudeCodeMcp(flags);
       return;
     default:
-      throw new Error("Unknown mcp command. Use: npm run ai-sdr -- mcp claude-code [--local|--remote] [--write]");
+      throw new Error("Unknown mcp command. Use: npm run trellis -- mcp claude-code [--local|--remote] [--write]");
   }
 }
 
@@ -665,13 +665,13 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
 async function resolveInitInput(targetArg: string | undefined, flags: Record<string, string | boolean>) {
   if (flags.interactive === true || flags.wizard === true) {
     throw new Error(
-      "Interactive init has been removed. Use a Pluxx-guided Trellis onboarding plugin or run init with explicit flags, for example: npm run ai-sdr -- init ../trellis-ai-sdr --name trellis-ai-sdr --with-discovery --with-deep-research --with-enrichment",
+      "Interactive init has been removed. Use a Pluxx-guided Trellis onboarding plugin or run init with explicit flags, for example: npm run trellis -- init ../trellis-ai-sdr --name trellis-ai-sdr --with-discovery --with-deep-research --with-enrichment",
     );
   }
 
   if (!targetArg) {
     throw new Error(
-      "Missing target directory. Run init explicitly, for example: npm run ai-sdr -- init ../trellis-core --name trellis-core. Guided onboarding should happen through the Trellis Pluxx plugin.",
+      "Missing target directory. Run init explicitly, for example: npm run trellis -- init ../trellis-core --name trellis-core. Guided onboarding should happen through the Trellis Pluxx plugin.",
     );
   }
 
@@ -892,7 +892,7 @@ function applyModuleToScaffold(module: AiSdrModuleDefinition) {
       updatedFiles,
       nextSteps: [
         "Fill any new env vars from .env.example",
-        "npm run ai-sdr -- check",
+        "npm run trellis -- check",
         "npm run doctor",
       ],
     };
@@ -906,7 +906,7 @@ function applyModuleToScaffold(module: AiSdrModuleDefinition) {
   console.log("");
   console.log("Next steps:");
   console.log("  1. Fill any new env vars from .env.example");
-  console.log("  2. npm run ai-sdr -- check");
+  console.log("  2. npm run trellis -- check");
   console.log("  3. npm run doctor");
 
   return {
@@ -915,7 +915,7 @@ function applyModuleToScaffold(module: AiSdrModuleDefinition) {
     updatedFiles,
     nextSteps: [
       "Fill any new env vars from .env.example",
-      "npm run ai-sdr -- check",
+      "npm run trellis -- check",
       "npm run doctor",
     ],
   };
@@ -1104,11 +1104,11 @@ http://localhost:3000/dashboard
 Examples:
 
 \`\`\`bash
-npm run ai-sdr -- add source apify --apply
-npm run ai-sdr -- add deep-research parallel --apply
-npm run ai-sdr -- add enrichment prospeo --apply
-npm run ai-sdr -- connect source apify
-npm run ai-sdr -- mcp claude-code --local --write
+npm run trellis -- add source apify --apply
+npm run trellis -- add deep-research parallel --apply
+npm run trellis -- add enrichment prospeo --apply
+npm run trellis -- connect source apify
+npm run trellis -- mcp claude-code --local --write
 \`\`\`
 
 ## Notes
@@ -1159,7 +1159,7 @@ function buildScaffoldPackage(
       typecheck: "tsc --noEmit",
       test: "vitest run",
       "test:watch": "vitest",
-      "ai-sdr": "tsx packages/ai-sdr/src/cli.ts",
+      trellis: "tsx packages/ai-sdr/src/cli.ts",
       doctor: "tsx scripts/doctor.ts",
       "discovery:tick": "tsx scripts/discovery-tick.ts",
       "sandbox:probe": "tsx scripts/sandbox-probe.ts",

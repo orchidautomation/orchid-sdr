@@ -123,15 +123,15 @@ Start with the reference AI SDR already in this repo:
 Useful commands:
 
 ```bash
-npm run ai-sdr:demo:smoke
-npm run ai-sdr:demo:check
+npm run trellis:demo:smoke
+npm run trellis:demo:check
 ```
 
-- `ai-sdr:demo:smoke`
+- `trellis:demo:smoke`
   - starts the reference AI SDR in local smoke mode
   - verifies `/healthz`, dashboard auth/state, `/mcp/trellis`, and one safe signal ingest
   - keeps `NO_SENDS_MODE=true`, so the flow stops safely without outbound
-- `ai-sdr:demo:check`
+- `trellis:demo:check`
   - runs against an already-running local or deployed app
   - adds one `/webhooks/signals` ingest check and verifies dashboard visibility
 
@@ -161,13 +161,13 @@ Start here:
 ### 3. Scaffold a new Trellis app
 
 ```bash
-npm run ai-sdr -- init ../my-trellis-agent --name my-trellis-agent --json
+npm run trellis -- init ../my-trellis-agent --name my-trellis-agent --json
 ```
 
 For the current reference AI SDR shape:
 
 ```bash
-npm run ai-sdr -- init ../my-ai-sdr \
+npm run trellis -- init ../my-ai-sdr \
   --name my-ai-sdr \
   --with-discovery \
   --with-deep-research \
@@ -211,8 +211,8 @@ npm run dev
 npm run doctor
 npm run typecheck
 npm test
-npm run ai-sdr -- modules --json
-npm run ai-sdr -- check --json
+npm run trellis -- modules --json
+npm run trellis -- check --json
 ```
 
 ## Minimum Demo Stack

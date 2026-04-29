@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  classifyDashboardWorkflowState,
+  describeDashboardWorkflowSummary,
+} from "../../../packages/default-sdr/src/dashboard-shell.js";
 
 const ensureRuntimeBootstrapped = vi.fn();
 const getAppContext = vi.fn();
@@ -253,5 +257,72 @@ describe("dashboard bootstrap bypass", () => {
         sandboxBroker: null,
       },
     });
+  });
+});
+
+describe("dashboard workflow semantics", () => {
+  it("prefers paused and failed states over historical qualification outcomes", () => {
+    expect(classifyDashboardWorkflowState({
+      stage: "capture_signal",
+      status: "paused",
+      pausedReason: "workflow failed: knowledge path missing",
+      qualification: { ok: true },
+    })).toEqual({
+      label: "workflow failed",
+      kind: "danger",
+    });
+
+    expect(classifyDashboardWorkflowState({
+      stage: "qualify",
+      status: "paused",
+      pausedReason: "paused by operator",
+      qualification: { ok: true },
+    })).toEqual({
+      label: "paused before qualification",
+      kind: "warn",
+    });
+  });
+
+  it("labels pending qualification and research states explicitly", () => {
+    expect(classifyDashboardWorkflowState({
+      stage: "capture_signal",
+      status: "active",
+      qualification: null,
+    })).toEqual({
+      label: "qualification pending",
+      kind: "warn",
+    });
+
+    expect(classifyDashboardWorkflowState({
+      stage: "build_research_brief",
+      status: "active",
+      qualification: null,
+    })).toEqual({
+      label: "research pending",
+      kind: "warn",
+    });
+  });
+
+  it("describes pending and paused summaries consistently", () => {
+    expect(describeDashboardWorkflowSummary({
+      stage: "capture_signal",
+      qualification: null,
+      qualificationReason: null,
+      pausedReason: null,
+    })).toBe("Qualification pending");
+
+    expect(describeDashboardWorkflowSummary({
+      stage: "build_research_brief",
+      qualification: null,
+      qualificationReason: null,
+      pausedReason: null,
+    })).toBe("Research brief pending");
+
+    expect(describeDashboardWorkflowSummary({
+      stage: "qualify",
+      qualification: null,
+      qualificationReason: null,
+      pausedReason: "workflow failed: knowledge path missing",
+    })).toBe("workflow failed: knowledge path missing");
   });
 });

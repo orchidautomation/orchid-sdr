@@ -446,7 +446,7 @@ Vercel OAuth is **not** part of the default Trellis auth story right now. The cu
   - bearer token: \`TRELLIS_MCP_TOKEN\`
   - fallback if unset: \`TRELLIS_SANDBOX_TOKEN\`
 - Claude Code quick setup:
-  - \`npm run ai-sdr -- mcp claude-code --local --write\`
+  - \`npm run trellis -- mcp claude-code --local --write\`
 
 ## URL Derivation
 
@@ -491,7 +491,7 @@ npm run dev
 ## Useful Commands
 
 \`\`\`bash
-npm run ai-sdr -- check
+npm run trellis -- check
 npm run doctor
 npm run sandbox:probe
 \`\`\`

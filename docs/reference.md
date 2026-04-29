@@ -279,7 +279,7 @@ Example remote MCP config:
 For Claude Code local setup, the quickest path is:
 
 ```bash
-npm run ai-sdr -- mcp claude-code --local --write
+npm run trellis -- mcp claude-code --local --write
 ```
 
 Auth model:

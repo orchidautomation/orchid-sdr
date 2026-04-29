@@ -168,19 +168,19 @@ Current package targets:
 
 | Command | Package | Capabilities |
 | --- | --- | --- |
-| `ai-sdr add crm attio` | `@ai-sdr/attio` | `crm` |
-| `ai-sdr add email agentmail` | `@ai-sdr/agentmail` | `email` |
-| `ai-sdr add state convex` | `@ai-sdr/convex` | `state` |
-| `ai-sdr add source apify` | `@ai-sdr/apify-linkedin` | `source` |
-| `ai-sdr add source webhook` | `@ai-sdr/webhooks` | `source` |
-| `ai-sdr add search parallel` | `@ai-sdr/parallel` | `search`, `extract`, `enrichment`, `source` |
-| `ai-sdr add extract firecrawl` | `@ai-sdr/firecrawl` | `source`, `search`, `extract`, `enrichment`, `runtime`, `observability` |
-| `ai-sdr add database neon` | `@ai-sdr/neon` | `database` |
-| `ai-sdr add model vercel-ai-gateway` | `@ai-sdr/vercel-ai-gateway` | `model` |
-| `ai-sdr add runtime rivet` | `@ai-sdr/rivet` | `runtime` |
-| `ai-sdr add runtime vercel-sandbox` | `@ai-sdr/vercel-sandbox` | `runtime` |
-| `ai-sdr add handoff slack` | `@ai-sdr/slack` | `handoff` |
-| `ai-sdr add mcp trellis-mcp` | `@ai-sdr/mcp` | `mcp` |
+| `trellis add crm attio` | `@ai-sdr/attio` | `crm` |
+| `trellis add email agentmail` | `@ai-sdr/agentmail` | `email` |
+| `trellis add state convex` | `@ai-sdr/convex` | `state` |
+| `trellis add source apify` | `@ai-sdr/apify-linkedin` | `source` |
+| `trellis add source webhook` | `@ai-sdr/webhooks` | `source` |
+| `trellis add search parallel` | `@ai-sdr/parallel` | `search`, `extract`, `enrichment`, `source` |
+| `trellis add extract firecrawl` | `@ai-sdr/firecrawl` | `source`, `search`, `extract`, `enrichment`, `runtime`, `observability` |
+| `trellis add database neon` | `@ai-sdr/neon` | `database` |
+| `trellis add model vercel-ai-gateway` | `@ai-sdr/vercel-ai-gateway` | `model` |
+| `trellis add runtime rivet` | `@ai-sdr/rivet` | `runtime` |
+| `trellis add runtime vercel-sandbox` | `@ai-sdr/vercel-sandbox` | `runtime` |
+| `trellis add handoff slack` | `@ai-sdr/slack` | `handoff` |
+| `trellis add mcp trellis-mcp` | `@ai-sdr/mcp` | `mcp` |
 
 Provider packages can satisfy more than one capability. The CLI installs by capability and provider pair while the underlying package remains provider-owned.
 
@@ -198,7 +198,7 @@ The reference app currently has two composition profiles:
 Verification commands:
 
 ```bash
-npm run ai-sdr -- check
+npm run trellis -- check
 npm run doctor
 ```
 
@@ -251,12 +251,12 @@ Typical developer workflow:
 Current local CLI examples:
 
 ```bash
-npm run ai-sdr -- modules
-npm run ai-sdr -- add crm attio
-npm run ai-sdr -- add state convex
-npm run ai-sdr -- add search parallel
-npm run ai-sdr -- add extract firecrawl
-npm run ai-sdr -- add database neon
+npm run trellis -- modules
+npm run trellis -- add crm attio
+npm run trellis -- add state convex
+npm run trellis -- add search parallel
+npm run trellis -- add extract firecrawl
+npm run trellis -- add database neon
 ```
 
 ## Deployment Boundary

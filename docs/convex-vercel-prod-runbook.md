@@ -46,7 +46,7 @@ Required local proof before prod:
 
 1. `npx convex dev`
 2. `npm run dev`
-3. `npm run ai-sdr:demo:check -- --base-url http://localhost:3000 --dashboard-password dev --mcp-token "$TRELLIS_MCP_TOKEN" --signal-secret "$SIGNAL_WEBHOOK_SECRET"`
+3. `npm run trellis:demo:check -- --base-url http://localhost:3000 --dashboard-password dev --mcp-token "$TRELLIS_MCP_TOKEN" --signal-secret "$SIGNAL_WEBHOOK_SECRET"`
 
 If that fails, do not deploy yet.
 
@@ -198,7 +198,7 @@ Log in with:
 Then run:
 
 ```bash
-npm run ai-sdr:demo:check -- \
+npm run trellis:demo:check -- \
   --base-url "https://<your-vercel-domain>" \
   --dashboard-password "$DASHBOARD_PASSWORD" \
   --mcp-token "$TRELLIS_MCP_TOKEN" \
@@ -217,7 +217,7 @@ Success means:
 After hosted verification:
 
 ```bash
-npm run ai-sdr -- mcp claude-code --remote --write --url "https://<your-vercel-domain>/mcp/trellis" --token "$TRELLIS_MCP_TOKEN"
+npm run trellis -- mcp claude-code --remote --write --url "https://<your-vercel-domain>/mcp/trellis" --token "$TRELLIS_MCP_TOKEN"
 ```
 
 Swap `claude-code` for:
@@ -231,7 +231,7 @@ Swap `claude-code` for:
 Keep the first prod proof constrained:
 
 1. `NO_SENDS_MODE=true`
-2. run hosted `ai-sdr:demo:check`
+2. run hosted `trellis:demo:check`
 3. inspect the signal and prospect in `/dashboard`
 4. inspect the same state through MCP
 5. only then enable discovery cadence, CRM writes, or outbound sends

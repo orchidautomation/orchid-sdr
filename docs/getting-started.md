@@ -72,7 +72,7 @@ Smoke mode is only for boot and dashboard checks.
 ## 2. Scaffold
 
 ```bash
-npm run ai-sdr -- init ../trellis-core --name trellis-core
+npm run trellis -- init ../trellis-core --name trellis-core
 ```
 
 That command scaffolds the base Trellis runtime by default.
@@ -80,26 +80,26 @@ That command scaffolds the base Trellis runtime by default.
 After boot, add capabilities incrementally:
 
 ```bash
-npm run ai-sdr -- add source apify --apply
-npm run ai-sdr -- add deep-research parallel --apply
-npm run ai-sdr -- add enrichment prospeo --apply
+npm run trellis -- add source apify --apply
+npm run trellis -- add deep-research parallel --apply
+npm run trellis -- add enrichment prospeo --apply
 ```
 
 Choose lanes directly with flags:
 
 ```bash
-npm run ai-sdr -- init ../trellis-core-plus --name trellis-core-plus --with-discovery --with-deep-research
+npm run trellis -- init ../trellis-core-plus --name trellis-core-plus --with-discovery --with-deep-research
 ```
 
 The CLI no longer owns a guided wizard. Guided onboarding should sit on top of the CLI, not inside it.
 When an agent or plugin is driving setup, use the JSON contract:
 
 ```bash
-npm run ai-sdr -- init ../trellis-core --name trellis-core --json
+npm run trellis -- init ../trellis-core --name trellis-core --json
 npm run doctor -- --json
-npm run ai-sdr -- connect source apify --json
-npm run ai-sdr -- deploy local --json
-npm run ai-sdr -- mcp claude-code --local --write --json
+npm run trellis -- connect source apify --json
+npm run trellis -- deploy local --json
+npm run trellis -- mcp claude-code --local --write --json
 ```
 
 ## 3. Install
@@ -173,7 +173,7 @@ http://localhost:3000/dashboard
 To wire the first-party MCP into Claude Code locally:
 
 ```bash
-npm run ai-sdr -- mcp claude-code --local --write
+npm run trellis -- mcp claude-code --local --write
 ```
 
 For a hosted demo, connect remote MCP only after the app is reachable at `${APP_URL}` and `/dashboard` is healthy.
@@ -209,9 +209,9 @@ That file is the app-specific onboarding checklist. Start there before enabling 
 Helpful follow-up commands:
 
 ```bash
-npm run ai-sdr -- connect source apify
-npm run ai-sdr -- deploy local
-npm run ai-sdr -- mcp claude-code --local --write
+npm run trellis -- connect source apify
+npm run trellis -- deploy local
+npm run trellis -- mcp claude-code --local --write
 ```
 
 ## 10. Stay safe on first boot

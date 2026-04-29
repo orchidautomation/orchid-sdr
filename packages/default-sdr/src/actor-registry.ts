@@ -1,5 +1,10 @@
 import { actor, setup } from "rivetkit";
+import { createClient } from "rivetkit/client";
 import { db } from "rivetkit/db";
+import {
+  createActorBackedProspectLifecycleDispatcher,
+  type DefaultSdrProspectLifecycleDispatchClient,
+} from "./runtime-dispatch.js";
 
 export interface DefaultSdrSandboxTurnRequest {
   turnId: string;
@@ -155,6 +160,30 @@ function mapSandboxJobRow(row: {
 export function createDefaultSdrRegistry<Context extends DefaultSdrRepositoryContext>(
   deps: DefaultSdrRegistryDependencies<Context>,
 ) {
+  let dispatchProspectLifecycle: ((
+    input: {
+      prospectId: string;
+      forceFollowup?: boolean;
+    },
+  ) => Promise<DefaultSdrWorkflowOutcome>) | null = null;
+
+  const getProspectLifecycleDispatcher = () => {
+    if (dispatchProspectLifecycle) {
+      return dispatchProspectLifecycle;
+    }
+
+    const config = registry.parseConfig();
+    const client = createClient<typeof registry>({
+      endpoint: config.endpoint ?? `http://${deps.managerHost ?? "127.0.0.1"}:${config.managerPort}`,
+      token: config.token,
+      namespace: config.namespace,
+      disableMetadataLookup: true,
+    }) as unknown as DefaultSdrProspectLifecycleDispatchClient<DefaultSdrWorkflowOutcome>;
+
+    dispatchProspectLifecycle = createActorBackedProspectLifecycleDispatcher(client);
+    return dispatchProspectLifecycle;
+  };
+
   const sourceIngest = actor({
     state: {
       lastActorRunId: null as string | null,
@@ -177,6 +206,7 @@ export function createDefaultSdrRegistry<Context extends DefaultSdrRepositoryCon
           {
             context: deps.getContext(),
             runSandboxTurn: (request) => deps.runSandboxTurn(deps.getContext(), request),
+            dispatchProspectLifecycle: (input) => getProspectLifecycleDispatcher()(input),
           },
           input,
         );
@@ -623,7 +653,7 @@ export function createDefaultSdrRegistry<Context extends DefaultSdrRepositoryCon
     },
   });
 
-  return setup({
+  const registry = setup({
     managerHost: deps.managerHost ?? "127.0.0.1",
     managerPort: deps.managerPort ?? 6420,
     use: {
@@ -634,4 +664,6 @@ export function createDefaultSdrRegistry<Context extends DefaultSdrRepositoryCon
       discoveryCoordinator: deps.discoveryCoordinator,
     },
   });
+
+  return registry;
 }

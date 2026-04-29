@@ -149,7 +149,8 @@ describe("framework scaffold profiles", () => {
     expect(setupChecklist).toContain("External Accounts You Actually Need");
     expect(setupChecklist).toContain("Vercel OAuth is **not** part of the default Trellis auth story right now.");
     expect(setupChecklist).toContain("Deployed MCP endpoint");
-    expect(setupChecklist).toContain("npm run ai-sdr -- mcp claude-code --local --write");
+    expect(setupChecklist).toContain("npm run trellis -- mcp claude-code --local --write");
+    expect(setupChecklist).not.toContain("npm run ai-sdr --");
     expect(setupChecklist).toContain("Configured Webhooks");
     expect(configModule).toContain('"webhooks": [');
     expect(setupChecklist).toContain("`CONVEX_URL`");

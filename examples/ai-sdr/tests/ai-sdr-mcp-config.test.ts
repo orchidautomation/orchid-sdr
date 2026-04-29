@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildClaudeCodeMcpConfig, mergeClaudeCodeMcpConfig } from "../../../packages/ai-sdr/src/mcp-config.js";
 
-describe("ai-sdr mcp config helpers", () => {
+describe("trellis mcp config helpers", () => {
   it("builds a Claude Code HTTP transport config", () => {
     expect(buildClaudeCodeMcpConfig({
       url: "http://localhost:3000/mcp/trellis",
