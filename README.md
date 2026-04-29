@@ -166,6 +166,8 @@ Separate deploys are safer when the underlying product or knowledge pack is diff
   Sandbox skill instructions for qualification, research, copy, reply policy, and handoff policy.
 - `docs/reference.md`
   Full setup, env, MCP, skill, knowledge-pack, Attio, and webhook details.
+- `docs/production-validation.md`
+  Runbook for excluding stale legacy rows and recording a fresh production baseline after hardening.
 - `docs/email-providers.md`
   Email provider guidance for agent-native outbound and why AgentMail is the default fit.
 - `blog/`
@@ -176,6 +178,7 @@ Separate deploys are safer when the underlying product or knowledge pack is diff
 ## Read Next
 
 - [Reference](docs/reference.md)
+- [Production Validation](docs/production-validation.md)
 - [Email Providers](docs/email-providers.md)
 - [Blog Series](blog/README.md)
 - [The AI SDR Market Is Broken](docs/blog/the-ai-sdr-market-is-broken.md)

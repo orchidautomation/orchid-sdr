@@ -158,6 +158,61 @@ describe("OrchidMcpToolService operator tools", () => {
           createdAt: "2026-04-23T12:00:00.000Z",
         },
       ]),
+      getValidationBaselineSummary: vi.fn(async () => ({
+        since: "2026-04-23T00:00:00.000Z",
+        summary: {
+          signals: 3,
+          prospects: 2,
+          qualifiedProspects: 1,
+          activeThreads: 1,
+          pausedThreads: 1,
+          researchBriefs: 1,
+          outboundMessages: 1,
+          inboundMessages: 0,
+          providerRuns: 2,
+          auditEvents: 4,
+        },
+        recentProspects: [
+          {
+            id: "pros_1",
+            fullName: "Ada Lovelace",
+            company: "Analytical Engines",
+            title: "RevOps Lead",
+            stage: "build_research_brief",
+            status: "active",
+            isQualified: true,
+            qualificationReason: "Strong ICP fit",
+            qualification: null,
+            pausedReason: null,
+            updatedAt: "2026-04-23T12:00:00.000Z",
+          },
+        ],
+        providerRuns: [
+          {
+            id: "prun_1",
+            provider: "apify",
+            kind: "linkedin_public_post-source",
+            externalId: "run_1",
+            status: "succeeded",
+            createdAt: "2026-04-23T12:00:00.000Z",
+            updatedAt: "2026-04-23T12:00:01.000Z",
+            durationMs: 1000,
+            requestTerm: "revops",
+            error: null,
+          },
+        ],
+        workflowFeed: [
+          {
+            id: "audit_1",
+            entityType: "prospect",
+            entityId: "pros_1",
+            eventName: "LeadQualified",
+            payload: {},
+            createdAt: "2026-04-23T12:00:00.000Z",
+          },
+        ],
+        excludedLegacyProspects: 4,
+      })),
       listRecentProspects: vi.fn(async () => [
         {
           id: "pros_1",
@@ -199,6 +254,27 @@ describe("OrchidMcpToolService operator tools", () => {
           updatedAt: "2026-04-23T12:03:00.000Z",
         },
       ]),
+      listValidationCleanupCandidates: vi.fn(async () => [
+        {
+          prospectId: "pros_legacy_1",
+          threadId: "thr_legacy_1",
+          fullName: "Legacy Prospect",
+          company: "Old Co",
+          title: "Ops",
+          stage: "qualify",
+          status: "paused",
+          threadStatus: "paused",
+          pausedReason: "path resolution failed",
+          isQualified: false,
+          sourceSignalId: "sig_legacy_1",
+          signalCapturedAt: "2026-04-20T10:00:00.000Z",
+          hasResearchBrief: false,
+          outboundMessages: 0,
+          createdAt: "2026-04-20T10:00:00.000Z",
+          updatedAt: "2026-04-20T10:05:00.000Z",
+        },
+      ]),
+      excludeProspectsFromValidation: vi.fn(async () => undefined),
       getControlFlags: vi.fn(async () => ({
         globalKillSwitch: false,
         noSendsMode: true,
@@ -612,6 +688,86 @@ describe("OrchidMcpToolService operator tools", () => {
           pausedReason: "poor fit: recruiter title",
         }),
       ],
+    });
+  });
+
+  it("returns a fresh validation baseline summary", async () => {
+    const { service, repository } = createService();
+
+    const result = await service.handleTool("pipeline.validationBaseline", {
+      since: "2026-04-23T00:00:00.000Z",
+      limit: 5,
+    });
+
+    expect(repository.getValidationBaselineSummary).toHaveBeenCalledWith({
+      since: "2026-04-23T00:00:00.000Z",
+      limit: 5,
+    });
+    expect(result).toMatchObject({
+      summary: {
+        prospects: 2,
+        qualifiedProspects: 1,
+      },
+      excludedLegacyProspects: 4,
+      recentProspects: [
+        expect.objectContaining({
+          id: "pros_1",
+        }),
+      ],
+    });
+    expect((result as any).headline).toContain("2 fresh prospects");
+  });
+
+  it("previews validation cleanup candidates", async () => {
+    const { service, repository } = createService();
+
+    const result = await service.handleTool("control.previewValidationCleanup", {
+      before: "2026-04-22T00:00:00.000Z",
+      limit: 10,
+    });
+
+    expect(repository.listValidationCleanupCandidates).toHaveBeenCalledWith({
+      before: "2026-04-22T00:00:00.000Z",
+      limit: 10,
+    });
+    expect(result).toMatchObject({
+      candidateCount: 1,
+      candidates: [
+        expect.objectContaining({
+          prospectId: "pros_legacy_1",
+        }),
+      ],
+    });
+  });
+
+  it("applies validation cleanup without deleting history", async () => {
+    const { service, repository } = createService();
+
+    const result = await service.handleTool("control.applyValidationCleanup", {
+      before: "2026-04-22T00:00:00.000Z",
+      reason: "legacy broken runs before hardening",
+      batchId: "cleanup_batch_1",
+      limit: 10,
+    });
+
+    expect(repository.excludeProspectsFromValidation).toHaveBeenCalledWith({
+      prospectIds: ["pros_legacy_1"],
+      batchId: "cleanup_batch_1",
+      reason: "legacy broken runs before hardening",
+    });
+    expect(repository.appendAuditEvent).toHaveBeenCalledWith(
+      "prospect",
+      "pros_legacy_1",
+      "ValidationCleanupExcluded",
+      expect.objectContaining({
+        batchId: "cleanup_batch_1",
+      }),
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      batchId: "cleanup_batch_1",
+      affectedProspects: 1,
+      affectedThreads: 1,
     });
   });
 

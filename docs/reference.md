@@ -189,6 +189,7 @@ Operator and pipeline tools:
 - `pipeline.providerRuns`
 - `pipeline.failures`
 - `pipeline.workflowFeed`
+- `pipeline.validationBaseline`
 - `lead.getContext`
 - `lead.inspect`
 - `lead.updateState`
@@ -200,6 +201,8 @@ Operator and pipeline tools:
 - `control.runDiscovery`
 - `control.setNoSendsMode`
 - `control.setCampaignTimezone`
+- `control.previewValidationCleanup`
+- `control.applyValidationCleanup`
 
 Workflow and actuation tools:
 

@@ -41,6 +41,8 @@ export class OrchidMcpToolService {
         return this.context.repository.listRecentProviderRuns(this.readLimit(args.limit, 12, 50));
       case "pipeline.failures":
         return this.handlePipelineFailures(args);
+      case "pipeline.validationBaseline":
+        return this.handleValidationBaseline(args);
       case "pipeline.workflowFeed":
         return this.context.repository.listRecentAuditEvents(this.readLimit(args.limit, 16, 100));
       case "runtime.discovery":
@@ -61,6 +63,10 @@ export class OrchidMcpToolService {
         return this.handleSetNoSendsMode(args);
       case "control.setCampaignTimezone":
         return this.handleSetCampaignTimezone(args);
+      case "control.previewValidationCleanup":
+        return this.handlePreviewValidationCleanup(args);
+      case "control.applyValidationCleanup":
+        return this.handleApplyValidationCleanup(args);
       case "mail.send":
         return this.handleMailSend(args);
       case "mail.preview":
@@ -98,6 +104,20 @@ export class OrchidMcpToolService {
 
     const end = completedAt ?? Date.now();
     return Math.max(0, end - startedAt);
+  }
+
+  private readIsoTimestamp(value: unknown, field: string) {
+    const text = String(value ?? "").trim();
+    if (!text) {
+      throw new Error(`${field} is required`);
+    }
+
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error(`invalid ISO timestamp for ${field}`);
+    }
+
+    return parsed.toISOString();
   }
 
   private async getDiscoverySnapshots() {
@@ -483,6 +503,29 @@ export class OrchidMcpToolService {
     };
   }
 
+  private async handleValidationBaseline(args: Record<string, unknown>) {
+    const since = this.readIsoTimestamp(args.since, "since");
+    const limit = this.readLimit(args.limit, 10, 50);
+    const [baseline, discoveryHealth, sandboxJobs] = await Promise.all([
+      this.context.repository.getValidationBaselineSummary({ since, limit }),
+      this.handleRuntimeDiscoveryHealth(),
+      this.handleSandboxJobs({ limit }),
+    ]);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      headline: [
+        `${baseline.summary.prospects} fresh prospects`,
+        `${baseline.summary.qualifiedProspects} qualified`,
+        `${baseline.summary.researchBriefs} research briefs`,
+        `${baseline.summary.providerRuns} provider runs`,
+      ].join(", "),
+      ...baseline,
+      discoveryHealth,
+      sandboxJobs: (sandboxJobs as Array<Record<string, unknown>>).slice(0, limit),
+    };
+  }
+
   private async handleThreadResume(args: Record<string, unknown>) {
     const threadId = String(args.threadId ?? "");
     if (!threadId) {
@@ -541,6 +584,98 @@ export class OrchidMcpToolService {
       ...result,
       campaignId: campaign.id,
       source,
+    };
+  }
+
+  private async handlePreviewValidationCleanup(args: Record<string, unknown>) {
+    const before = this.readIsoTimestamp(args.before, "before");
+    const limit = this.readLimit(args.limit, 25, 200);
+    const candidates = await this.context.repository.listValidationCleanupCandidates({
+      before,
+      limit,
+    });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      before,
+      candidateCount: candidates.length,
+      candidates,
+    };
+  }
+
+  private async handleApplyValidationCleanup(args: Record<string, unknown>) {
+    const prospectIds = Array.isArray(args.prospectIds)
+      ? args.prospectIds.map((value) => String(value).trim()).filter(Boolean)
+      : [];
+    const before = typeof args.before === "string" && args.before.trim().length > 0
+      ? this.readIsoTimestamp(args.before, "before")
+      : null;
+    const limit = this.readLimit(args.limit, 25, 200);
+    const reason = typeof args.reason === "string" && args.reason.trim().length > 0
+      ? args.reason.trim()
+      : "excluded from fresh validation baseline";
+
+    if (!before && prospectIds.length === 0) {
+      throw new Error("before or prospectIds is required");
+    }
+
+    const candidates = await this.context.repository.listValidationCleanupCandidates({
+      before: before ?? undefined,
+      prospectIds,
+      limit,
+    });
+    const selectedProspectIds = candidates.map((candidate) => candidate.prospectId);
+    if (selectedProspectIds.length === 0) {
+      return {
+        ok: true,
+        batchId: null,
+        reason,
+        affectedProspects: 0,
+        affectedThreads: 0,
+        candidates: [],
+      };
+    }
+
+    const batchId = typeof args.batchId === "string" && args.batchId.trim().length > 0
+      ? args.batchId.trim()
+      : `validation_cleanup_${Date.now()}`;
+    await this.context.repository.excludeProspectsFromValidation({
+      prospectIds: selectedProspectIds,
+      batchId,
+      reason,
+    });
+
+    await Promise.all(
+      candidates.flatMap((candidate) => {
+        const writes = [
+          this.context.repository.appendAuditEvent("prospect", candidate.prospectId, "ValidationCleanupExcluded", {
+            batchId,
+            reason,
+            previousStatus: candidate.status,
+            previousStage: candidate.stage,
+          }),
+        ];
+        if (candidate.threadId) {
+          writes.push(
+            this.context.repository.appendAuditEvent("thread", candidate.threadId, "ValidationCleanupExcluded", {
+              batchId,
+              reason,
+              previousStatus: candidate.threadStatus,
+              prospectId: candidate.prospectId,
+            }),
+          );
+        }
+        return writes;
+      }),
+    );
+
+    return {
+      ok: true,
+      batchId,
+      reason,
+      affectedProspects: selectedProspectIds.length,
+      affectedThreads: candidates.filter((candidate) => candidate.threadId).length,
+      candidates,
     };
   }
 

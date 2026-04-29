@@ -202,6 +202,18 @@ export function createOrchidMcpServer(context: AppContext) {
   );
 
   server.registerTool(
+    "pipeline.validationBaseline",
+    {
+      description: "Summarize fresh production activity since a known validation start time, excluding rows marked as stale legacy data.",
+      inputSchema: {
+        since: z.string(),
+        limit: z.number().int().min(1).max(50).optional(),
+      },
+    },
+    async ({ since, limit }) => toToolResult(await context.mcpTools.handleTool("pipeline.validationBaseline", { since, limit })),
+  );
+
+  server.registerTool(
     "runtime.discovery",
     {
       description: "Inspect one discovery actor, including term frontier, recent runs, and source-local state.",
@@ -302,6 +314,34 @@ export function createOrchidMcpServer(context: AppContext) {
     },
     async ({ campaignId, timezone }) =>
       toToolResult(await context.mcpTools.handleTool("control.setCampaignTimezone", { campaignId, timezone })),
+  );
+
+  server.registerTool(
+    "control.previewValidationCleanup",
+    {
+      description: "Preview older prospects that should be excluded from the next fresh validation baseline.",
+      inputSchema: {
+        before: z.string(),
+        limit: z.number().int().min(1).max(200).optional(),
+      },
+    },
+    async ({ before, limit }) =>
+      toToolResult(await context.mcpTools.handleTool("control.previewValidationCleanup", { before, limit })),
+  );
+
+  server.registerTool(
+    "control.applyValidationCleanup",
+    {
+      description: "Mark stale prospects and threads as excluded from the fresh validation baseline without deleting audit history.",
+      inputSchema: {
+        before: z.string().optional(),
+        prospectIds: z.array(z.string()).optional(),
+        reason: z.string().optional(),
+        batchId: z.string().optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      },
+    },
+    async (args) => toToolResult(await context.mcpTools.handleTool("control.applyValidationCleanup", args)),
   );
 
   server.registerTool(
