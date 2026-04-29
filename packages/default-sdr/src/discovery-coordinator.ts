@@ -134,6 +134,7 @@ interface DiscoveryActorState {
   campaignId: string | null;
   source: DefaultSdrCoordinatorSource | null;
   initialized: boolean;
+  tickQueued: boolean;
   ticks: number;
   lastTickAt: number;
   nextTickAt: number;
@@ -178,6 +179,7 @@ export function createDefaultSdrDiscoveryCoordinator(deps: DefaultSdrDiscoveryDe
       campaignId: null as string | null,
       source: null as DefaultSdrCoordinatorSource | null,
       initialized: false as boolean,
+      tickQueued: false as boolean,
       ticks: 0,
       lastTickAt: 0,
       nextTickAt: 0,
@@ -285,6 +287,17 @@ export function createDefaultSdrDiscoveryCoordinator(deps: DefaultSdrDiscoveryDe
           reason?: string;
         },
       ) => {
+        if (c.state.tickQueued) {
+          return {
+            ok: true,
+            queued: false,
+            reason: "tick already queued",
+            source: c.state.source,
+            campaignId: c.state.campaignId,
+          };
+        }
+
+        c.state.tickQueued = true;
         await c.schedule.after(1, "tick", {
           reason: input?.reason ?? "manual_enqueue",
         });
@@ -479,6 +492,7 @@ export function createDefaultSdrDiscoveryCoordinator(deps: DefaultSdrDiscoveryDe
         }
 
         c.state.nextTickAt = 0;
+        c.state.tickQueued = false;
         c.state.lastStatus = "paused";
 
         return {
@@ -763,6 +777,8 @@ async function runDiscoveryTick(
   },
 ): Promise<DiscoveryTickResult> {
   const context = deps.getContext();
+  c.state.tickQueued = false;
+  c.state.nextTickAt = 0;
   if (context.localSmokeMode) {
     const source = c.state.source ?? "linkedin_public_post";
     const campaignId = c.state.campaignId ?? "cmp_default";
@@ -870,6 +886,23 @@ async function runDiscoveryTick(
     }
 
     const history = await loadDiscoveryHistory(c.db);
+    const runningTerms = await loadRunningDiscoveryTerms(c.db);
+    const availableRunSlots = Math.max(0, context.config.DISCOVERY_MAX_RUNS_PER_TICK - runningTerms.size);
+    if (availableRunSlots === 0) {
+      c.state.lastPlanner = planner;
+      c.state.lastStatus = "running";
+      return {
+        ok: true,
+        source,
+        campaignId,
+        scheduledNextTickAt: await scheduleNextTick(deps, c),
+        planner,
+        startedRuns,
+        skipped: true,
+        reason: "discovery run capacity is currently full",
+      };
+    }
+
     const fallbackTerms = deps.selectFallbackDiscoveryTerms({
       seedTerms: deps.getSeedTerms(source),
       history,
@@ -896,6 +929,15 @@ async function runDiscoveryTick(
       plannedTerms = sandboxPlan.terms;
       planner = "sandbox";
     }
+
+    plannedTerms = filterRunnableDiscoveryTerms({
+      plannedTerms,
+      history,
+      runningTerms,
+      now: Date.now(),
+      cooldownMs: context.config.DISCOVERY_INTERVAL_MS,
+      maxAdditionalRuns: availableRunSlots,
+    });
 
     if (!plannedTerms.length) {
       c.state.lastPlanner = planner;
@@ -1040,6 +1082,28 @@ async function startDiscoveryRunForTerm(
     priority: number;
   },
 ) {
+  const existingRun = await c.db.execute<{
+    actor_run_id: string;
+  }>(
+    `
+    select actor_run_id
+    from discovery_runs
+    where term = ?
+      and status = 'running'
+    order by created_at desc
+    limit 1
+    `,
+    input.term,
+  );
+  if (existingRun[0]?.actor_run_id) {
+    c.state.lastRunId = existingRun[0].actor_run_id;
+    c.state.lastTerm = input.term;
+    return {
+      actorRunId: existingRun[0].actor_run_id,
+      term: input.term,
+    };
+  }
+
   const context = deps.getContext();
   const discoveryProvider = context.providers.discovery;
   if (!discoveryProvider) {
@@ -1173,6 +1237,54 @@ async function loadDiscoveryHistory(database: {
       lastYieldAt: coerceNullableNumber(row.last_yield_at),
     }),
   );
+}
+
+async function loadRunningDiscoveryTerms(database: {
+  execute: <TRow extends Record<string, unknown> = Record<string, unknown>>(
+    query: string,
+    ...args: unknown[]
+  ) => Promise<TRow[]>;
+}) {
+  const rows = await database.execute<{
+    term: string;
+  }>(
+    `
+    select distinct term
+    from discovery_runs
+    where status = 'running'
+    `,
+  );
+
+  return new Set(rows.map((row) => row.term));
+}
+
+export function filterRunnableDiscoveryTerms(input: {
+  plannedTerms: DefaultSdrDiscoveryPlanTerm[];
+  history: DefaultSdrDiscoveryTermCandidate[];
+  runningTerms: ReadonlySet<string>;
+  now: number;
+  cooldownMs: number;
+  maxAdditionalRuns: number;
+}) {
+  if (input.maxAdditionalRuns <= 0) {
+    return [];
+  }
+
+  const historyByTerm = new Map(input.history.map((entry) => [entry.term, entry] as const));
+  return input.plannedTerms
+    .filter((entry) => {
+      if (input.runningTerms.has(entry.term)) {
+        return false;
+      }
+
+      const history = historyByTerm.get(entry.term);
+      if (!history?.lastUsedAt) {
+        return true;
+      }
+
+      return input.now - history.lastUsedAt >= input.cooldownMs;
+    })
+    .slice(0, input.maxAdditionalRuns);
 }
 
 async function planDiscoveryTerms(
