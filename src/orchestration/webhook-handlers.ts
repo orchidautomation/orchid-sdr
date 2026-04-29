@@ -1,19 +1,23 @@
 import type { HandoffWebhookPayload } from "../services/webhook-security.js";
 import type { DiscoverySource } from "../domain/types.js";
+import { getActorClient } from "../services/actor-client.js";
 import type { WorkflowDependencies } from "./types.js";
 import { ingestApifyRun, ingestSignalWebhook, type SignalWebhookPayload } from "./source-ingest.js";
 import { processInboundReply } from "./prospect-workflow.js";
 
+export interface ApifyWebhookPayload {
+  eventType: string;
+  actorRunId: string;
+  source?: DiscoverySource;
+  campaignId?: string;
+  term?: string | null;
+  defaultDatasetId?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
 export async function handleApifyWebhook(
   deps: WorkflowDependencies,
-  payload: {
-    eventType: string;
-    actorRunId: string;
-    source?: DiscoverySource;
-    campaignId?: string;
-    term?: string | null;
-    defaultDatasetId?: string | null;
-  },
+  payload: ApifyWebhookPayload,
 ) {
   if (!payload.eventType.includes("SUCCEEDED")) {
     return {
@@ -23,12 +27,18 @@ export async function handleApifyWebhook(
     };
   }
 
-  return ingestApifyRun(deps, {
+  const campaignId = payload.campaignId ?? (await deps.context.repository.ensureDefaultCampaign()).id;
+  const source = payload.source ?? "linkedin_public_post";
+  const client = getActorClient();
+  const actor = client.discoveryCoordinator.getOrCreate([campaignId, source]);
+
+  return actor.handleApifyRunCompleted({
     actorRunId: payload.actorRunId,
-    source: payload.source,
-    campaignId: payload.campaignId,
+    defaultDatasetId: payload.defaultDatasetId ?? null,
+    source,
+    campaignId,
     term: payload.term ?? null,
-    datasetId: payload.defaultDatasetId ?? null,
+    metadata: payload.metadata ?? {},
   });
 }
 
