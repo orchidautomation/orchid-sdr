@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import baseConfig from "../ai-sdr.config.js";
+import baseConfig from "../trellis.config.js";
 import {
   aiSdrInitModuleChoices,
   buildScaffoldSpec,

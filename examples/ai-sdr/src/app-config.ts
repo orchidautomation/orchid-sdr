@@ -1,3 +1,3 @@
-import config from "../ai-sdr.config.js";
+import config from "../trellis.config.js";
 
 export default config;

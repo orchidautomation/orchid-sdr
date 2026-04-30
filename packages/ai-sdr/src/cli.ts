@@ -7,7 +7,7 @@ import process from "node:process";
 import { createClient } from "rivetkit/client";
 import { loadProcessEnvFiles } from "../../framework/src/env-loader.js";
 
-import config from "../../../examples/ai-sdr/ai-sdr.config.js";
+import config from "../../../examples/ai-sdr/trellis.config.js";
 import { registry } from "../../../examples/ai-sdr/src/registry.js";
 import {
   aiSdrCompositionProfileIds,

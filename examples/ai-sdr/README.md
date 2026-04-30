@@ -33,7 +33,7 @@ If you are trying to understand what is framework vs what is app code, read thes
 3. [../../docs/turnkey-roadmap.md](../../docs/turnkey-roadmap.md)
 4. [../../docs/ai-sdr-go-live.md](../../docs/ai-sdr-go-live.md)
 5. [../../docs/extraction-plan.md](../../docs/extraction-plan.md)
-6. [ai-sdr.config.ts](ai-sdr.config.ts)
+6. [trellis.config.ts](trellis.config.ts)
 7. [src/registry.ts](src/registry.ts)
 8. [src/orchestration/prospect-workflow.ts](src/orchestration/prospect-workflow.ts)
 9. [convex/schema.ts](convex/schema.ts)
@@ -120,7 +120,7 @@ This example currently has three kinds of code in it:
 
 ### 1. App blueprint
 
-- `ai-sdr.config.ts`
+- `trellis.config.ts`
 
 This is the compositional layer:
 
@@ -391,7 +391,7 @@ Keep a single deployed control plane when the campaigns share the same product a
 
 - `src/`
   API, actors, orchestration, adapters, MCP server, and dashboard.
-- `ai-sdr.config.ts`
+- `trellis.config.ts`
   App blueprint for knowledge, skills, modules, providers, and bindings.
 - `knowledge/`
   Product context used by qualification, research, and drafting.

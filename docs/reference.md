@@ -33,7 +33,7 @@ For the full sandbox lane:
 - optional exact-post discovery config such as `APIFY_LINKEDIN_POSTS_TASK_ID` or `APIFY_LINKEDIN_POSTS_ACTOR_ID`
 - optional LinkedIn profile/company research config such as `APIFY_LINKEDIN_PROFILE_TASK_ID` or `APIFY_LINKEDIN_PROFILE_ACTOR_ID`
 - a separate "profile posts scraper" lane is a valid future Apify extension, but it is not part of the current AI SDR happy path and is not wired as a first-class runtime step yet
-- `modelRouting` in `ai-sdr.config.ts` can scope different gateway models by sandbox stage and by structured service operation
+- `modelRouting` in the app config file (the reference app uses `trellis.config.ts`) can scope different gateway models by sandbox stage and by structured service operation
 - `DISCOVERY_WEEKDAYS_ONLY=true` if you want discovery to skip weekends (enabled by default)
 - `SIGNAL_WEBHOOK_SECRET` if you want to post normalized signals from arbitrary sources
 
@@ -41,7 +41,7 @@ Important runtime notes:
 
 - `APP_URL` must be reachable from Vercel Sandboxes because the sandbox connects back to the repo MCP endpoint.
 - `APP_URL` must also be reachable from Apify and AgentMail because they post webhooks into the app.
-- webhook paths, auth modes, and secret env mappings are declared in `ai-sdr.config.ts` under `webhooks`
+- webhook paths, auth modes, and secret env mappings are declared in the app config file under `webhooks`
 - the server routes are still explicit in code; the config is the declarative source of truth for docs, validation, and scaffold generation
 
 ## Commands

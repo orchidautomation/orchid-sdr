@@ -108,7 +108,7 @@ The safest first demo keeps `NO_SENDS_MODE=true` and proves:
 
 ### Model Routing
 
-Model routing is configured in `ai-sdr.config.ts`.
+Model routing is configured in the app config file. The reference app uses `trellis.config.ts`.
 
 - `modelRouting.defaultModel` sets the global fallback.
 - `modelRouting.sandbox.defaultModel` sets the default model for sandbox agent turns.
@@ -316,7 +316,7 @@ npm run trellis -- discovery run "https://www.linkedin.com/feed/update/urn:li:ac
 npm run trellis -- discovery tick --source linkedin_public_post
 ```
 
-These commands update `ai-sdr.config.ts` and `.env`.
+These commands update the app config file and `.env`.
 
 ### Add MCPs And Skills
 

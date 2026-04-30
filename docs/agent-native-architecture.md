@@ -285,5 +285,5 @@ trellis dev
 2. Move canonical signal/prospect/thread state fully behind the state-plane contract.
 3. Keep Rivet actors focused on live execution and checkpoint back to Convex.
 4. Generate sandbox MCP config from module manifests.
-5. Add YAML parsing and compilation into `ai-sdr.config.ts`.
+5. Add YAML parsing and compilation into the Trellis app config file.
 6. Split provider packages out of the reference app.

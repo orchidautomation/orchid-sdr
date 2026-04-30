@@ -97,7 +97,7 @@ modules:
 The framework should compile this into:
 
 - package installs
-- `ai-sdr.config.ts`
+- `trellis.config.ts`
 - sandbox `.mcp.json`
 - env requirements
 - doctor checks

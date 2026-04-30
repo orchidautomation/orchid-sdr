@@ -117,7 +117,7 @@ Deliverable:
 
 ### 5. Treat the app manifest as the center of gravity
 
-Continue pushing app composition into `ai-sdr.config.ts`-style manifest code.
+Continue pushing app composition into `trellis.config.ts` / `<app-name>.config.ts`-style manifest code.
 
 Target app-owned surface:
 

@@ -14,7 +14,7 @@ Each part is designed to be inspectable, testable, and replaceable.
 
 ## Configuration Surface
 
-The root app config file (for example `ai-sdr.config.ts` in the reference app, or `<app-name>.config.ts` in a scaffolded Trellis app) describes a deployment in framework terms:
+The root app config file (the reference app uses `trellis.config.ts`, and scaffolded apps use `<app-name>.config.ts`) describes a deployment in framework terms:
 
 - knowledge files
 - tracked skills
@@ -275,7 +275,7 @@ Framework code currently includes:
 - `src/framework/index.ts`
 - `src/framework/signals.ts`
 - `src/framework/provider-contracts.ts`
-- `ai-sdr.config.ts`
+- `trellis.config.ts`
 - `scripts/doctor.ts`
 
 When extending or deploying Trellis, keep reusable contracts in `src/framework/` and keep customer-specific behavior in the app layer.
