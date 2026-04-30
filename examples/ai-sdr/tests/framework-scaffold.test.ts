@@ -56,21 +56,6 @@ describe("framework scaffold profiles", () => {
     expect(spec.config.capabilityBindings?.some((binding) => binding.providerId === "attio")).toBe(false);
   });
 
-  it("builds a production scaffold with production parity targets", () => {
-    const spec = buildScaffoldSpec(baseConfig, {
-      name: "trellis-prod",
-      profile: "production",
-    });
-
-    expect(spec.profile.id).toBe("production");
-    expect(spec.selection.id).toBe("production");
-    expect(spec.config.compositionTargets).toEqual(["minimum", "productionParity"]);
-    expect(spec.config.capabilityBindings?.some((binding) => binding.providerId === "parallel")).toBe(true);
-    expect(spec.config.capabilityBindings?.some((binding) => binding.providerId === "attio")).toBe(true);
-    expect(spec.config.capabilityBindings?.some((binding) => binding.providerId === "agentmail")).toBe(true);
-    expect(spec.config.campaigns?.[0]?.sources).toEqual(["normalized-webhook", "apify-linkedin"]);
-  });
-
   it("can extend a core scaffold with optional module choices", () => {
     const moduleIds = resolveInitModuleIds("core", {
       include: ["discovery", "deep-research"],
@@ -100,30 +85,31 @@ describe("framework scaffold profiles", () => {
     });
 
     expect(spec.profile.id).toBe("core");
-    expect(spec.selection.id).toBe("production");
+    expect(spec.selection.id).toBe("custom");
     expect(spec.config.compositionTargets).toEqual(["minimum", "productionParity"]);
   });
 
-  it("drops production parity when optional production modules are removed", () => {
-    const moduleIds = resolveInitModuleIds("production", {
-      exclude: ["crm", "email", "handoff"],
+  it("can remove optional lanes from the core scaffold explicitly", () => {
+    const moduleIds = resolveInitModuleIds("core", {
+      include: ["discovery", "crm", "email"],
+      exclude: ["crm"],
     });
     const spec = buildScaffoldSpec(baseConfig, {
-      name: "trellis-prod-lite",
-      profile: "production",
+      name: "trellis-core-lite",
+      profile: "core",
       moduleIds,
     });
 
     expect(spec.config.compositionTargets).toEqual(["minimum"]);
+    expect(spec.selectedModules.map((module) => module.id)).toContain("apify-linkedin");
+    expect(spec.selectedModules.map((module) => module.id)).toContain("agentmail");
     expect(spec.selectedModules.map((module) => module.id)).not.toContain("attio");
-    expect(spec.selectedModules.map((module) => module.id)).not.toContain("agentmail");
-    expect(spec.selectedModules.map((module) => module.id)).not.toContain("slack-handoff");
   });
 
   it("renders scaffold config and env example content", () => {
     const spec = buildScaffoldSpec(baseConfig, {
-      name: "trellis-starter",
-      profile: "starter",
+      name: "trellis-core",
+      profile: "core",
     });
 
     const configModule = renderScaffoldConfigModule(spec);
@@ -131,7 +117,7 @@ describe("framework scaffold profiles", () => {
     const setupChecklist = renderScaffoldSetupChecklist(spec);
 
     expect(configModule).toContain('from "@ai-sdr/framework"');
-    expect(configModule).toContain('const scaffoldName = "trellis-starter"');
+    expect(configModule).toContain('const scaffoldName = "trellis-core"');
     expect(configModule).toContain('const selectedModuleIds =');
     expect(configModule).toContain('"compositionTargets": [');
     expect(configModule).toContain('"name": scaffoldName');
@@ -140,7 +126,6 @@ describe("framework scaffold profiles", () => {
     expect(configModule).not.toContain('./src/framework/index.js');
     expect(envExample).toContain("CONVEX_URL=https://your-deployment.convex.cloud");
     expect(envExample).toContain("FIRECRAWL_API_KEY=");
-    expect(envExample).toContain("PARALLEL_API_KEY=");
     expect(envExample).toContain("TRELLIS_SANDBOX_TOKEN=change-me");
     expect(envExample).toContain("TRELLIS_MCP_TOKEN=");
     expect(envExample).toContain("DASHBOARD_PASSWORD=");

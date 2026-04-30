@@ -75,7 +75,15 @@ Smoke mode is only for boot and dashboard checks.
 npm run trellis -- init ../trellis-core --name trellis-core
 ```
 
-That command scaffolds the base Trellis runtime by default.
+That command scaffolds the base Trellis runtime and nothing extra:
+
+- normalized signal webhook ingest
+- Firecrawl search/extract
+- Convex state
+- Rivet actor runtime
+- Vercel Sandbox
+- Vercel AI Gateway
+- first-party Trellis MCP
 
 After boot, add capabilities incrementally:
 
@@ -85,13 +93,14 @@ npm run trellis -- add deep-research parallel --apply
 npm run trellis -- add enrichment prospeo --apply
 ```
 
-Choose lanes directly with flags:
+Or choose optional lanes up front with flags:
 
 ```bash
 npm run trellis -- init ../trellis-core-plus --name trellis-core-plus --with-discovery --with-deep-research
 ```
 
-The CLI no longer owns a guided wizard. Guided onboarding should sit on top of the CLI, not inside it.
+The CLI no longer owns a guided wizard, and it no longer exposes starter/production profiles.
+Guided onboarding should sit on top of the CLI, not inside it.
 When an agent or plugin is driving setup, use the JSON contract:
 
 ```bash
@@ -142,6 +151,32 @@ To actually feel the product as a new user:
   - `Slack` if you want handoff
 
 That is the current happy path. Vercel OAuth is not required for the scaffolded app.
+
+## 5.1. Core capability categories
+
+These are the categories you add/connect against from the CLI:
+
+- `source`
+- `search`
+- `extract`
+- `deep-research`
+- `enrichment`
+- `crm`
+- `email`
+- `handoff`
+- `state`
+- `runtime`
+- `model`
+- `mcp`
+
+Examples:
+
+```bash
+npm run trellis -- add source apify --apply
+npm run trellis -- connect source apify
+npm run trellis -- add crm attio --apply
+npm run trellis -- connect crm attio
+```
 
 ## 6. Verify
 

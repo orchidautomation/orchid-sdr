@@ -32,54 +32,13 @@ export type AiSdrInitModuleChoice = {
 export const aiSdrInitProfiles = {
   core: {
     id: "core",
-    displayName: "Core runtime",
-    description: "Smallest honest Trellis runtime that can ingest normalized signals, research the web, run actors, persist state, and expose MCP tools. No live discovery, CRM sync, or outbound providers by default.",
+    displayName: "Core Trellis app",
+    description: "Smallest honest Trellis runtime that can ingest normalized signals, research the web, run actors, persist state, and expose MCP tools. Discovery, CRM, outbound email, enrichment, and handoff stay optional until you add them.",
     defaultDirectoryName: "trellis-core",
     compositionTargets: ["minimum"],
     moduleIds: [
       "normalized-webhook",
       "firecrawl",
-      "convex",
-      "rivet",
-      "vercel-sandbox",
-      "vercel-ai-gateway",
-      "trellis-mcp",
-    ],
-  },
-  starter: {
-    id: "starter",
-    displayName: "Starter AI SDR",
-    description: "Core runtime plus discovery, deep research, and enrichment for a dry-run AI SDR deployment.",
-    defaultDirectoryName: "trellis-starter",
-    compositionTargets: ["minimum"],
-    moduleIds: [
-      "normalized-webhook",
-      "apify-linkedin",
-      "firecrawl",
-      "parallel",
-      "prospeo",
-      "convex",
-      "rivet",
-      "vercel-sandbox",
-      "vercel-ai-gateway",
-      "trellis-mcp",
-    ],
-  },
-  production: {
-    id: "production",
-    displayName: "Production parity AI SDR",
-    description: "Current Trellis stack with outbound email, CRM sync, handoff, discovery, and the full research lane.",
-    defaultDirectoryName: "trellis-production",
-    compositionTargets: ["minimum", "productionParity"],
-    moduleIds: [
-      "normalized-webhook",
-      "apify-linkedin",
-      "firecrawl",
-      "parallel",
-      "prospeo",
-      "attio",
-      "agentmail",
-      "slack-handoff",
       "convex",
       "rivet",
       "vercel-sandbox",
@@ -151,7 +110,13 @@ export function resolveInitProfile(profile: string | undefined): AiSdrInitProfil
   const normalizedProfile = profile && profile in legacyInitProfileAliases
     ? legacyInitProfileAliases[profile as keyof typeof legacyInitProfileAliases]
     : profile;
-  return aiSdrInitProfiles[(normalizedProfile ?? "core") as AiSdrInitProfileId] ?? aiSdrInitProfiles.core;
+  if (!normalizedProfile || normalizedProfile === "core") {
+    return aiSdrInitProfiles.core;
+  }
+
+  throw new Error(
+    `Unknown init profile: ${normalizedProfile}. Trellis init now scaffolds the core app only. Add optional lanes with --with-discovery, --with-deep-research, --with-enrichment, --with-crm, --with-email, or --with-handoff.`,
+  );
 }
 
 export function buildScaffoldSpec(

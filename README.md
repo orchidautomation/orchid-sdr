@@ -157,7 +157,17 @@ Start here:
 npm run trellis -- init ../my-trellis-agent --name my-trellis-agent --json
 ```
 
-For the current reference AI SDR shape:
+That always scaffolds the core Trellis app:
+
+- normalized webhook source ingest
+- Firecrawl search/extract
+- Convex state
+- Rivet actor runtime
+- Vercel Sandbox
+- Vercel AI Gateway
+- first-party Trellis MCP
+
+Then layer optional lanes on explicitly. For the current reference AI SDR shape:
 
 ```bash
 npm run trellis -- init ../my-ai-sdr \
@@ -170,6 +180,21 @@ npm run trellis -- init ../my-ai-sdr \
   --with-handoff \
   --json
 ```
+
+Core add/connect categories:
+
+- `source`
+- `search`
+- `extract`
+- `deep-research`
+- `enrichment`
+- `crm`
+- `email`
+- `handoff`
+- `state`
+- `runtime`
+- `model`
+- `mcp`
 
 ### 3. Use the guided plugin
 

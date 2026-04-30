@@ -78,6 +78,26 @@ Then add only what you plan to show:
 - `AgentMail` for outbound and replies
 - `Slack` for handoff
 
+That is also the Trellis scaffold rule now:
+
+- `npm run trellis -- init ...` always gives you the core app
+- optional lanes are added explicitly with `--with-*`, `add`, and `connect`
+
+The public capability categories are:
+
+- `source`
+- `search`
+- `extract`
+- `deep-research`
+- `enrichment`
+- `crm`
+- `email`
+- `handoff`
+- `state`
+- `runtime`
+- `model`
+- `mcp`
+
 The safest first demo keeps `NO_SENDS_MODE=true` and proves:
 
 - one signal entered

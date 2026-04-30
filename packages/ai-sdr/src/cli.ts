@@ -163,8 +163,20 @@ Examples:
 Simple labels stay short in the CLI: search, extract, deep-research, monitor, enrichment.
 The alias "research" resolves to the full research contract family.
 
-Init is now a deterministic scaffold command, not an interactive wizard.
-Use explicit lane flags or the future Pluxx-guided onboarding plugin.
+Init now always scaffolds the core Trellis app.
+Add optional lanes with explicit flags or later with add/connect commands.
+Optional lane flags:
+  --with-discovery
+  --with-deep-research
+  --with-enrichment
+  --with-crm
+  --with-email
+  --with-handoff
+
+Capability categories available through add/connect:
+  source, search, extract, deep-research, enrichment, crm, email, handoff, state, runtime, model, mcp
+
+Init is deterministic, not an interactive wizard.
 Use --json when a plugin or coding agent is orchestrating the setup.
 Use add ... --apply to layer in new providers and sources after boot.
 Apply mode works on scaffold-generated workspaces.`);
@@ -675,7 +687,13 @@ async function resolveInitInput(targetArg: string | undefined, flags: Record<str
     );
   }
 
-  const profile = String(flags.profile ?? "core");
+  if (typeof flags.profile === "string") {
+    throw new Error(
+      "Init profiles were removed. Trellis init now creates the core app only. Add optional lanes with --with-discovery, --with-deep-research, --with-enrichment, --with-crm, --with-email, or --with-handoff.",
+    );
+  }
+
+  const profile = "core";
   const resolvedTargetArg = targetArg;
   const appName = String(flags.name ?? path.basename(path.resolve(process.cwd(), resolvedTargetArg)));
   const moduleIds = resolveInitModuleIds(profile, resolveModuleChoiceFlags(flags));
