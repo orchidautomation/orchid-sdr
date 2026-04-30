@@ -1,5 +1,5 @@
 {
-  "name": "@ai-sdr/vercel-ai-gateway",
+  "name": "@trellis/vercel-ai-gateway",
   "version": "0.1.0",
   "private": true,
   "type": "module",

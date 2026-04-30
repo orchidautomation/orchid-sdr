@@ -1,6 +1,6 @@
 # Convex + Vercel Prod Runbook
 
-This is the shortest exact path for deploying the Trellis AI SDR reference app to:
+This is the shortest exact path for deploying the Trellis reference app to:
 
 - Convex Cloud for state
 - Vercel for the app surface

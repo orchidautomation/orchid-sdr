@@ -33,7 +33,7 @@ Good looks like:
 ### 2. Keep collapsing app-specific server glue into the framework
 
 Still outstanding:
-- reduce `examples/ai-sdr/src/server.ts` further
+- reduce `examples/reference-app/src/server.ts` further
 - pull any remaining generic webhook/operator transport patterns into `default-sdr`
 
 Good looks like:

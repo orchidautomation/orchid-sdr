@@ -33,9 +33,9 @@ The relevant source files are:
 - [README.md](../README.md)
 - [docs/agent-native-architecture.md](agent-native-architecture.md)
 - [docs/framework-primitives.md](framework-primitives.md)
-- [knowledge/product.md](../examples/ai-sdr/knowledge/product.md)
-- [knowledge/icp.md](../examples/ai-sdr/knowledge/icp.md)
-- [knowledge/usp.md](../examples/ai-sdr/knowledge/usp.md)
+- [knowledge/product.md](../examples/reference-app/knowledge/product.md)
+- [knowledge/icp.md](../examples/reference-app/knowledge/icp.md)
+- [knowledge/usp.md](../examples/reference-app/knowledge/usp.md)
 
 ## Workflow Shape
 
@@ -51,8 +51,8 @@ The repo primarily runs many short or medium-length turns that:
 
 The key stages are visible in:
 
-- [src/orchestration/prospect-workflow.ts](../examples/ai-sdr/src/orchestration/prospect-workflow.ts)
-- [src/orchestration/discovery-coordinator.ts](../examples/ai-sdr/src/orchestration/discovery-coordinator.ts)
+- [src/orchestration/prospect-workflow.ts](../examples/reference-app/src/orchestration/prospect-workflow.ts)
+- [src/orchestration/discovery-coordinator.ts](../examples/reference-app/src/orchestration/discovery-coordinator.ts)
 
 That means model selection should optimize for:
 
@@ -67,8 +67,8 @@ That means model selection should optimize for:
 
 Today the repo uses `moonshotai/kimi-k2.6` in both main lanes:
 
-- structured object generation in [src/services/ai-service.ts](../examples/ai-sdr/src/services/ai-service.ts)
-- sandbox turns in [src/orchestration/sandbox-broker.ts](../examples/ai-sdr/src/orchestration/sandbox-broker.ts)
+- structured object generation in [src/services/ai-service.ts](../examples/reference-app/src/services/ai-service.ts)
+- sandbox turns in [src/orchestration/sandbox-broker.ts](../examples/reference-app/src/orchestration/sandbox-broker.ts)
 
 This is simple, but too blunt for the actual workflow shape.
 

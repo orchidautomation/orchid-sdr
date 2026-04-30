@@ -3,7 +3,7 @@ import {
   hasRemoteRuntimeEndpoint,
   runNonFatalBootstrapTask,
   shouldSkipLocalRuntimeOnVercel,
-} from "@ai-sdr/framework/runtime-bootstrap";
+} from "@trellis/framework/runtime-bootstrap";
 
 export interface DefaultSdrBootstrapContext {
   config: {
@@ -137,7 +137,7 @@ async function ensureDefaultCampaignWithActionableError(context: DefaultSdrBoots
       throw new Error(
         [
           "Convex is configured, but the Trellis functions are not synced to that deployment yet.",
-          "Run `npx convex dev` from the repo root so Convex picks up `convex.json` and syncs `examples/ai-sdr/convex`.",
+          "Run `npx convex dev` from the repo root so Convex picks up `convex.json` and syncs `examples/reference-app/convex`.",
           "If you only want a local boot check, set `TRELLIS_LOCAL_SMOKE_MODE=true` before `npm run dev`.",
         ].join(" "),
       );

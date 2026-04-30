@@ -5,7 +5,7 @@ export function attioProvider(): AiSdrProviderDefinition {
     id: "attio",
     kind: "crm",
     displayName: "Attio",
-    packageName: "@ai-sdr/attio",
+    packageName: "@trellis/attio",
     env: [
       { name: "ATTIO_API_KEY", description: "Attio API key used for CRM sync." },
       { name: "ATTIO_DEFAULT_LIST_ID", description: "Optional Attio list for prospect cards." },
@@ -20,7 +20,7 @@ export function agentMailProvider(): AiSdrProviderDefinition {
     id: "agentmail",
     kind: "email",
     displayName: "AgentMail",
-    packageName: "@ai-sdr/agentmail",
+    packageName: "@trellis/agentmail",
     env: [
       { name: "AGENTMAIL_API_KEY", description: "AgentMail API key used for outbound and replies." },
       { name: "AGENTMAIL_WEBHOOK_SECRET", description: "Svix webhook secret for inbound events." },
@@ -36,7 +36,7 @@ export function apifyLinkedInProvider(): AiSdrProviderDefinition {
     id: "apify-linkedin",
     kind: "signal-source",
     displayName: "Apify LinkedIn public posts",
-    packageName: "@ai-sdr/apify-linkedin",
+    packageName: "@trellis/apify-linkedin",
     env: [
       { name: "APIFY_TOKEN", description: "Apify API token." },
       { name: "APIFY_WEBHOOK_SECRET", description: "Shared secret for Apify webhook delivery." },
@@ -68,7 +68,7 @@ export function normalizedWebhookProvider(): AiSdrProviderDefinition {
     id: "normalized-webhook",
     kind: "signal-source",
     displayName: "Normalized signal webhook",
-    packageName: "@ai-sdr/webhooks",
+    packageName: "@trellis/webhooks",
     env: [
       { name: "SIGNAL_WEBHOOK_SECRET", description: "Shared secret for generic signal ingestion." },
     ],
@@ -81,7 +81,7 @@ export function firecrawlProvider(): AiSdrProviderDefinition {
     id: "firecrawl",
     kind: "research",
     displayName: "Firecrawl",
-    packageName: "@ai-sdr/firecrawl",
+    packageName: "@trellis/firecrawl",
     env: [
       { name: "FIRECRAWL_API_KEY", description: "Firecrawl API key used for extraction and research." },
     ],
@@ -94,7 +94,7 @@ export function parallelProvider(): AiSdrProviderDefinition {
     id: "parallel",
     kind: "research",
     displayName: "Parallel",
-    packageName: "@ai-sdr/parallel",
+    packageName: "@trellis/parallel",
     env: [
       { name: "PARALLEL_API_KEY", description: "Parallel API key used for search, extract, enrichment, monitor, and MCP auth." },
       { name: "PARALLEL_BASE_URL", description: "Optional Parallel API base URL for direct search." },
@@ -118,7 +118,7 @@ export function prospeoProvider(): AiSdrProviderDefinition {
     id: "prospeo",
     kind: "research",
     displayName: "Prospeo",
-    packageName: "@ai-sdr/prospeo",
+    packageName: "@trellis/prospeo",
     env: [
       { name: "PROSPEO_API_KEY", description: "Prospeo API key used for email enrichment." },
       { name: "PROSPEO_BASE_URL", description: "Optional Prospeo API base URL. Default is https://api.prospeo.io." },
@@ -135,7 +135,7 @@ export function convexProvider(): AiSdrProviderDefinition {
     id: "convex",
     kind: "state",
     displayName: "Convex",
-    packageName: "@ai-sdr/convex",
+    packageName: "@trellis/convex",
     env: [
       { name: "CONVEX_DEPLOYMENT", description: "Convex deployment selector used by the Convex CLI." },
       { name: "CONVEX_DEPLOY_KEY", description: "Convex deploy key for CI and production deploys." },
@@ -159,7 +159,7 @@ export function rivetProvider(): AiSdrProviderDefinition {
     id: "rivet",
     kind: "runtime",
     displayName: "Rivet",
-    packageName: "@ai-sdr/rivet",
+    packageName: "@trellis/rivet",
     env: [
       { name: "RIVET_ENDPOINT", description: "Optional Rivet endpoint for hosted or self-hosted actor runtime." },
       { name: "RIVET_TOKEN", description: "Optional Rivet auth token." },
@@ -183,7 +183,7 @@ export function vercelAiGatewayProvider(): AiSdrProviderDefinition {
     id: "vercel-ai-gateway",
     kind: "model",
     displayName: "Vercel AI Gateway",
-    packageName: "@ai-sdr/vercel-ai-gateway",
+    packageName: "@trellis/vercel-ai-gateway",
     env: [
       { name: "AI_GATEWAY_API_KEY", description: "Preferred AI Gateway API key." },
       { name: "VERCEL_AI_GATEWAY_KEY", description: "Fallback AI Gateway key." },
@@ -197,7 +197,7 @@ export function vercelSandboxProvider(): AiSdrProviderDefinition {
     id: "vercel-sandbox",
     kind: "runtime",
     displayName: "Vercel Sandbox",
-    packageName: "@ai-sdr/vercel-sandbox",
+    packageName: "@trellis/vercel-sandbox",
     env: [
       { name: "VERCEL_OIDC_TOKEN", description: "OIDC token for Vercel Sandbox auth." },
       { name: "VERCEL_TOKEN", description: "Token-based Vercel Sandbox auth." },
@@ -213,7 +213,7 @@ export function trellisMcpProvider(): AiSdrProviderDefinition {
     id: "trellis-mcp",
     kind: "mcp",
     displayName: "Trellis first-party MCP",
-    packageName: "@ai-sdr/mcp",
+    packageName: "@trellis/mcp",
     env: [
       { name: "TRELLIS_MCP_TOKEN", description: "Bearer token for remote MCP access." },
       {
@@ -231,7 +231,7 @@ export function slackHandoffProvider(): AiSdrProviderDefinition {
     id: "slack-handoff",
     kind: "handoff",
     displayName: "Slack handoff",
-    packageName: "@ai-sdr/slack",
+    packageName: "@trellis/slack",
     env: [
       { name: "SLACK_BOT_TOKEN", description: "Slack bot token for channel handoff." },
       { name: "SLACK_DEFAULT_CHANNEL", description: "Default Slack channel for handoff." },

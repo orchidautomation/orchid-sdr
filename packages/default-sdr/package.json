@@ -1,5 +1,5 @@
 {
-  "name": "@ai-sdr/default-sdr",
+  "name": "@trellis/default-sdr",
   "version": "0.1.0",
   "private": true,
   "type": "module",

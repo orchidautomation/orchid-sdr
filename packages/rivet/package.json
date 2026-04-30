@@ -1,5 +1,5 @@
 {
-  "name": "@ai-sdr/rivet",
+  "name": "@trellis/rivet",
   "version": "0.1.0",
   "private": true,
   "type": "module",

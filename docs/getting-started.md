@@ -48,7 +48,7 @@ npm run doctor
 npm run dev
 ```
 
-Keep `npx convex dev` running while you do real local development against Convex. Trellis uses the repo-root `convex.json` file to point Convex at the reference app functions in `examples/ai-sdr/convex`.
+Keep `npx convex dev` running while you do real local development against Convex. Trellis uses the repo-root `convex.json` file to point Convex at the reference app functions in `examples/reference-app/convex`.
 
 If port `3000` is already in use, either stop the old process or set a new app port:
 
@@ -237,7 +237,7 @@ For a hosted demo, connect remote MCP only after the app is reachable at `${APP_
 Every scaffolded project includes:
 
 - `TRELLIS_SETUP.md`
-- `packages/` with the local `@ai-sdr/*` workspace packages used by the scaffold
+- `packages/` with the local `@trellis/*` workspace packages used by the scaffold
 
 That file is the app-specific onboarding checklist. Start there before enabling discovery, CRM, or outbound email.
 

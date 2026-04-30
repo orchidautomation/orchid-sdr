@@ -77,7 +77,7 @@ name: profound-sdr
 modules:
   - capability: search
     provider: parallel
-    package: "@ai-sdr/parallel"
+    package: "@trellis/parallel"
     mcp:
       - id: parallel-search
         url: https://search.parallel.ai/mcp
@@ -87,7 +87,7 @@ modules:
         auth: bearer
   - capability: extract
     provider: firecrawl
-    package: "@ai-sdr/firecrawl"
+    package: "@trellis/firecrawl"
     mcp:
       - id: firecrawl
         url: https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp

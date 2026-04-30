@@ -151,15 +151,15 @@ HandoffProvider
 These contracts support package extraction for providers such as:
 
 ```text
-@ai-sdr/attio
-@ai-sdr/hubspot
-@ai-sdr/agentmail
-@ai-sdr/convex
-@ai-sdr/parallel
-@ai-sdr/firecrawl
-@ai-sdr/neon
-@ai-sdr/apify-linkedin
-@ai-sdr/twenty
+@trellis/attio
+@trellis/hubspot
+@trellis/agentmail
+@trellis/convex
+@trellis/parallel
+@trellis/firecrawl
+@trellis/neon
+@trellis/apify-linkedin
+@trellis/twenty
 ```
 
 ### CLI Mapping
@@ -168,19 +168,19 @@ Current package targets:
 
 | Command | Package | Capabilities |
 | --- | --- | --- |
-| `trellis add crm attio` | `@ai-sdr/attio` | `crm` |
-| `trellis add email agentmail` | `@ai-sdr/agentmail` | `email` |
-| `trellis add state convex` | `@ai-sdr/convex` | `state` |
-| `trellis add source apify` | `@ai-sdr/apify-linkedin` | `source` |
-| `trellis add source webhook` | `@ai-sdr/webhooks` | `source` |
-| `trellis add search parallel` | `@ai-sdr/parallel` | `search`, `extract`, `enrichment`, `source` |
-| `trellis add extract firecrawl` | `@ai-sdr/firecrawl` | `source`, `search`, `extract`, `enrichment`, `runtime`, `observability` |
-| `trellis add database neon` | `@ai-sdr/neon` | `database` |
-| `trellis add model vercel-ai-gateway` | `@ai-sdr/vercel-ai-gateway` | `model` |
-| `trellis add runtime rivet` | `@ai-sdr/rivet` | `runtime` |
-| `trellis add runtime vercel-sandbox` | `@ai-sdr/vercel-sandbox` | `runtime` |
-| `trellis add handoff slack` | `@ai-sdr/slack` | `handoff` |
-| `trellis add mcp trellis-mcp` | `@ai-sdr/mcp` | `mcp` |
+| `trellis add crm attio` | `@trellis/attio` | `crm` |
+| `trellis add email agentmail` | `@trellis/agentmail` | `email` |
+| `trellis add state convex` | `@trellis/convex` | `state` |
+| `trellis add source apify` | `@trellis/apify-linkedin` | `source` |
+| `trellis add source webhook` | `@trellis/webhooks` | `source` |
+| `trellis add search parallel` | `@trellis/parallel` | `search`, `extract`, `enrichment`, `source` |
+| `trellis add extract firecrawl` | `@trellis/firecrawl` | `source`, `search`, `extract`, `enrichment`, `runtime`, `observability` |
+| `trellis add database neon` | `@trellis/neon` | `database` |
+| `trellis add model vercel-ai-gateway` | `@trellis/vercel-ai-gateway` | `model` |
+| `trellis add runtime rivet` | `@trellis/rivet` | `runtime` |
+| `trellis add runtime vercel-sandbox` | `@trellis/vercel-sandbox` | `runtime` |
+| `trellis add handoff slack` | `@trellis/slack` | `handoff` |
+| `trellis add mcp trellis-mcp` | `@trellis/mcp` | `mcp` |
 
 Provider packages can satisfy more than one capability. The CLI installs by capability and provider pair while the underlying package remains provider-owned.
 
@@ -238,7 +238,7 @@ This interface allows external agents to inspect and control the live SDR system
 
 Typical developer workflow:
 
-1. scaffold or clone an AI SDR project
+1. scaffold or clone a Trellis project
 2. define product and ICP context in `knowledge/`
 3. add providers for the target stack
 4. add or modify skills

@@ -265,7 +265,7 @@ export function renderScaffoldConfigModule(spec: AiSdrScaffoldSpec) {
     .replace('"providers": "providersFromModules(modules)"', '"providers": providersFromModules(modules)');
 
   return [
-    'import { defineAiSdr, defaultTrellisModules, providersFromModules } from "@ai-sdr/framework";',
+    'import { defineAiSdr, defaultTrellisModules, providersFromModules } from "@trellis/framework";',
     "",
     `const scaffoldName = ${JSON.stringify(scaffoldName)};`,
     `const scaffoldDescription = ${JSON.stringify(scaffoldDescription)};`,

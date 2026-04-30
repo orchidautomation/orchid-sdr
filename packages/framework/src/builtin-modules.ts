@@ -19,7 +19,7 @@ export function attioModule(): AiSdrModuleDefinition {
   return module({
     id: "attio",
     displayName: "Attio CRM",
-    packageName: "@ai-sdr/attio",
+    packageName: "@trellis/attio",
     description: "Sync qualified prospects into Attio and promote list stages on reply events.",
     providerKey: "attio",
     capabilityIds: ["crm"],
@@ -44,7 +44,7 @@ export function agentMailModule(): AiSdrModuleDefinition {
   return module({
     id: "agentmail",
     displayName: "AgentMail",
-    packageName: "@ai-sdr/agentmail",
+    packageName: "@trellis/agentmail",
     description: "Provide agent-native outbound email, sender inboxes, reply fetching, and inbound webhooks.",
     providerKey: "agentmail",
     capabilityIds: ["email"],
@@ -77,7 +77,7 @@ export function apifyLinkedInModule(): AiSdrModuleDefinition {
   return module({
     id: "apify-linkedin",
     displayName: "Apify LinkedIn public-post discovery",
-    packageName: "@ai-sdr/apify-linkedin",
+    packageName: "@trellis/apify-linkedin",
     description: "Discover LinkedIn public posts and normalize them into SDR signals.",
     providerKey: "apify",
     capabilityIds: ["source"],
@@ -102,7 +102,7 @@ export function normalizedWebhookModule(): AiSdrModuleDefinition {
   return module({
     id: "normalized-webhook",
     displayName: "Normalized signal webhook",
-    packageName: "@ai-sdr/webhooks",
+    packageName: "@trellis/webhooks",
     description: "Accept warm leads and custom source signals through a normalized webhook contract.",
     providerKey: "webhook",
     capabilityIds: ["source"],
@@ -127,7 +127,7 @@ export function firecrawlModule(): AiSdrModuleDefinition {
   return module({
     id: "firecrawl",
     displayName: "Firecrawl research",
-    packageName: "@ai-sdr/firecrawl",
+    packageName: "@trellis/firecrawl",
     description: "Primary search and extraction surface for open-web research, crawling, and browser-backed page interaction.",
     providerKey: "firecrawl",
     capabilityIds: ["source", "search", "extract", "enrichment", "runtime", "observability"],
@@ -245,7 +245,7 @@ export function parallelModule(): AiSdrModuleDefinition {
   return module({
     id: "parallel",
     displayName: "Parallel research",
-    packageName: "@ai-sdr/parallel",
+    packageName: "@trellis/parallel",
     description: "Run deep research, monitoring, async task workflows, and optional enrichment through Parallel APIs and MCP tools.",
     providerKey: "parallel",
     capabilityIds: ["search", "extract", "enrichment", "source", "observability"],
@@ -352,7 +352,7 @@ export function prospeoModule(): AiSdrModuleDefinition {
   return module({
     id: "prospeo",
     displayName: "Prospeo enrichment",
-    packageName: "@ai-sdr/prospeo",
+    packageName: "@trellis/prospeo",
     description: "Resolve verified work email addresses for qualified prospects before outbound begins.",
     providerKey: "prospeo",
     capabilityIds: ["enrichment"],
@@ -371,7 +371,7 @@ export function convexModule(): AiSdrModuleDefinition {
   return module({
     id: "convex",
     displayName: "Convex state plane",
-    packageName: "@ai-sdr/convex",
+    packageName: "@trellis/convex",
     description: "Use Convex as the reactive source of truth for SDR state, workflow checkpoints, agent threads, and live dashboard queries.",
     providerKey: "convex",
     capabilityIds: ["state"],
@@ -402,7 +402,7 @@ export function vercelAiGatewayModule(): AiSdrModuleDefinition {
   return module({
     id: "vercel-ai-gateway",
     displayName: "Vercel AI Gateway",
-    packageName: "@ai-sdr/vercel-ai-gateway",
+    packageName: "@trellis/vercel-ai-gateway",
     description: "Route structured model calls and sandbox turns through a swappable model gateway.",
     providerKey: "vercel-ai-gateway",
     capabilityIds: ["model"],
@@ -415,7 +415,7 @@ export function rivetModule(): AiSdrModuleDefinition {
   return module({
     id: "rivet",
     displayName: "Rivet runtime",
-    packageName: "@ai-sdr/rivet",
+    packageName: "@trellis/rivet",
     description: "Run stateful agent actors, workflow control, queues, and realtime runtime events.",
     providerKey: "rivet",
     capabilityIds: ["runtime"],
@@ -440,7 +440,7 @@ export function vercelSandboxModule(): AiSdrModuleDefinition {
   return module({
     id: "vercel-sandbox",
     displayName: "Vercel Sandbox runtime",
-    packageName: "@ai-sdr/vercel-sandbox",
+    packageName: "@trellis/vercel-sandbox",
     description: "Run turn-scoped coding-agent style workflows with mounted skills and MCP tools.",
     providerKey: "vercel-sandbox",
     capabilityIds: ["runtime"],
@@ -460,7 +460,7 @@ export function trellisMcpModule(): AiSdrModuleDefinition {
   return module({
     id: "trellis-mcp",
     displayName: "First-party MCP",
-    packageName: "@ai-sdr/mcp",
+    packageName: "@trellis/mcp",
     description: "Expose pipeline, lead, runtime, mail, CRM, and handoff tools through MCP.",
     providerKey: "trellis-mcp",
     capabilityIds: ["mcp"],
@@ -485,7 +485,7 @@ export function slackHandoffModule(): AiSdrModuleDefinition {
   return module({
     id: "slack-handoff",
     displayName: "Slack handoff",
-    packageName: "@ai-sdr/slack",
+    packageName: "@trellis/slack",
     description: "Route handoff events into Slack.",
     providerKey: "slack",
     capabilityIds: ["handoff"],

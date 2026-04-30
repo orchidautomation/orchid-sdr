@@ -283,7 +283,7 @@ Set `APP_URL` explicitly for deployed environments. On Vercel, the app falls bac
 
 For a new deployment:
 
-1. start from the current reference AI SDR
+1. start from the current reference app
 2. connect Convex, Vercel, Firecrawl, and Rivet
 3. set `NO_SENDS_MODE=true`
 4. run `npm run doctor`
@@ -327,7 +327,7 @@ To extend the operator or agent surface:
 
 When an integration should become part of the framework:
 
-- add or use a dedicated `@ai-sdr/<provider>` package
+- add or use a dedicated `@trellis/<provider>` package
 - map it into capability bindings
 - document its environment variables, smoke checks, and contracts
 

@@ -1,5 +1,5 @@
 {
-  "name": "@ai-sdr/parallel",
+  "name": "@trellis/parallel",
   "version": "0.1.0",
   "private": true,
   "type": "module",

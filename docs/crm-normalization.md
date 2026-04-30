@@ -120,14 +120,14 @@ Nango-backed adapters can use Nango for auth, proxy calls, and sync/action execu
 Likely future modules:
 
 ```text
-@ai-sdr/salesforce
-@ai-sdr/hubspot
-@ai-sdr/twenty
-@ai-sdr/nango
-@ai-sdr/attio
+@trellis/salesforce
+@trellis/hubspot
+@trellis/twenty
+@trellis/nango
+@trellis/attio
 ```
 
-The `@ai-sdr/nango` package should probably be a lower-level integration runtime helper, while Salesforce/HubSpot/Twenty packages provide CRM-specific mappings.
+The `@trellis/nango` package should probably be a lower-level integration runtime helper, while Salesforce/HubSpot/Twenty packages provide CRM-specific mappings.
 
 Each CRM module should declare the normalized contracts it supports:
 

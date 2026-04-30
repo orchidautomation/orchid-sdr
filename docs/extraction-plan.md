@@ -21,7 +21,7 @@ When code expresses app-specific judgment or domain behavior, it can remain in t
 
 ## Recommended Package Boundary
 
-Not every extraction belongs in `@ai-sdr/framework`.
+Not every extraction belongs in `@trellis/framework`.
 
 There are now two distinct kinds of reusable code:
 
@@ -30,12 +30,12 @@ There are now two distinct kinds of reusable code:
 
 The generic Trellis primitives belong in framework packages like:
 
-- `@ai-sdr/framework`
-- `@ai-sdr/convex`
+- `@trellis/framework`
+- `@trellis/convex`
 
 The SDR-specific reusable substrate should likely converge into a dedicated package such as:
 
-- `@ai-sdr/default-sdr`
+- `@trellis/default-sdr`
 
 That package would own:
 
@@ -56,7 +56,7 @@ Already moved into shared packages:
 - `packages/convex/`
   - default Convex schema
   - generic state mutations
-- `packages/default-sdr/`
+- `packages/default/`
   - default SDR domain types
   - repository contracts
   - Convex HTTP repository client
@@ -77,31 +77,31 @@ Already moved into shared packages:
 
 Still primarily app-owned:
 
-- `examples/ai-sdr/src/orchestration/prospect-workflow.ts`
-- `examples/ai-sdr/src/server.ts`
+- `examples/reference-app/src/orchestration/prospect-workflow.ts`
+- `examples/reference-app/src/server.ts`
 
 Partially extracted but still mixed:
 
-- `examples/ai-sdr/src/services/mcp-tools.ts`
-  - operator/runtime/pipeline reads now belong to `packages/default-sdr/`
+- `examples/reference-app/src/services/mcp-tools.ts`
+  - operator/runtime/pipeline reads now belong to `packages/default/`
   - provider-heavy actions such as Attio sync, AgentMail send/reply, and custom handoff still belong to the AI SDR app or a future richer SDR package
 
-- `examples/ai-sdr/src/services/runtime-context.ts`
+- `examples/reference-app/src/services/runtime-context.ts`
   - app-specific adapters/services still assembled here
-- `examples/ai-sdr/src/services/runtime-bootstrap.ts`
+- `examples/reference-app/src/services/runtime-bootstrap.ts`
   - now mostly a thin wrapper over shared default SDR bootstrap
-- `examples/ai-sdr/src/server.ts`
-  - dashboard state builders now belong to `packages/default-sdr/`
-  - dashboard auth/state routes and MCP HTTP route now belong to `packages/default-sdr/`
-  - dashboard operator action route boilerplate now belongs to `packages/default-sdr/`
+- `examples/reference-app/src/server.ts`
+  - dashboard state builders now belong to `packages/default/`
+  - dashboard auth/state routes and MCP HTTP route now belong to `packages/default/`
+  - dashboard operator action route boilerplate now belongs to `packages/default/`
   - Rivet proxy wiring and app-specific webhook handler wiring still live in the app
-- `examples/ai-sdr/src/orchestration/discovery-coordinator.ts`
-  - actor shell and state machine now belong to `packages/default-sdr/`
+- `examples/reference-app/src/orchestration/discovery-coordinator.ts`
+  - actor shell and state machine now belong to `packages/default/`
   - the example keeps only a thin dependency-wiring wrapper
-- `examples/ai-sdr/src/orchestration/source-ingest.ts`
+- `examples/reference-app/src/orchestration/source-ingest.ts`
   - stays app-level for now because it bridges generic signal normalization into app-specific prospect workflow execution
-- `examples/ai-sdr/src/orchestration/prospect-workflow.ts`
-  - pause/audit, stage activation, and follow-up scheduling now belong to `packages/default-sdr/`
+- `examples/reference-app/src/orchestration/prospect-workflow.ts`
+  - pause/audit, stage activation, and follow-up scheduling now belong to `packages/default/`
   - qualification, research, drafting, reply, and handoff judgment still live in the app
 
 ## Extraction Buckets
@@ -110,12 +110,12 @@ Partially extracted but still mixed:
 
 Current custom surfaces:
 
-- `examples/ai-sdr/convex/repository.ts`
-- `examples/ai-sdr/src/repository.ts`
+- `examples/reference-app/convex/repository.ts`
+- `examples/reference-app/src/repository.ts`
 
 Extraction target:
 
-- `@ai-sdr/convex` or broader Trellis state package
+- `@trellis/convex` or broader Trellis state package
 
 What should move:
 
@@ -135,10 +135,10 @@ What should remain configurable:
 
 Current custom surfaces:
 
-- `examples/ai-sdr/src/index.ts`
-- `examples/ai-sdr/src/services/runtime-bootstrap.ts`
-- `examples/ai-sdr/src/services/runtime-context.ts`
-- `examples/ai-sdr/src/services/state-plane.ts`
+- `examples/reference-app/src/index.ts`
+- `examples/reference-app/src/services/runtime-bootstrap.ts`
+- `examples/reference-app/src/services/runtime-context.ts`
+- `examples/reference-app/src/services/state-plane.ts`
 
 Extraction target:
 
@@ -162,9 +162,9 @@ What should remain configurable:
 
 Current custom surfaces:
 
-- `examples/ai-sdr/src/services/webhook-security.ts`
-- app-specific handler functions in `examples/ai-sdr/src/orchestration/webhook-handlers.ts`
-- app-specific route composition in `examples/ai-sdr/src/server.ts`
+- `examples/reference-app/src/services/webhook-security.ts`
+- app-specific handler functions in `examples/reference-app/src/orchestration/webhook-handlers.ts`
+- app-specific route composition in `examples/reference-app/src/server.ts`
 
 Extraction target:
 
@@ -187,10 +187,10 @@ What should remain configurable:
 
 Current custom surfaces:
 
-- `examples/ai-sdr/src/orchestration/discovery-coordinator.ts`
-- `examples/ai-sdr/src/orchestration/source-ingest.ts`
-- `examples/ai-sdr/src/orchestration/sandbox-broker.ts`
-- parts of `examples/ai-sdr/src/orchestration/prospect-workflow.ts`
+- `examples/reference-app/src/orchestration/discovery-coordinator.ts`
+- `examples/reference-app/src/orchestration/source-ingest.ts`
+- `examples/reference-app/src/orchestration/sandbox-broker.ts`
+- parts of `examples/reference-app/src/orchestration/prospect-workflow.ts`
 
 Extraction target:
 
@@ -222,8 +222,8 @@ Boundary decision:
   - it assumes Apify-style run ingestion and poll/reconcile behavior
   - it is useful across multiple SDR-style apps, but not across arbitrary GTM workflows
 - that means the next extraction target is:
-  - move `discovery-coordinator.ts` toward `packages/default-sdr/`
-  - do **not** force it into `@ai-sdr/framework`
+  - move `discovery-coordinator.ts` toward `packages/default/`
+  - do **not** force it into `@trellis/framework`
 
 Secondary decision:
 
@@ -248,8 +248,8 @@ Tertiary decision:
 
 Current custom surfaces:
 
-- `examples/ai-sdr/src/mcp/trellis-server.ts`
-- parts of `examples/ai-sdr/src/services/mcp-tools.ts`
+- `examples/reference-app/src/mcp/trellis-server.ts`
+- parts of `examples/reference-app/src/services/mcp-tools.ts`
 
 Extraction target:
 
@@ -270,14 +270,14 @@ What should remain configurable:
 
 Current status:
 
-- standard tool groups now live in `packages/default-sdr/src/mcp-tool-service.ts`
-- MCP HTTP bearer-auth + transport route now lives in `packages/default-sdr/src/http-routes.ts`
+- standard tool groups now live in `packages/default/src/mcp-tool-service.ts`
+- MCP HTTP bearer-auth + transport route now lives in `packages/default/src/http-routes.ts`
 
 ## 6. Dashboard substrate
 
 Current custom surfaces:
 
-- parts of `examples/ai-sdr/src/server.ts`
+- parts of `examples/reference-app/src/server.ts`
 
 Extraction target:
 
@@ -298,17 +298,17 @@ What should remain configurable:
 
 Current status:
 
-- dashboard auth/state routes now live in `packages/default-sdr/src/http-routes.ts`
+- dashboard auth/state routes now live in `packages/default/src/http-routes.ts`
 - the example server still owns the custom operator actions and Rivet runtime glue
 
 ## 7. Operational scripts
 
 Current custom surfaces:
 
-- `examples/ai-sdr/scripts/doctor.ts`
-- `examples/ai-sdr/scripts/discovery-tick.ts`
-- `examples/ai-sdr/scripts/sandbox-probe.ts`
-- `examples/ai-sdr/scripts/linkedin_post_chain_probe.py`
+- `examples/reference-app/scripts/doctor.ts`
+- `examples/reference-app/scripts/discovery-tick.ts`
+- `examples/reference-app/scripts/sandbox-probe.ts`
+- `examples/reference-app/scripts/linkedin_post_chain_probe.py`
 
 Extraction target:
 
@@ -347,7 +347,7 @@ If we want the highest leverage path, the next moves should be:
 
 1. thin `prospect-workflow` by carving out reusable default SDR stage helpers
 2. revisit `source-ingest` once the prospect workflow boundary is cleaner
-3. reduce remaining custom dashboard action glue in `examples/ai-sdr/src/server.ts`
+3. reduce remaining custom dashboard action glue in `examples/reference-app/src/server.ts`
 4. make manifest-driven env requirements first-class so Trellis can derive `.env.example` from selected capabilities
 5. move more operational scripts from the example into Trellis-owned CLI/package surfaces
 

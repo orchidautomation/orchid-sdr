@@ -216,15 +216,15 @@ name: profound-sdr
 
 state:
   provider: convex
-  package: "@ai-sdr/convex"
+  package: "@trellis/convex"
 
 runtime:
   provider: rivet
-  package: "@ai-sdr/rivet"
+  package: "@trellis/rivet"
 
 model:
   provider: vercel-ai-gateway
-  package: "@ai-sdr/vercel-ai-gateway"
+  package: "@trellis/vercel-ai-gateway"
 
 modules:
   - capability: source
@@ -281,7 +281,7 @@ trellis dev
 
 ## Next Implementation Milestones
 
-1. Expand the `@ai-sdr/convex` package boundary from signal/checkpoint writes to full prospect/thread/provider-run state.
+1. Expand the `@trellis/convex` package boundary from signal/checkpoint writes to full prospect/thread/provider-run state.
 2. Move canonical signal/prospect/thread state fully behind the state-plane contract.
 3. Keep Rivet actors focused on live execution and checkpoint back to Convex.
 4. Generate sandbox MCP config from module manifests.

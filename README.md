@@ -89,7 +89,7 @@ This repo has two distinct layers:
 
 ```text
 packages/            framework + provider modules + CLI + MCP package
-examples/ai-sdr/     reference GTM agent app built on Trellis
+examples/reference-app/     reference GTM agent app built on Trellis
 docs/                product, deployment, and architecture docs
 ```
 
@@ -98,10 +98,10 @@ docs/                product, deployment, and architecture docs
   - provider modules
   - CLI
   - MCP packaging
-  - default SDR substrate in `packages/default-sdr/`
+  - default SDR substrate in `packages/default/`
   - default Convex substrate in `packages/convex/`
-- `examples/ai-sdr/`
-  - the reference AI SDR application
+- `examples/reference-app/`
+  - the reference Trellis application
   - concrete example of discovery, research, qualification, state, CRM, email, and handoff
 
 ## Fastest Ways To See It
@@ -138,15 +138,15 @@ npm run trellis:demo:check
 Use these docs in this order:
 
 - [docs/getting-started.md](docs/getting-started.md)
-- [docs/ai-sdr-go-live.md](docs/ai-sdr-go-live.md)
+- [docs/reference-app-go-live.md](docs/reference-app-go-live.md)
 - [docs/convex-vercel-prod-runbook.md](docs/convex-vercel-prod-runbook.md)
-- [examples/ai-sdr/README.md](examples/ai-sdr/README.md)
+- [examples/reference-app/README.md](examples/reference-app/README.md)
 
 ### 2. Read the reference app
 
 Start here:
 
-- [examples/ai-sdr/README.md](examples/ai-sdr/README.md)
+- [examples/reference-app/README.md](examples/reference-app/README.md)
 - [docs/ownership-model.md](docs/ownership-model.md)
 - [docs/turnkey-roadmap.md](docs/turnkey-roadmap.md)
 - [docs/extraction-plan.md](docs/extraction-plan.md)
@@ -241,7 +241,7 @@ npm run trellis -- check --json
 
 ## Minimum Demo Stack
 
-For one safe hosted AI SDR demo, the minimum practical stack is:
+For one safe hosted reference-app demo, the minimum practical stack is:
 
 ```text
 Convex            state plane
@@ -283,15 +283,15 @@ Trellis is for teams that want:
 - deployable workflows with guardrails
 - a reusable substrate for many GTM applications
 
-The reference AI SDR is the first concrete example, not the boundary of the framework.
+The reference app is the first concrete example, not the boundary of the framework.
 
 ## Read Next
 
-- [examples/ai-sdr/README.md](examples/ai-sdr/README.md)
+- [examples/reference-app/README.md](examples/reference-app/README.md)
 - [examples/closed-won-lookalike/README.md](examples/closed-won-lookalike/README.md)
 - [docs/ownership-model.md](docs/ownership-model.md)
 - [docs/turnkey-roadmap.md](docs/turnkey-roadmap.md)
-- [docs/ai-sdr-go-live.md](docs/ai-sdr-go-live.md)
+- [docs/reference-app-go-live.md](docs/reference-app-go-live.md)
 - [docs/extraction-plan.md](docs/extraction-plan.md)
 - [docs/getting-started.md](docs/getting-started.md)
 - [docs/new-user-guide.md](docs/new-user-guide.md)

@@ -209,7 +209,7 @@ Fresh validation should use:
 
 The following issue was fixed and redeployed:
 
-- deployed AI SDR root resolution now correctly points to `examples/ai-sdr/knowledge` and `examples/ai-sdr/skills`
+- deployed AI SDR root resolution now correctly points to `examples/reference-app/knowledge` and `examples/reference-app/skills`
 - the previous broken resolution to `/var/task/knowledge` is no longer the intended runtime behavior
 
 This means:
