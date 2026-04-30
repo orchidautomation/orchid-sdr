@@ -79,12 +79,6 @@ For real local development against Convex, keep `npx convex dev` running in one 
   - probes `/mcp/trellis` with bearer auth
   - posts one signal to `/webhooks/signals`
 
-The shorter aliases still exist:
-
-```bash
-npm run demo:smoke
-npm run demo:check
-```
   - confirms dashboard state reflects the ingest when the downstream workflow is configured
 
 Use these docs in sequence:

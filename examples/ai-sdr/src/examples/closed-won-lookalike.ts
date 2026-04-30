@@ -173,13 +173,13 @@ export function getClosedWonLookalikeExample(): ClosedWonLookalikeExample {
       {
         name: "Blueprint summary",
         type: "cli",
-        command: "npm run example:closed-won-lookalike -- --mode blueprint",
+        command: "npm run trellis:example:closed-won-lookalike -- --mode blueprint",
         purpose: "Print the example manifest, support map, and operator entry points.",
       },
       {
         name: "Live runtime inspection",
         type: "cli",
-        command: "npm run example:closed-won-lookalike -- --mode operator",
+        command: "npm run trellis:example:closed-won-lookalike -- --mode operator",
         purpose: "Inspect campaign flags, discovery health, qualified leads, and workflow feed through the current backend.",
       },
       {

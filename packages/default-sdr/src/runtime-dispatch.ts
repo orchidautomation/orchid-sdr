@@ -5,6 +5,14 @@ export interface DefaultSdrProspectLifecycleDispatchClient<Outcome = unknown> {
         prospectId: string;
         forceFollowup?: boolean;
       }): Promise<Outcome>;
+      handleInboundReply?(input: {
+        providerInboxId?: string | null;
+        providerThreadId: string;
+        providerMessageId?: string | null;
+        subject?: string | null;
+        bodyText: string;
+        rawPayload?: Record<string, unknown>;
+      }): Promise<Outcome | null>;
     };
   };
 }
@@ -24,6 +32,27 @@ export interface DefaultSdrDiscoveryCompletionClient<Result = unknown> {
   };
 }
 
+export function buildDefaultSdrActorBackedWorkflowDependencies<
+  Context,
+  SandboxTurnRequest,
+  SandboxTurnResponse,
+  Outcome = unknown,
+>(input: {
+  context: Context;
+  actorClient: DefaultSdrProspectLifecycleDispatchClient<Outcome>;
+  runSandboxTurn(
+    context: Context,
+    request: SandboxTurnRequest,
+  ): Promise<SandboxTurnResponse>;
+}) {
+  return {
+    context: input.context,
+    runSandboxTurn: (request: SandboxTurnRequest) =>
+      input.runSandboxTurn(input.context, request),
+    dispatchProspectLifecycle: createActorBackedProspectLifecycleDispatcher(input.actorClient),
+  };
+}
+
 export function createActorBackedProspectLifecycleDispatcher<Outcome = unknown>(
   client: DefaultSdrProspectLifecycleDispatchClient<Outcome>,
 ) {
@@ -36,6 +65,34 @@ export function createActorBackedProspectLifecycleDispatcher<Outcome = unknown>(
       prospectId: input.prospectId,
       forceFollowup: input.forceFollowup,
     });
+  };
+}
+
+export function createActorBackedInboundReplyHandler<Outcome = unknown>(
+  client: DefaultSdrProspectLifecycleDispatchClient<Outcome>,
+  input: {
+    resolveProspectIdByProviderThreadId(providerThreadId: string): Promise<string | null>;
+  },
+) {
+  return async (payload: {
+    providerInboxId?: string | null;
+    providerThreadId: string;
+    providerMessageId?: string | null;
+    subject?: string | null;
+    bodyText: string;
+    rawPayload?: Record<string, unknown>;
+  }) => {
+    const prospectId = await input.resolveProspectIdByProviderThreadId(payload.providerThreadId);
+    if (!prospectId) {
+      return null;
+    }
+
+    const actor = client.prospectThread.getOrCreate([prospectId]);
+    if (!actor.handleInboundReply) {
+      throw new Error("prospectThread.handleInboundReply is not available on the actor client");
+    }
+
+    return actor.handleInboundReply(payload);
   };
 }
 

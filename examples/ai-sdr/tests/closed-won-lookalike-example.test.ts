@@ -21,7 +21,7 @@ describe("getClosedWonLookalikeExample", () => {
     expect(example.mcpTools).toContain("example.closedWonLookalike");
     expect(example.mcpTools).toContain("ocean.searchCompanies");
     expect(example.operatorFlows.map((flow) => flow.command)).toContain(
-      "npm run example:closed-won-lookalike -- --mode operator",
+      "npm run trellis:example:closed-won-lookalike -- --mode operator",
     );
   });
 });

@@ -11,7 +11,6 @@ import {
 } from "./services/runtime-bootstrap.js";
 import { createTrellisMcpServer } from "./mcp/server-factory.js";
 import {
-  handleAgentMailWebhook,
   handleHandoffWebhook,
   handleSignalWebhook,
 } from "./orchestration/webhook-handlers.js";
@@ -32,11 +31,13 @@ import {
 } from "../../../packages/default-sdr/src/http-routes.js";
 import {
   buildDefaultSdrStandardDashboardActions,
+  buildDefaultSdrPageTitleSandboxProbeRequest,
   mountDefaultSdrDashboardActionRoutes,
 } from "../../../packages/default-sdr/src/dashboard-actions.js";
 import {
+  buildDefaultSdrActorBackedWorkflowDependencies,
   createActorBackedDiscoveryCompletionHandler,
-  createActorBackedProspectLifecycleDispatcher,
+  createActorBackedInboundReplyHandler,
 } from "../../../packages/default-sdr/src/runtime-dispatch.js";
 import { mountDefaultSdrWebhookRoutes } from "../../../packages/default-sdr/src/webhook-bootstrap.js";
 import type { DefaultSdrDashboardActorClient } from "../../../packages/default-sdr/src/dashboard-state.js";
@@ -55,12 +56,16 @@ export function createApp() {
       }),
   });
 
-  const workflowDeps: WorkflowDependencies = {
+  const workflowDeps: WorkflowDependencies = buildDefaultSdrActorBackedWorkflowDependencies({
     context,
-    runSandboxTurn: (request: Parameters<typeof runSandboxTurn>[1]) => runSandboxTurn(context, request),
-    dispatchProspectLifecycle: createActorBackedProspectLifecycleDispatcher(actorClient as any) as WorkflowDependencies["dispatchProspectLifecycle"],
-  };
+    actorClient: actorClient as any,
+    runSandboxTurn,
+  }) as WorkflowDependencies;
   const handleApifyCompletion = createActorBackedDiscoveryCompletionHandler(actorClient);
+  const handleInboundReply = createActorBackedInboundReplyHandler(actorClient as any, {
+    resolveProspectIdByProviderThreadId: async (providerThreadId) =>
+      (await context.repository.getProspectIdByProviderThreadId(providerThreadId))?.prospectId ?? null,
+  });
 
   const dashboardRoutes = mountDefaultSdrDashboardRoutes(app, {
     dashboardCookieName,
@@ -95,16 +100,11 @@ export function createApp() {
       getControlFlags: () => context.repository.getControlFlags(),
       getAutomationPauseReason: (controlFlags, campaignId) => getAutomationPauseReason(controlFlags as any, campaignId),
       getActorClient: () => getActorClient() as any,
-      buildSandboxProbeRequest: ({ campaignId }) => ({
-        turnId: `dashboard-firecrawl-probe-${Date.now()}`,
-        prospectId: "dashboard",
+      buildSandboxProbeRequest: ({ campaignId }) => buildDefaultSdrPageTitleSandboxProbeRequest({
         campaignId,
-        stage: "build_research_brief",
-        systemPrompt: "Use available tools when needed. Keep the final answer to one short line.",
-        prompt: "Use the Firecrawl MCP server to inspect https://playkit.sh and reply with the page title only.",
-        metadata: {
-          kind: "dashboard-firecrawl-probe",
-        },
+        url: "https://playkit.sh",
+        mcpServerName: "Firecrawl",
+        metadataKind: "dashboard-firecrawl-probe",
       }),
     }),
   });
@@ -131,7 +131,24 @@ export function createApp() {
     handlers: {
       onApifyRunCompleted: handleApifyCompletion,
       onSignal: async (payload) => handleSignalWebhook(workflowDeps, payload),
-      onAgentMail: async (payload) => handleAgentMailWebhook(workflowDeps, payload),
+      onAgentMail: async (payload) => {
+        if (!payload.threadId || !payload.bodyText) {
+          return {
+            ok: true,
+            ignored: true,
+            reason: "threadId or bodyText missing",
+          };
+        }
+
+        return handleInboundReply({
+          providerInboxId: payload.inboxId ?? null,
+          providerThreadId: payload.threadId,
+          providerMessageId: payload.messageId ?? null,
+          subject: payload.subject ?? null,
+          bodyText: payload.bodyText,
+          rawPayload: payload.payload ?? {},
+        });
+      },
       onHandoff: async (payload) => handleHandoffWebhook(workflowDeps, payload),
     },
   });

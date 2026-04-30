@@ -1,136 +1,75 @@
 # TODO
 
-This file tracks the remaining production-hardening work for Trellis and the AI SDR reference app after the current branch state.
+This file tracks the remaining work after the current production-hardening pass on `codex-agentic-gtm-framework`.
 
-## Current branch baseline
+## Closed in this pass
 
-Already landed on `codex-agentic-gtm-framework`:
+- pause semantics now stop new intake and let inflight work drain
+- discovery burst control and in-flight term dedupe are landed
+- lifecycle dispatch is actor-backed for discovery, signal webhook, and inbound reply paths
+- dashboard filtering/state rendering is materially better under burst load
+- public npm script surface is consistently `trellis:*`
+- stale production `capture_signal` rows were paused and noisy follower-count titles were cleaned
+- hosted validation is green again:
+  - `/healthz`
+  - dashboard auth/state
+  - `/mcp/trellis`
+  - signal ingest
+  - fresh-row validation with no stuck `capture_signal` tail
 
-- `TRELLIS-2`: pause semantics now stop new work at ingest and let in-flight work drain
-- `TRELLIS-3`: discovery burst control and in-flight term dedupe
-- `TRELLIS-4` partial: actor-backed lifecycle dispatch validated for server and discovery paths
-- `TRELLIS-6` partial: paused/failure workflow states render correctly in the dashboard
-- `TRELLIS-7` partial: more runtime/server glue is collapsed into `default-sdr`
-- public CLI surface is now `trellis`, not `ai-sdr`
+## Remaining work
 
-## Outstanding work
-
-### 1. Finish `TRELLIS-4` end-to-end lifecycle ownership
-
-Goal:
-- make the per-prospect actor the unambiguous owner of prospect lifecycle progression everywhere
-
-Still outstanding:
-- audit remaining inline lifecycle execution paths and move them behind actor-owned dispatch where appropriate
-- make follow-up scheduling and subsequent lifecycle re-entry uniform across:
-  - webhook-originated signals
-  - discovery-originated signals
-  - reply-triggered work
-- verify there are no hidden code paths that still leave rows stuck at `capture_signal`
-
-What good looks like:
-- newly ingested prospects quickly move from `capture_signal` into qualification or an explicit paused/failed state
-- lifecycle ownership is obvious from the code and not split unpredictably across server, registry, and workflow helpers
-
-### 2. Finish `TRELLIS-6` burst-run operator UX
-
-Goal:
-- make high-volume discovery runs inspectable in the dashboard
+### 1. Finish full actor ownership of prospect lifecycle
 
 Still outstanding:
-- add better filtering/slicing for fresh rows under burst load
-- distinguish clearly between:
-  - captured only
-  - qualification pending
-  - research pending
-  - paused before qualification
-  - workflow failed
-- improve operator visibility into why rows are stalled without requiring Convex inspection
+- audit for any remaining inline lifecycle paths outside the prospect actor
+- make follow-up scheduling and re-entry obviously actor-owned everywhere
 
-What good looks like:
-- an operator can run discovery, isolate the newest rows, and understand progression/failure state without opening Convex or Rivet
+Good looks like:
+- server/webhook code dispatches
+- prospect actors own lifecycle progression
+- no ambiguous split between transport handlers and workflow ownership
 
-### 3. Continue `TRELLIS-7` framework extraction
-
-Goal:
-- reduce the amount of app-specific `server.ts` code required by the reference app
+### 2. Keep collapsing app-specific server glue into the framework
 
 Still outstanding:
-- extract more generic webhook-to-actor bridging into framework/default-sdr
-- extract reusable operator action presets where app-specific policy is not needed
-- narrow `server.ts` down to app policy and provider wiring rather than transport/runtime shell
+- reduce `examples/ai-sdr/src/server.ts` further
+- pull any remaining generic webhook/operator transport patterns into `default-sdr`
 
-What good looks like:
-- a new Trellis app does not need to hand-author a large custom `server.ts` just to get dashboard, MCP, runtime endpoint, and standard webhooks
+Good looks like:
+- a new Trellis app only wires app policy and providers
+- it does not hand-author dashboard, MCP, runtime, and standard webhook transport shells
 
-### 4. Fresh production validation (`TRELLIS-8`)
-
-Goal:
-- validate only fresh post-fix production behavior
+### 3. Improve operator UX under real burst conditions
 
 Still outstanding:
-- run a controlled fresh production cycle after the current fixes
-- confirm:
-  - signals ingest cleanly
-  - lifecycle progresses
-  - qualification summaries populate
-  - research briefs are written when qualification passes
-  - paused rows surface honestly
-- separate stale pre-fix records from current behavior
+- confirm the new dashboard filters are enough during large discovery runs
+- add more explicit visibility if operators still need Convex/Rivet to understand stalled rows
 
-What good looks like:
-- production validation is based on fresh rows only, not mixed with old broken data
+Good looks like:
+- operators can isolate fresh rows and understand pending/paused/failed state without opening backend tooling
 
-### 5. Data cleanup / backfill
-
-Goal:
-- clean up stale state that predates the current fixes
+### 4. Keep validating discovery quality
 
 Still outstanding:
-- decide whether to backfill, rerun, or archive old rows with:
-  - bad LinkedIn titles (`followers`, `connections`, other noisy payload artifacts)
-  - empty research briefs caused by old stuck workflows
-  - old `capture_signal` rows that never progressed during the broken knowledge-path window
-- decide whether production needs a first-class reset/cleanup script for Convex + Rivet state together
+- keep checking LinkedIn normalization against live payloads
+- decide whether other noisy fields besides `title` need hard guards
+- keep verifying fallback planner reuse is understandable in production
 
-What good looks like:
-- old broken state no longer obscures whether the current runtime is healthy
+Good looks like:
+- discovery output stays readable and operator-facing titles stay sane
 
-### 6. Pause-control polish
-
-Goal:
-- make pause semantics operationally obvious
+### 5. Decide whether production needs a first-class reset path
 
 Still outstanding:
-- verify pause/resume behavior under real production load
-- decide whether paused active threads should be explicitly reclassified or drained differently in the UI
-- make sure discovery stop/start behavior is intuitive during manual operator use
+- evaluate whether Convex cleanup plus Rivet cleanup should become a documented/resettable admin flow
 
-What good looks like:
-- operators can predict what `Pause Automation` will do without guessing
-
-### 7. Discovery quality follow-ups
-
-Goal:
-- improve discovery signal quality and reduce noise
-
-Still outstanding:
-- continue validating LinkedIn normalization against real post payloads
-- check whether other noisy fields besides `title` need normalization guards
-- validate term planning/reuse behavior in production so fallback planner history does not create confusing repeat runs
-
-What good looks like:
-- discovery output is relevant, titles are sane, and repeat runs are explainable
-
-## Suggested execution order
-
-1. Finish `TRELLIS-4`
-2. Finish `TRELLIS-6`
-3. Continue `TRELLIS-7`
-4. Run `TRELLIS-8` fresh production validation
-5. Clean stale data / backfill
+Good looks like:
+- stale-state cleanup is deliberate, documented, and not reconstructed from memory next time
 
 ## Notes
 
-- Source of truth for issue tracking remains Linear.
-- This file is the repo-local working list so future sessions do not have to reconstruct the current hardening state from chat history.
+- Source of truth for issue sequencing remains Linear.
+- The current production cleanup/validation scripts are:
+  - `npm run trellis:validate:prod`
+  - `npm run trellis:cleanup:stale`

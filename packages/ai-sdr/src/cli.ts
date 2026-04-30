@@ -1161,8 +1161,8 @@ function buildScaffoldPackage(
       "test:watch": "vitest",
       trellis: "tsx packages/ai-sdr/src/cli.ts",
       doctor: "tsx scripts/doctor.ts",
-      "discovery:tick": "tsx scripts/discovery-tick.ts",
-      "sandbox:probe": "tsx scripts/sandbox-probe.ts",
+      "trellis:discovery:tick": "tsx scripts/discovery-tick.ts",
+      "trellis:sandbox:probe": "tsx scripts/sandbox-probe.ts",
     },
     dependencies: {
       ...rootPackage.dependencies,

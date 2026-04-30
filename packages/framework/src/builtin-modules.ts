@@ -449,7 +449,7 @@ export function vercelSandboxModule(): AiSdrModuleDefinition {
     smokeChecks: [
       {
         id: "sandbox.probe",
-        command: "npm run sandbox:probe",
+        command: "npm run trellis:sandbox:probe",
         description: "Run the sandbox compatibility probe.",
       },
     ],

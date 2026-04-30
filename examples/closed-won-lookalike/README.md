@@ -34,7 +34,7 @@ This example turns a best-customer closed-won cohort into a ready-to-contact out
 ### CLI blueprint
 
 ```bash
-npm run example:closed-won-lookalike -- --mode blueprint
+npm run trellis:example:closed-won-lookalike -- --mode blueprint
 ```
 
 Use this when you want the static package: workflow map, support levels, gaps, and the operator entry points.
@@ -42,7 +42,7 @@ Use this when you want the static package: workflow map, support levels, gaps, a
 ### CLI live inspection
 
 ```bash
-npm run example:closed-won-lookalike -- --mode operator
+npm run trellis:example:closed-won-lookalike -- --mode operator
 ```
 
 Use this when the backend is configured and you want campaign flags, discovery health, pipeline summary, and workflow feed in one output.

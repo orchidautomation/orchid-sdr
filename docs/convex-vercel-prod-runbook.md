@@ -212,6 +212,35 @@ Success means:
 - `mcp` ok
 - `signal` ok
 
+For a post-fix production-only validation window that writes a marker signal and inspects fresh Convex rows instead of mixing with old state:
+
+```bash
+npm run trellis:validate:prod -- \
+  --base-url "https://<your-vercel-domain>" \
+  --dashboard-password "$DASHBOARD_PASSWORD" \
+  --mcp-token "$TRELLIS_MCP_TOKEN" \
+  --signal-secret "$SIGNAL_WEBHOOK_SECRET"
+```
+
+This command polls the hosted dashboard state after ingest and fails if fresh rows stay stuck at `capture_signal`.
+
+To inspect or clean stale pre-fix data safely, start with a dry run:
+
+```bash
+npm run trellis:cleanup:stale -- --stale-minutes 90
+```
+
+Then apply the cleanup:
+
+```bash
+npm run trellis:cleanup:stale -- \
+  --stale-minutes 90 \
+  --pause-reason "stale capture_signal cleanup" \
+  --apply
+```
+
+The stale-data command requires `CONVEX_URL` (or `NEXT_PUBLIC_CONVEX_URL`).
+
 ## 7. Connect Remote MCP
 
 After hosted verification:

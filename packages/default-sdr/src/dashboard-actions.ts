@@ -20,6 +20,30 @@ export interface DefaultSdrStandardDashboardActorClient {
   };
 }
 
+export function buildDefaultSdrPageTitleSandboxProbeRequest(input: {
+  campaignId: string;
+  url: string;
+  stage?: string;
+  metadataKind?: string;
+  mcpServerName?: string;
+}) {
+  const serverName = input.mcpServerName ?? "Firecrawl";
+
+  return {
+    turnId: `dashboard-page-title-probe-${Date.now()}`,
+    prospectId: "dashboard",
+    campaignId: input.campaignId,
+    stage: input.stage ?? "build_research_brief",
+    systemPrompt: "Use available tools when needed. Keep the final answer to one short line.",
+    prompt: `Use the ${serverName} MCP server to inspect ${input.url} and reply with the page title only.`,
+    metadata: {
+      kind: input.metadataKind ?? "dashboard-page-title-probe",
+      url: input.url,
+      server: serverName,
+    },
+  };
+}
+
 export function mountDefaultSdrDashboardActionRoutes(
   app: Hono,
   input: {

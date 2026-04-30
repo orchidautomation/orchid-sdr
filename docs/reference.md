@@ -57,9 +57,9 @@ Useful checks:
 npm run typecheck
 npm test
 npm run build
-npm run discovery:tick
-npm run sandbox:probe
-npm run example:closed-won-lookalike -- --mode blueprint
+npm run trellis:discovery:tick
+npm run trellis:sandbox:probe
+npm run trellis:example:closed-won-lookalike -- --mode blueprint
 ```
 
 ## First-Class Example
@@ -69,8 +69,8 @@ The repo ships a first-class workflow example at `examples/closed-won-lookalike/
 Use:
 
 ```bash
-npm run example:closed-won-lookalike -- --mode blueprint
-npm run example:closed-won-lookalike -- --mode operator
+npm run trellis:example:closed-won-lookalike -- --mode blueprint
+npm run trellis:example:closed-won-lookalike -- --mode operator
 ```
 
 The first mode prints the example package and support map. The second mode inspects the current runtime through the same backend services the app uses.
@@ -114,7 +114,7 @@ When changing models:
 
 - keep the sandbox and structured paths aligned unless you intentionally want different models
 - keep routing through Vercel AI Gateway
-- rerun `npm run sandbox:probe`, `npm run typecheck`, and `npm test`
+- rerun `npm run trellis:sandbox:probe`, `npm run typecheck`, and `npm test`
 
 ## Skills
 

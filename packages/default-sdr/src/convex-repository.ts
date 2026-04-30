@@ -27,7 +27,7 @@ import type {
   WorkflowProspectMatchRow,
 } from "./repository-contracts.js";
 
-const convexQueries = {
+export const convexQueries = {
   getCampaign: makeFunctionReference<"query">("repository:getCampaign"),
   getControlFlags: makeFunctionReference<"query">("repository:getControlFlags"),
   getDashboardSummary: makeFunctionReference<"query">("repository:getDashboardSummary"),
@@ -50,9 +50,10 @@ const convexQueries = {
   getLatestInboundMessage: makeFunctionReference<"query">("repository:getLatestInboundMessage"),
   getThread: makeFunctionReference<"query">("repository:getThread"),
   getCampaignPolicyForProspect: makeFunctionReference<"query">("repository:getCampaignPolicyForProspect"),
+  auditDataQuality: makeFunctionReference<"query">("repository:auditDataQuality"),
 };
 
-const convexMutations = {
+export const convexMutations = {
   ensureDefaultCampaign: makeFunctionReference<"mutation">("repository:ensureDefaultCampaign"),
   setControlFlag: makeFunctionReference<"mutation">("repository:setControlFlag"),
   setCampaignLinkedinSource: makeFunctionReference<"mutation">("repository:setCampaignLinkedinSource"),
@@ -70,6 +71,7 @@ const convexMutations = {
   updateProspectCrmReferences: makeFunctionReference<"mutation">("repository:updateProspectCrmReferences"),
   applyQualificationAssessment: makeFunctionReference<"mutation">("repository:applyQualificationAssessment"),
   pauseThread: makeFunctionReference<"mutation">("repository:pauseThread"),
+  cleanupDataQuality: makeFunctionReference<"mutation">("repository:cleanupDataQuality"),
   createHandoff: makeFunctionReference<"mutation">("repository:createHandoff"),
   markHandoffStatus: makeFunctionReference<"mutation">("repository:markHandoffStatus"),
   appendAuditEvent: makeFunctionReference<"mutation">("repository:appendAuditEvent"),

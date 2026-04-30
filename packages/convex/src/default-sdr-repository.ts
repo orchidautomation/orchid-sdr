@@ -1,4 +1,9 @@
-import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
+import {
+  internalMutationGeneric as internalMutation,
+  internalQueryGeneric as internalQuery,
+  mutationGeneric as mutation,
+  queryGeneric as query,
+} from "convex/server";
 import { v } from "convex/values";
 
 const nullableString = v.union(v.string(), v.null());
@@ -71,6 +76,42 @@ function makeId(prefix: string) {
 
 function normalizeDomain(value: string | null | undefined) {
   return value?.trim().toLowerCase() || null;
+}
+
+function normalizeProspectTitleCandidate(value: string | null | undefined) {
+  const normalized = value?.trim() ?? "";
+  if (!normalized) {
+    return null;
+  }
+  if (/^\d[\d,\s.]*\s+(followers|connections)\b/i.test(normalized)) {
+    return null;
+  }
+  if (/\b(followers|connections)\b/i.test(normalized) && !/\bat\b|@|\bfounder\b|\bceo\b|\bcto\b|\bvp\b|\bdirector\b|\bhead\b|\blead\b|\banalyst\b|\bmanager\b/i.test(normalized)) {
+    return null;
+  }
+  return normalized;
+}
+
+function isNoisyProspectTitle(value: string | null | undefined) {
+  return normalizeProspectTitleCandidate(value) === null && Boolean(value?.trim());
+}
+
+function looksLikeNoisyProspectTitle(value: string | null | undefined) {
+  const title = value?.trim();
+  if (!title) {
+    return false;
+  }
+
+  return /\b[\d,.]+\s+(followers?|connections?)\b/i.test(title);
+}
+
+function sanitizeProspectTitle(value: string | null | undefined) {
+  const title = value?.trim();
+  if (!title || looksLikeNoisyProspectTitle(title)) {
+    return null;
+  }
+
+  return title;
 }
 
 function toIso(value: number | null | undefined) {
@@ -190,6 +231,27 @@ function mapProspectDashboardRow(doc: any) {
     pausedReason: doc.pausedReason ?? null,
     updatedAt: new Date(doc.updatedAt).toISOString(),
   };
+}
+
+function summarizeWorkflowFailure(input: {
+  checkpoints?: any[];
+  auditEvents?: any[];
+}) {
+  const checkpointFailure = [...(input.checkpoints ?? [])]
+    .filter((item) => item?.status === "failed")
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
+  if (checkpointFailure) {
+    return checkpointFailure.error ?? checkpointFailure.output?.error ?? null;
+  }
+
+  const auditFailure = [...(input.auditEvents ?? [])]
+    .filter((item) => item?.eventName === "ProspectWorkflowFailed")
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
+  if (auditFailure) {
+    return typeof auditFailure.payload?.error === "string" ? auditFailure.payload.error : null;
+  }
+
+  return null;
 }
 
 export const ensureDefaultCampaign = mutation({
@@ -405,6 +467,78 @@ export const listRecentProspects = query({
   },
 });
 
+export const auditDataQuality = query({
+  args: {
+    limit: v.optional(v.number()),
+    staleMinutes: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.max(1, Math.min(args.limit ?? 50, 250));
+    const staleMinutes = Math.max(5, args.staleMinutes ?? 90);
+    const staleCutoff = now() - (staleMinutes * 60 * 1000);
+    const prospects = (await ctx.db.query("prospects").collect())
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+
+    const noisyTitleProspects: Array<Record<string, unknown>> = [];
+    const staleCaptureSignalProspects: Array<Record<string, unknown>> = [];
+    const qualifiedWithoutResearchBrief: Array<Record<string, unknown>> = [];
+
+    for (const prospect of prospects) {
+      if (noisyTitleProspects.length < limit && isNoisyProspectTitle(prospect.title ?? null)) {
+        const signal = prospect.sourceSignalId ? await getSignalDocById(ctx, prospect.sourceSignalId) : null;
+        noisyTitleProspects.push({
+          prospectId: prospect.id,
+          fullName: prospect.fullName,
+          title: prospect.title ?? null,
+          replacementTitle: normalizeProspectTitleCandidate(signal?.authorTitle ?? null),
+          sourceSignalId: prospect.sourceSignalId ?? null,
+          updatedAt: toIso(prospect.updatedAt),
+        });
+      }
+
+      if (
+        staleCaptureSignalProspects.length < limit
+        && prospect.stage === "capture_signal"
+        && prospect.status === "active"
+        && !prospect.qualification
+        && prospect.updatedAt <= staleCutoff
+      ) {
+        const thread = await getThreadDocByProspectId(ctx, prospect.id);
+        staleCaptureSignalProspects.push({
+          prospectId: prospect.id,
+          threadId: thread?.id ?? null,
+          fullName: prospect.fullName,
+          title: prospect.title ?? null,
+          pausedReason: prospect.pausedReason ?? null,
+          updatedAt: toIso(prospect.updatedAt),
+        });
+      }
+
+      if (
+        qualifiedWithoutResearchBrief.length < limit
+        && prospect.isQualified
+        && !await getLatestResearchBriefDoc(ctx, prospect.id)
+      ) {
+        qualifiedWithoutResearchBrief.push({
+          prospectId: prospect.id,
+          fullName: prospect.fullName,
+          title: prospect.title ?? null,
+          qualifiedAt: toIso(prospect.qualifiedAt ?? null),
+          updatedAt: toIso(prospect.updatedAt),
+        });
+      }
+    }
+
+    return {
+      staleMinutes,
+      prospectCount: prospects.length,
+      noisyTitleProspects,
+      staleCaptureSignalProspects,
+      qualifiedWithoutResearchBrief,
+    };
+  },
+});
+
 export const getProspectDashboardRow = query({
   args: {
     prospectId: v.string(),
@@ -412,6 +546,252 @@ export const getProspectDashboardRow = query({
   handler: async (ctx, args) => {
     const prospect = await getProspectDocById(ctx, args.prospectId);
     return prospect ? mapProspectDashboardRow(prospect) : null;
+  },
+});
+
+export const inspectFreshProspectLifecycle = internalQuery({
+  args: {
+    since: v.number(),
+    limit: v.optional(v.number()),
+    marker: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const [signals, prospects, threads, researchBriefs, auditEvents, workflowCheckpoints] = await Promise.all([
+      ctx.db.query("signals").collect(),
+      ctx.db.query("prospects").collect(),
+      ctx.db.query("threads").collect(),
+      ctx.db.query("researchBriefs").collect(),
+      ctx.db.query("auditEvents").collect(),
+      ctx.db.query("workflowCheckpoints").collect(),
+    ]);
+
+    const matchingSignals = signals
+      .filter((signal) => signal.capturedAt >= args.since)
+      .filter((signal) =>
+        args.marker
+          ? signal.metadata?.validationMarker === args.marker
+          : true,
+      )
+      .sort((a, b) => b.capturedAt - a.capturedAt);
+    const allowedSignalIds = new Set(matchingSignals.map((signal) => signal.id));
+
+    const researchByProspectId = new Map<string, any[]>();
+    for (const brief of researchBriefs) {
+      const list = researchByProspectId.get(brief.prospectId) ?? [];
+      list.push(brief);
+      researchByProspectId.set(brief.prospectId, list);
+    }
+
+    const threadByProspectId = new Map(threads.map((thread) => [thread.prospectId, thread]));
+    const auditByProspectId = new Map<string, any[]>();
+    const checkpointsByProspectId = new Map<string, any[]>();
+    for (const event of auditEvents) {
+      if (event.entityType !== "prospect") {
+        continue;
+      }
+      const list = auditByProspectId.get(event.entityId) ?? [];
+      list.push(event);
+      auditByProspectId.set(event.entityId, list);
+    }
+    for (const checkpoint of workflowCheckpoints) {
+      if (checkpoint.entityType !== "prospect") {
+        continue;
+      }
+      const list = checkpointsByProspectId.get(checkpoint.entityId) ?? [];
+      list.push(checkpoint);
+      checkpointsByProspectId.set(checkpoint.entityId, list);
+    }
+
+    const rows = prospects
+      .filter((prospect) =>
+        (prospect.sourceSignalId && allowedSignalIds.has(prospect.sourceSignalId))
+        || prospect.updatedAt >= args.since,
+      )
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, args.limit ?? 25)
+      .map((prospect) => {
+        const signal = prospect.sourceSignalId
+          ? matchingSignals.find((item) => item.id === prospect.sourceSignalId) ?? null
+          : null;
+        const research = [...(researchByProspectId.get(prospect.id) ?? [])]
+          .sort((a, b) => b.createdAt - a.createdAt)[0] ?? null;
+        const thread = threadByProspectId.get(prospect.id) ?? null;
+        const checkpoints = checkpointsByProspectId.get(prospect.id) ?? [];
+        const audit = auditByProspectId.get(prospect.id) ?? [];
+        const workflowFailure = summarizeWorkflowFailure({
+          checkpoints,
+          auditEvents: audit,
+        });
+
+        return {
+          prospectId: prospect.id,
+          fullName: prospect.fullName,
+          company: prospect.company ?? null,
+          title: prospect.title ?? null,
+          stage: prospect.stage,
+          status: prospect.status,
+          pausedReason: prospect.pausedReason ?? null,
+          isQualified: Boolean(prospect.isQualified),
+          qualificationSummary: typeof prospect.qualification?.summary === "string"
+            ? prospect.qualification.summary
+            : null,
+          hasResearchBrief: Boolean(research),
+          researchBriefCreatedAt: research ? toIso(research.createdAt) : null,
+          workflowFailure,
+          updatedAt: toIso(prospect.updatedAt),
+          signal: signal
+            ? {
+                signalId: signal.id,
+                source: signal.source,
+                url: signal.url,
+                topic: signal.topic,
+                authorTitle: signal.authorTitle ?? null,
+                capturedAt: toIso(signal.capturedAt),
+                marker: typeof signal.metadata?.validationMarker === "string"
+                  ? signal.metadata.validationMarker
+                  : null,
+              }
+            : null,
+          thread: thread
+            ? {
+                threadId: thread.id,
+                stage: thread.stage,
+                status: thread.status,
+                pausedReason: thread.pausedReason ?? null,
+                updatedAt: toIso(thread.updatedAt),
+              }
+            : null,
+        };
+      });
+
+    return {
+      since: toIso(args.since),
+      marker: args.marker ?? null,
+      signalsMatched: matchingSignals.length,
+      prospectsMatched: rows.length,
+      rows,
+    };
+  },
+});
+
+export const auditStaleProspectData = internalQuery({
+  args: {
+    before: v.number(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const [signals, prospects, threads, researchBriefs, auditEvents, workflowCheckpoints] = await Promise.all([
+      ctx.db.query("signals").collect(),
+      ctx.db.query("prospects").collect(),
+      ctx.db.query("threads").collect(),
+      ctx.db.query("researchBriefs").collect(),
+      ctx.db.query("auditEvents").collect(),
+      ctx.db.query("workflowCheckpoints").collect(),
+    ]);
+
+    const signalById = new Map(signals.map((signal) => [signal.id, signal]));
+    const threadByProspectId = new Map(threads.map((thread) => [thread.prospectId, thread]));
+    const researchByProspectId = new Map<string, any[]>();
+    for (const brief of researchBriefs) {
+      const list = researchByProspectId.get(brief.prospectId) ?? [];
+      list.push(brief);
+      researchByProspectId.set(brief.prospectId, list);
+    }
+    const auditByProspectId = new Map<string, any[]>();
+    const checkpointsByProspectId = new Map<string, any[]>();
+    for (const event of auditEvents) {
+      if (event.entityType !== "prospect") {
+        continue;
+      }
+      const list = auditByProspectId.get(event.entityId) ?? [];
+      list.push(event);
+      auditByProspectId.set(event.entityId, list);
+    }
+    for (const checkpoint of workflowCheckpoints) {
+      if (checkpoint.entityType !== "prospect") {
+        continue;
+      }
+      const list = checkpointsByProspectId.get(checkpoint.entityId) ?? [];
+      list.push(checkpoint);
+      checkpointsByProspectId.set(checkpoint.entityId, list);
+    }
+
+    const limitedProspects = prospects
+      .filter((prospect) => prospect.updatedAt <= args.before)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, args.limit ?? prospects.length);
+
+    const badTitleProspects = limitedProspects
+      .filter((prospect) => looksLikeNoisyProspectTitle(prospect.title))
+      .map((prospect) => {
+        const signal = prospect.sourceSignalId ? signalById.get(prospect.sourceSignalId) ?? null : null;
+        return {
+          prospectId: prospect.id,
+          fullName: prospect.fullName,
+          currentTitle: prospect.title ?? null,
+          proposedTitle: sanitizeProspectTitle(signal?.authorTitle ?? null),
+          sourceSignalId: prospect.sourceSignalId ?? null,
+          signalAuthorTitle: signal?.authorTitle ?? null,
+          updatedAt: toIso(prospect.updatedAt),
+        };
+      });
+
+    const stuckCaptureSignalProspects = limitedProspects
+      .filter((prospect) =>
+        prospect.stage === "capture_signal"
+        && !prospect.isQualified
+        && (researchByProspectId.get(prospect.id)?.length ?? 0) === 0,
+      )
+      .map((prospect) => {
+        const thread = threadByProspectId.get(prospect.id) ?? null;
+        return {
+          prospectId: prospect.id,
+          fullName: prospect.fullName,
+          status: prospect.status,
+          pausedReason: prospect.pausedReason ?? null,
+          threadStatus: thread?.status ?? null,
+          threadPausedReason: thread?.pausedReason ?? null,
+          sourceSignalId: prospect.sourceSignalId ?? null,
+          updatedAt: toIso(prospect.updatedAt),
+          workflowFailure: summarizeWorkflowFailure({
+            checkpoints: checkpointsByProspectId.get(prospect.id),
+            auditEvents: auditByProspectId.get(prospect.id),
+          }),
+        };
+      });
+
+    const missingResearchBriefProspects = limitedProspects
+      .filter((prospect) =>
+        prospect.stage !== "capture_signal"
+        && (prospect.isQualified || prospect.stage === "build_research_brief" || prospect.stage === "qualify")
+        && (researchByProspectId.get(prospect.id)?.length ?? 0) === 0,
+      )
+      .map((prospect) => ({
+        prospectId: prospect.id,
+        fullName: prospect.fullName,
+        stage: prospect.stage,
+        status: prospect.status,
+        pausedReason: prospect.pausedReason ?? null,
+        updatedAt: toIso(prospect.updatedAt),
+        workflowFailure: summarizeWorkflowFailure({
+          checkpoints: checkpointsByProspectId.get(prospect.id),
+          auditEvents: auditByProspectId.get(prospect.id),
+        }),
+      }));
+
+    return {
+      before: toIso(args.before),
+      summary: {
+        badTitles: badTitleProspects.length,
+        stuckCaptureSignal: stuckCaptureSignalProspects.length,
+        missingResearchBrief: missingResearchBriefProspects.length,
+      },
+      candidates: {
+        badTitleProspects,
+        stuckCaptureSignalProspects,
+        missingResearchBriefProspects,
+      },
+    };
   },
 });
 
@@ -1245,6 +1625,197 @@ export const pauseThread = mutation({
         updatedAt: now(),
       });
     }
+  },
+});
+
+export const applyStaleProspectMaintenance = internalMutation({
+  args: {
+    prospectIds: v.array(v.string()),
+    normalizeTitles: v.boolean(),
+    pauseStuckCaptureSignal: v.boolean(),
+    pauseMissingResearchBrief: v.boolean(),
+    pauseReason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const pauseReason = args.pauseReason?.trim() || "stale_pre_fix_cleanup";
+    const results: Array<Record<string, unknown>> = [];
+
+    for (const prospectId of args.prospectIds) {
+      const prospect = await getProspectDocById(ctx, prospectId);
+      if (!prospect) {
+        results.push({
+          prospectId,
+          updated: false,
+          reason: "prospect_not_found",
+        });
+        continue;
+      }
+
+      const [thread, signal, researchBrief] = await Promise.all([
+        getThreadDocByProspectId(ctx, prospect.id),
+        prospect.sourceSignalId ? getSignalDocById(ctx, prospect.sourceSignalId) : Promise.resolve(null),
+        getLatestResearchBriefDoc(ctx, prospect.id),
+      ]);
+
+      const updatedFields: string[] = [];
+
+      if (args.normalizeTitles && looksLikeNoisyProspectTitle(prospect.title)) {
+        const repairedTitle = sanitizeProspectTitle(signal?.authorTitle ?? null);
+        await ctx.db.patch(prospect._id, {
+          title: repairedTitle,
+          updatedAt: now(),
+        });
+        await ctx.db.insert("auditEvents", {
+          id: makeId("audit"),
+          entityType: "prospect",
+          entityId: prospect.id,
+          eventName: "MaintenanceTitleNormalized",
+          payload: {
+            from: prospect.title ?? null,
+            to: repairedTitle,
+            sourceSignalId: prospect.sourceSignalId ?? null,
+          },
+          createdAt: now(),
+        });
+        updatedFields.push("title");
+      }
+
+      const isStuckCaptureSignal =
+        prospect.stage === "capture_signal"
+        && !prospect.isQualified
+        && !researchBrief;
+      const isMissingResearchBrief =
+        prospect.stage !== "capture_signal"
+        && (prospect.isQualified || prospect.stage === "build_research_brief" || prospect.stage === "qualify")
+        && !researchBrief;
+
+      if (
+        (args.pauseStuckCaptureSignal && isStuckCaptureSignal)
+        || (args.pauseMissingResearchBrief && isMissingResearchBrief)
+      ) {
+        await ctx.db.patch(prospect._id, {
+          status: "paused",
+          pausedReason: pauseReason,
+          updatedAt: now(),
+        });
+        if (thread) {
+          await ctx.db.patch(thread._id, {
+            status: "paused",
+            pausedReason: pauseReason,
+            updatedAt: now(),
+          });
+        }
+        await ctx.db.insert("auditEvents", {
+          id: makeId("audit"),
+          entityType: "prospect",
+          entityId: prospect.id,
+          eventName: "MaintenanceLifecyclePaused",
+          payload: {
+            pauseReason,
+            stage: prospect.stage,
+            hadResearchBrief: Boolean(researchBrief),
+            category: isStuckCaptureSignal ? "stuck_capture_signal" : "missing_research_brief",
+          },
+          createdAt: now(),
+        });
+        updatedFields.push("status");
+      }
+
+      results.push({
+        prospectId: prospect.id,
+        updated: updatedFields.length > 0,
+        updatedFields,
+      });
+    }
+
+    return {
+      ok: true,
+      results,
+      summary: {
+        touched: results.filter((item) => item.updated === true).length,
+        titleNormalized: results.filter((item) =>
+          Array.isArray(item.updatedFields) && item.updatedFields.includes("title"),
+        ).length,
+        paused: results.filter((item) =>
+          Array.isArray(item.updatedFields) && item.updatedFields.includes("status"),
+        ).length,
+      },
+    };
+  },
+});
+
+export const cleanupDataQuality = mutation({
+  args: {
+    limit: v.optional(v.number()),
+    staleMinutes: v.optional(v.number()),
+    pauseReason: v.optional(v.string()),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.max(1, Math.min(args.limit ?? 50, 250));
+    const staleMinutes = Math.max(5, args.staleMinutes ?? 90);
+    const staleCutoff = now() - (staleMinutes * 60 * 1000);
+    const pauseReason = args.pauseReason ?? "stale capture_signal cleanup";
+    const dryRun = args.dryRun ?? true;
+    const prospects = (await ctx.db.query("prospects").collect())
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+
+    const titleFixes: Array<Record<string, unknown>> = [];
+    const pausedProspects: Array<Record<string, unknown>> = [];
+
+    for (const prospect of prospects) {
+      if (titleFixes.length < limit && isNoisyProspectTitle(prospect.title ?? null)) {
+        const signal = prospect.sourceSignalId ? await getSignalDocById(ctx, prospect.sourceSignalId) : null;
+        const replacementTitle = normalizeProspectTitleCandidate(signal?.authorTitle ?? null);
+        titleFixes.push({
+          prospectId: prospect.id,
+          from: prospect.title ?? null,
+          to: replacementTitle,
+        });
+        if (!dryRun) {
+          await ctx.db.patch(prospect._id, {
+            title: replacementTitle,
+            updatedAt: now(),
+          });
+        }
+      }
+
+      if (
+        pausedProspects.length < limit
+        && prospect.stage === "capture_signal"
+        && prospect.status === "active"
+        && !prospect.qualification
+        && prospect.updatedAt <= staleCutoff
+      ) {
+        const thread = await getThreadDocByProspectId(ctx, prospect.id);
+        pausedProspects.push({
+          prospectId: prospect.id,
+          threadId: thread?.id ?? null,
+          reason: pauseReason,
+        });
+        if (!dryRun) {
+          await ctx.db.patch(prospect._id, {
+            status: "paused",
+            pausedReason: pauseReason,
+            updatedAt: now(),
+          });
+          if (thread) {
+            await ctx.db.patch(thread._id, {
+              status: "paused",
+              pausedReason: pauseReason,
+              updatedAt: now(),
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      dryRun,
+      staleMinutes,
+      normalizedTitles: titleFixes,
+      pausedCaptureSignalProspects: pausedProspects,
+    };
   },
 });
 

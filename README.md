@@ -135,13 +135,6 @@ npm run trellis:demo:check
   - runs against an already-running local or deployed app
   - adds one `/webhooks/signals` ingest check and verifies dashboard visibility
 
-The shorter aliases still exist:
-
-```bash
-npm run demo:smoke
-npm run demo:check
-```
-
 Use these docs in this order:
 
 - [docs/getting-started.md](docs/getting-started.md)

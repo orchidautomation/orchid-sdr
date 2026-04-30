@@ -23,11 +23,11 @@
     "doctor": "tsx examples/ai-sdr/scripts/doctor.ts",
     "trellis:demo:check": "tsx examples/ai-sdr/scripts/demo-check.ts",
     "trellis:demo:smoke": "tsx examples/ai-sdr/scripts/demo-smoke.ts",
-    "demo:check": "tsx examples/ai-sdr/scripts/demo-check.ts",
-    "demo:smoke": "tsx examples/ai-sdr/scripts/demo-smoke.ts",
-    "discovery:tick": "tsx examples/ai-sdr/scripts/discovery-tick.ts",
-    "sandbox:probe": "tsx examples/ai-sdr/scripts/sandbox-probe.ts",
-    "example:closed-won-lookalike": "tsx examples/ai-sdr/scripts/closed-won-lookalike.ts"
+    "trellis:validate:prod": "tsx examples/ai-sdr/scripts/production-validate.ts",
+    "trellis:cleanup:stale": "tsx examples/ai-sdr/scripts/cleanup-stale-data.ts",
+    "trellis:discovery:tick": "tsx examples/ai-sdr/scripts/discovery-tick.ts",
+    "trellis:sandbox:probe": "tsx examples/ai-sdr/scripts/sandbox-probe.ts",
+    "trellis:example:closed-won-lookalike": "tsx examples/ai-sdr/scripts/closed-won-lookalike.ts"
   },
   "dependencies": {
     "@ai-sdk/gateway": "^3.0.104",

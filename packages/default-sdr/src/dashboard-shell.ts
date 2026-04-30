@@ -7,6 +7,26 @@ export interface DashboardWorkflowStateDescriptor {
   kind: "success" | "warn" | "danger";
 }
 
+export type DashboardWorkflowStateFilter =
+  | "all"
+  | "qualified"
+  | "rejected"
+  | "qualification_pending"
+  | "research_pending"
+  | "paused"
+  | "workflow_failed";
+
+export interface DashboardBurstSummary {
+  prospectWindowSize: number;
+  signalWindowSize: number;
+  providerWindowSize: number;
+  workflowStates: Array<DashboardWorkflowStateDescriptor & { count: number }>;
+  providerStatus: {
+    running: number;
+    failed: number;
+  };
+}
+
 export function classifyDashboardWorkflowState(row: {
   stage?: string | null;
   status?: string | null;
@@ -48,6 +68,118 @@ export function classifyDashboardWorkflowState(row: {
     label: stage || status || "pending",
     kind: /failed|error/i.test(stage) ? "danger" : "warn",
   };
+}
+
+export function summarizeDashboardBurstWindow(input: {
+  recentProspects?: Array<{
+    stage?: string | null;
+    status?: string | null;
+    pausedReason?: string | null;
+    qualification?: { ok?: boolean | null } | null;
+  }> | null;
+  recentSignals?: unknown[] | null;
+  providerRuns?: Array<{
+    status?: string | null;
+  }> | null;
+}): DashboardBurstSummary {
+  const recentProspects = Array.isArray(input.recentProspects) ? input.recentProspects : [];
+  const recentSignals = Array.isArray(input.recentSignals) ? input.recentSignals : [];
+  const providerRuns = Array.isArray(input.providerRuns) ? input.providerRuns : [];
+
+  const workflowCounts = new Map<string, DashboardWorkflowStateDescriptor & { count: number }>();
+  for (const prospect of recentProspects) {
+    const state = classifyDashboardWorkflowState(prospect);
+    const existing = workflowCounts.get(state.label);
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+    workflowCounts.set(state.label, {
+      ...state,
+      count: 1,
+    });
+  }
+
+  const providerStatus = providerRuns.reduce(
+    (acc, run) => {
+      const status = String(run?.status || "");
+      if (/queued|running|active/i.test(status)) {
+        acc.running += 1;
+      } else if (/failed|error|timed_out|aborted/i.test(status)) {
+        acc.failed += 1;
+      }
+      return acc;
+    },
+    { running: 0, failed: 0 },
+  );
+
+  const priority = new Map([
+    ["workflow failed", 0],
+    ["paused before qualification", 1],
+    ["paused", 2],
+    ["qualification pending", 3],
+    ["research pending", 4],
+    ["qualified", 5],
+    ["rejected", 6],
+  ]);
+
+  const workflowStates = [...workflowCounts.values()]
+    .sort((left, right) => {
+      const leftPriority = priority.get(left.label) ?? 100;
+      const rightPriority = priority.get(right.label) ?? 100;
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+      if (left.count !== right.count) {
+        return right.count - left.count;
+      }
+      return left.label.localeCompare(right.label);
+    });
+
+  return {
+    prospectWindowSize: recentProspects.length,
+    signalWindowSize: recentSignals.length,
+    providerWindowSize: providerRuns.length,
+    workflowStates,
+    providerStatus,
+  };
+}
+
+export function filterDashboardRowsByWorkflowState<
+  Row extends {
+    stage?: string | null;
+    status?: string | null;
+    pausedReason?: string | null;
+    qualification?: { ok?: boolean | null } | null;
+  },
+>(rows: Row[] | null | undefined, filter: DashboardWorkflowStateFilter) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (filter === "all") {
+    return list;
+  }
+
+  return list.filter((row) => {
+    const state = classifyDashboardWorkflowState(row);
+    if (state.label === "qualified") {
+      return filter === "qualified";
+    }
+    if (state.label === "rejected") {
+      return filter === "rejected";
+    }
+    if (state.label === "qualification pending") {
+      return filter === "qualification_pending";
+    }
+    if (state.label === "research pending") {
+      return filter === "research_pending";
+    }
+    if (state.label === "workflow failed") {
+      return filter === "workflow_failed";
+    }
+    if (state.label === "paused" || state.label === "paused before qualification") {
+      return filter === "paused";
+    }
+    return false;
+  });
 }
 
 export function describeDashboardWorkflowSummary(row: {
@@ -650,6 +782,30 @@ export function renderDashboardPage() {
         font-size: 0.84rem;
         line-height: 1.45;
       }
+      .card-head-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .card-head-actions label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font: 600 0.62rem/1 "IBM Plex Mono", ui-monospace, monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .card-head-actions select {
+        min-height: 30px;
+        padding: 0 10px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--ink-soft);
+        font: 600 0.66rem/1 "IBM Plex Mono", ui-monospace, monospace;
+      }
       .card-body {
         padding: 14px;
       }
@@ -1026,8 +1182,24 @@ export function renderDashboardPage() {
           <div class="panel-grid">
             <article class="card span-8">
               <div class="card-head">
-                <h2>Pipeline</h2>
-                <p>Prospects currently moving through the workflow</p>
+                <div>
+                  <h2>Pipeline</h2>
+                  <p>Prospects currently moving through the workflow</p>
+                </div>
+                <div class="card-head-actions">
+                  <label>
+                    <span>Filter</span>
+                    <select id="active-thread-filter">
+                      <option value="all">All</option>
+                      <option value="workflow_failed">Failed</option>
+                      <option value="paused">Paused</option>
+                      <option value="qualification_pending">Qualify</option>
+                      <option value="research_pending">Research</option>
+                      <option value="qualified">Qualified</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                  </label>
+                </div>
               </div>
               <div class="card-body tight">
                 <div class="table-shell">
@@ -1048,6 +1220,16 @@ export function renderDashboardPage() {
               </div>
               <div class="card-body">
                 <div id="audit-feed" class="feed"></div>
+              </div>
+            </article>
+
+            <article class="card span-4">
+              <div class="card-head">
+                <h2>Burst Snapshot</h2>
+                <p>Newest visible rows, grouped by workflow state</p>
+              </div>
+              <div class="card-body">
+                <div id="burst-summary" class="reasoning-list"></div>
               </div>
             </article>
           </div>
@@ -1084,8 +1266,24 @@ export function renderDashboardPage() {
 
             <article class="card span-12">
               <div class="card-head">
-                <h2>Recent Records</h2>
-                <p>Newest qualification entries</p>
+                <div>
+                  <h2>Recent Records</h2>
+                  <p>Newest qualification entries</p>
+                </div>
+                <div class="card-head-actions">
+                  <label>
+                    <span>Filter</span>
+                    <select id="recent-prospect-filter">
+                      <option value="all">All</option>
+                      <option value="workflow_failed">Failed</option>
+                      <option value="paused">Paused</option>
+                      <option value="qualification_pending">Qualify</option>
+                      <option value="research_pending">Research</option>
+                      <option value="qualified">Qualified</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                  </label>
+                </div>
               </div>
               <div class="card-body tight">
                 <div class="table-shell">
@@ -1197,6 +1395,10 @@ export function renderDashboardPage() {
       const DASHBOARD_CORE_STATE_CACHE_KEY = "trellis-dashboard-core-state-v1";
       const DASHBOARD_RUNTIME_STATE_CACHE_KEY = "trellis-dashboard-runtime-state-v1";
       let latestState = null;
+      const dashboardFilters = {
+        activeThreads: "all",
+        recentProspects: "all",
+      };
       let coreRefreshPromise = null;
       let runtimeRefreshPromise = null;
       const tabMeta = {
@@ -1440,6 +1642,10 @@ export function renderDashboardPage() {
 
       const classifyWorkflowState = ${inlineFunctionSource(classifyDashboardWorkflowState)};
 
+      const filterWorkflowRows = ${inlineFunctionSource(filterDashboardRowsByWorkflowState)};
+
+      const summarizeBurstWindow = ${inlineFunctionSource(summarizeDashboardBurstWindow)};
+
       const describeWorkflowSummary = ${inlineFunctionSource(describeDashboardWorkflowSummary)};
 
       function renderWorkflowStateChip(row) {
@@ -1484,6 +1690,65 @@ export function renderDashboardPage() {
               </div>
             </article>
           \`),
+        ].join("");
+      }
+
+      function renderBurstSummary(state) {
+        const target = byId("burst-summary");
+        const summary = summarizeBurstWindow({
+          recentProspects: state.recentProspects,
+          recentSignals: state.recentSignals,
+          providerRuns: state.providerRuns,
+        });
+
+        if (!summary.prospectWindowSize && !summary.signalWindowSize && !summary.providerWindowSize) {
+          target.innerHTML = '<p class="empty">No recent burst activity yet.</p>';
+          return;
+        }
+
+        const workflowItems = summary.workflowStates.length > 0
+          ? summary.workflowStates.slice(0, 4).map((entry) => \`
+            <article class="reasoning-item">
+              <div class="feed-top">
+                <span class="feed-event">\${escapeHtml(entry.label)}</span>
+                <span class="chip \${entry.kind}">\${escapeHtml(entry.count)}</span>
+              </div>
+              <p>\${escapeHtml("Visible in the newest " + summary.prospectWindowSize + " prospect rows.")}</p>
+            </article>
+          \`).join("")
+          : \`
+            <article class="reasoning-item">
+              <div class="feed-top">
+                <span class="feed-event">No workflow rows yet</span>
+                <span class="chip">0</span>
+              </div>
+              <p>Recent prospects have not populated yet.</p>
+            </article>
+          \`;
+
+        target.innerHTML = [
+          workflowItems,
+          \`
+            <article class="reasoning-item">
+              <div class="feed-top">
+                <span class="feed-event">Signal window</span>
+                <span class="chip">\${escapeHtml(summary.signalWindowSize)}</span>
+              </div>
+              <p>\${escapeHtml("Newest visible source captures currently in view.")}</p>
+            </article>
+          \`,
+          \`
+            <article class="reasoning-item">
+              <div class="feed-top">
+                <span class="feed-event">Provider run pressure</span>
+                <span class="feed-subtle">\${escapeHtml("window " + summary.providerWindowSize)}</span>
+              </div>
+              <div class="chip-row">
+                <span class="chip warn">\${escapeHtml("running " + summary.providerStatus.running)}</span>
+                <span class="chip danger">\${escapeHtml("failed " + summary.providerStatus.failed)}</span>
+              </div>
+            </article>
+          \`,
         ].join("");
       }
 
@@ -1559,13 +1824,20 @@ export function renderDashboardPage() {
 
       function renderCoreState(state, options) {
         const mergedState = mergeLatestState(state);
+        const visibleActiveThreads = filterWorkflowRows(state.activeThreads, dashboardFilters.activeThreads);
+        const visibleRecentProspects = filterWorkflowRows(state.recentProspects, dashboardFilters.recentProspects);
         renderStats(state.summary);
         renderFeed(state.auditEvents);
-        renderQualificationOverview(state.recentProspects);
+        renderQualificationOverview(visibleRecentProspects);
+        renderBurstSummary({
+          recentProspects: visibleRecentProspects,
+          recentSignals: state.recentSignals,
+          providerRuns: state.providerRuns,
+        });
         updateTopline(mergedState);
         setGeneratedAtLabel(state, options);
 
-        renderRows("active-threads", state.activeThreads, (thread) => \`
+        renderRows("active-threads", visibleActiveThreads, (thread) => \`
           <tr>
             <td>
               <div class="cell-stack">
@@ -1638,7 +1910,7 @@ export function renderDashboardPage() {
           </tr>
         \`, 6);
 
-        renderRows("recent-prospects", state.recentProspects, (prospect) => \`
+        renderRows("recent-prospects", visibleRecentProspects, (prospect) => \`
           <tr>
             <td>
               <div class="cell-stack">
@@ -1712,6 +1984,20 @@ export function renderDashboardPage() {
           </tr>
         \`, 5);
       }
+
+      byId("active-thread-filter")?.addEventListener("change", (event) => {
+        dashboardFilters.activeThreads = event.target.value || "all";
+        if (latestState) {
+          renderCoreState(latestState, {});
+        }
+      });
+
+      byId("recent-prospect-filter")?.addEventListener("change", (event) => {
+        dashboardFilters.recentProspects = event.target.value || "all";
+        if (latestState) {
+          renderCoreState(latestState, {});
+        }
+      });
 
       function showToast(message) {
         const toast = byId("toast");

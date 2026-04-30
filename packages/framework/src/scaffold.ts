@@ -493,7 +493,7 @@ npm run dev
 \`\`\`bash
 npm run trellis -- check
 npm run doctor
-npm run sandbox:probe
+npm run trellis:sandbox:probe
 \`\`\`
 
 ## Common Failure Modes

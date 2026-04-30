@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   classifyDashboardWorkflowState,
   describeDashboardWorkflowSummary,
+  summarizeDashboardBurstWindow,
 } from "../../../packages/default-sdr/src/dashboard-shell.js";
 
 const ensureRuntimeBootstrapped = vi.fn();
@@ -324,5 +325,38 @@ describe("dashboard workflow semantics", () => {
       qualificationReason: null,
       pausedReason: "workflow failed: knowledge path missing",
     })).toBe("workflow failed: knowledge path missing");
+  });
+
+  it("summarizes burst windows so newest rows are inspectable at a glance", () => {
+    const summary = summarizeDashboardBurstWindow({
+      recentProspects: [
+        { stage: "capture_signal", status: "active", qualification: null },
+        { stage: "qualify", status: "paused", pausedReason: "paused by operator", qualification: null },
+        { stage: "build_research_brief", status: "active", qualification: null },
+        { stage: "reply", status: "paused", pausedReason: "workflow failed: sandbox error", qualification: { ok: true } },
+      ],
+      recentSignals: [{ id: "sig_1" }, { id: "sig_2" }, { id: "sig_3" }],
+      providerRuns: [
+        { status: "running" },
+        { status: "queued" },
+        { status: "failed" },
+        { status: "timed_out" },
+        { status: "succeeded" },
+      ],
+    });
+
+    expect(summary.prospectWindowSize).toBe(4);
+    expect(summary.signalWindowSize).toBe(3);
+    expect(summary.providerWindowSize).toBe(5);
+    expect(summary.workflowStates).toEqual([
+      { label: "workflow failed", kind: "danger", count: 1 },
+      { label: "paused before qualification", kind: "warn", count: 1 },
+      { label: "qualification pending", kind: "warn", count: 1 },
+      { label: "research pending", kind: "warn", count: 1 },
+    ]);
+    expect(summary.providerStatus).toEqual({
+      running: 2,
+      failed: 2,
+    });
   });
 });
