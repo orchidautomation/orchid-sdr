@@ -105,7 +105,7 @@ export function findModuleForAddCommand(
 function buildNextSteps(module: AiSdrModuleDefinition, alreadyInstalled: boolean) {
   if (alreadyInstalled) {
     return [
-      `Module "${module.id}" is already present in ai-sdr.config.ts.`,
+      `Module "${module.id}" is already present in the Trellis app config.`,
       "Review env values and run npm run doctor.",
     ];
   }
@@ -113,7 +113,7 @@ function buildNextSteps(module: AiSdrModuleDefinition, alreadyInstalled: boolean
   return [
     module.packageName
       ? `Install ${module.packageName} once packages are extracted.`
-      : `Register module "${module.id}" in ai-sdr.config.ts.`,
+      : `Register module "${module.id}" in the Trellis app config.`,
     `Add provider definitions for: ${(module.providers ?? []).map((provider) => provider.id).join(", ") || "none"}.`,
     `Mount MCP servers for: ${(module.mcpServers ?? []).map((server) => server.id).join(", ") || "none"}.`,
     "Copy required env vars into .env.example and deployment secrets.",

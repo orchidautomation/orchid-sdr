@@ -105,7 +105,7 @@ control.setCampaignTimezone({"campaignId":"cmp_default","timezone":"America/New_
 
 The current default model is `moonshotai/kimi-k2.6`.
 
-There are two places to change it:
+There are two places to change it in the reference app:
 
 - sandbox turns: `src/orchestration/sandbox-broker.ts`
 - structured classification / qualification / policy calls: `src/services/ai-service.ts`

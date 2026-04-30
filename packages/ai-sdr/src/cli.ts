@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ import {
   aiSdrInitModuleChoices,
   buildScaffoldSpec,
   describeScaffoldSelection,
+  renderScaffoldAppConfigModule,
   renderScaffoldConfigModule,
   renderScaffoldEnvExample,
   renderScaffoldSetupChecklist,
@@ -609,7 +610,8 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
     path.join(targetDir, "package.json"),
     JSON.stringify(scaffoldPackage, null, 2) + "\n",
   );
-  await writeFile(path.join(targetDir, "ai-sdr.config.ts"), renderScaffoldConfigModule(spec));
+  await writeFile(path.join(targetDir, spec.configFileName), renderScaffoldConfigModule(spec));
+  await writeFile(path.join(targetDir, "src", "app-config.ts"), renderScaffoldAppConfigModule(spec));
   await writeFile(path.join(targetDir, ".env.example"), renderScaffoldEnvExample(spec));
   await writeFile(path.join(targetDir, "README.md"), renderScaffoldReadme(appName, targetDir, spec));
   await writeFile(path.join(targetDir, "TRELLIS_SETUP.md"), renderScaffoldSetupChecklist(spec));
@@ -645,7 +647,8 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
       })),
       filesWritten: [
         "package.json",
-        "ai-sdr.config.ts",
+        spec.configFileName,
+        "src/app-config.ts",
         ".env.example",
         "README.md",
         "TRELLIS_SETUP.md",
@@ -872,12 +875,12 @@ async function handleClaudeCodeMcp(flags: Record<string, string | boolean>) {
 }
 
 function applyModuleToScaffold(module: AiSdrModuleDefinition) {
-  const scaffoldConfigPath = path.join(process.cwd(), "ai-sdr.config.ts");
+  const scaffoldConfigPath = resolveScaffoldConfigPath(process.cwd());
   const scaffoldConfigSource = readFileSyncSafe(scaffoldConfigPath);
   const metadata = parseScaffoldConfigMetadata(scaffoldConfigSource);
   if (!metadata) {
     throw new Error(
-      `Cannot apply module "${module.id}" automatically. This works only for scaffold-generated ai-sdr.config.ts files.`,
+      `Cannot apply module "${module.id}" automatically. This works only for scaffold-generated <app>.config.ts files.`,
     );
   }
 
@@ -892,12 +895,14 @@ function applyModuleToScaffold(module: AiSdrModuleDefinition) {
   });
 
   writeFileSyncSafe(scaffoldConfigPath, renderScaffoldConfigModule(spec));
+  writeFileSyncSafe(path.join(process.cwd(), "src", "app-config.ts"), renderScaffoldAppConfigModule(spec));
   writeFileSyncSafe(path.join(process.cwd(), ".env.example"), renderScaffoldEnvExample(spec));
   writeFileSyncSafe(path.join(process.cwd(), "TRELLIS_SETUP.md"), renderScaffoldSetupChecklist(spec));
   writeFileSyncSafe(path.join(process.cwd(), "README.md"), renderScaffoldReadme(metadata.scaffoldName, process.cwd(), spec));
 
   const updatedFiles = [
-    "ai-sdr.config.ts",
+    path.basename(scaffoldConfigPath),
+    "src/app-config.ts",
     ".env.example",
     "TRELLIS_SETUP.md",
     "README.md",
@@ -1132,11 +1137,27 @@ npm run trellis -- mcp claude-code --local --write
 ## Notes
 
 - follow \`TRELLIS_SETUP.md\` for the first boot and verification path
-- \`ai-sdr.config.ts\` controls the active modules and provider bindings
+- \`${spec.configFileName}\` controls the active modules and provider bindings
 - \`packages/\` contains the extracted Trellis workspace packages used by this scaffold
 - optional providers can be removed or added by editing the config and env
 - this scaffold preserves the current reference app behavior while keeping the framework and provider packages local to the workspace
 `;
+}
+
+function resolveScaffoldConfigPath(cwd: string) {
+  const candidates = readdirSync(cwd)
+    .filter((entry) => entry.endsWith(".config.ts"))
+    .filter((entry) => !entry.startsWith("vitest.") && !entry.startsWith("tsup."));
+
+  if (candidates.length === 1) {
+    return path.join(cwd, candidates[0] ?? "");
+  }
+
+  if (candidates.length === 0) {
+    throw new Error("No scaffold config found. Expected one <app>.config.ts file in the project root.");
+  }
+
+  throw new Error(`Multiple config files found: ${candidates.join(", ")}. Expected exactly one scaffold <app>.config.ts file in the project root.`);
 }
 
 function buildScaffoldPackage(

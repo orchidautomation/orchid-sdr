@@ -160,14 +160,20 @@ npm run trellis -- init ../my-trellis-agent --name my-trellis-agent --json
 That always scaffolds the core Trellis app:
 
 - normalized webhook source ingest
-- Firecrawl search/extract
 - Convex state
 - Rivet actor runtime
 - Vercel Sandbox
 - Vercel AI Gateway
 - first-party Trellis MCP
 
-Then layer optional lanes on explicitly. For the current reference AI SDR shape:
+Then layer optional lanes on explicitly. Add Firecrawl when you want default open-web research:
+
+```bash
+npm run trellis -- add search firecrawl --apply
+npm run trellis -- add extract firecrawl --apply
+```
+
+For the current reference AI SDR shape:
 
 ```bash
 npm run trellis -- init ../my-ai-sdr \

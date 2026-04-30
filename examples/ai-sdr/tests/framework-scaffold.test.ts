@@ -24,7 +24,6 @@ describe("framework scaffold profiles", () => {
     expect(spec.config.campaigns?.[0]?.sources).toEqual(["normalized-webhook"]);
     expect(spec.selectedModules.map((module) => module.id)).toEqual([
       "normalized-webhook",
-      "firecrawl",
       "convex",
       "vercel-ai-gateway",
       "rivet",
@@ -44,7 +43,6 @@ describe("framework scaffold profiles", () => {
     expect(spec.config.compositionTargets).toEqual(["minimum"]);
     expect(spec.selectedModules.map((module) => module.id)).toEqual([
       "normalized-webhook",
-      "firecrawl",
       "convex",
       "vercel-ai-gateway",
       "rivet",
@@ -125,7 +123,6 @@ describe("framework scaffold profiles", () => {
     expect(configModule).toContain('"capabilityId": "mcp"');
     expect(configModule).not.toContain('./src/framework/index.js');
     expect(envExample).toContain("CONVEX_URL=https://your-deployment.convex.cloud");
-    expect(envExample).toContain("FIRECRAWL_API_KEY=");
     expect(envExample).toContain("TRELLIS_SANDBOX_TOKEN=change-me");
     expect(envExample).toContain("TRELLIS_MCP_TOKEN=");
     expect(envExample).toContain("DASHBOARD_PASSWORD=");

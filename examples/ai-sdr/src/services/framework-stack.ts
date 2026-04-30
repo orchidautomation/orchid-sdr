@@ -1,4 +1,4 @@
-import frameworkConfig from "../../ai-sdr.config.js";
+import frameworkConfig from "../app-config.js";
 import {
   collectPackageBoundaries,
   requireConfigWithoutErrors,

@@ -63,7 +63,6 @@ For one credible demo, do not start with every optional lane.
 Start with:
 
 - normalized signal ingest
-- Firecrawl for search and extraction
 - Convex for state
 - Rivet for orchestration
 - Vercel Sandbox for agent execution
@@ -72,6 +71,7 @@ Start with:
 
 Then add only what you plan to show:
 
+- `Firecrawl` for search and extraction
 - `Apify` for scheduled discovery
 - `Prospeo` for enrichment
 - `Attio` for CRM sync

@@ -78,7 +78,6 @@ npm run trellis -- init ../trellis-core --name trellis-core
 That command scaffolds the base Trellis runtime and nothing extra:
 
 - normalized signal webhook ingest
-- Firecrawl search/extract
 - Convex state
 - Rivet actor runtime
 - Vercel Sandbox
@@ -89,6 +88,8 @@ After boot, add capabilities incrementally:
 
 ```bash
 npm run trellis -- add source apify --apply
+npm run trellis -- add search firecrawl --apply
+npm run trellis -- add extract firecrawl --apply
 npm run trellis -- add deep-research parallel --apply
 npm run trellis -- add enrichment prospeo --apply
 ```
@@ -140,9 +141,9 @@ To actually feel the product as a new user:
 - base runtime
   - `Convex`
   - `Vercel` for Sandbox and AI Gateway
-  - `Firecrawl`
   - `Rivet`
 - add lanes as needed
+  - `Firecrawl`
   - `Apify`
   - `Parallel`
   - `Prospeo`

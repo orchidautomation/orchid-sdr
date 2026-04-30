@@ -38,7 +38,6 @@ export const aiSdrInitProfiles = {
     compositionTargets: ["minimum"],
     moduleIds: [
       "normalized-webhook",
-      "firecrawl",
       "convex",
       "rivet",
       "vercel-sandbox",
@@ -95,6 +94,7 @@ export const aiSdrInitModuleChoices = [
 
 export type AiSdrScaffoldSpec = {
   profile: AiSdrInitProfile;
+  configFileName: string;
   selection: {
     id: string;
     displayName: string;
@@ -172,6 +172,7 @@ export function buildScaffoldSpec(
 
   return {
     profile,
+    configFileName: `${input.name}.config.ts`,
     selection,
     config,
     selectedModules,
@@ -273,6 +274,16 @@ export function renderScaffoldConfigModule(spec: AiSdrScaffoldSpec) {
     "const modules = defaultTrellisModules().filter((module) => selectedModuleIds.includes(module.id));",
     "",
     `export default defineAiSdr(${serialized});`,
+    "",
+  ].join("\n");
+}
+
+export function renderScaffoldAppConfigModule(spec: AiSdrScaffoldSpec) {
+  const configImportPath = `../${spec.configFileName.replace(/\.ts$/, ".js")}`;
+  return [
+    `import config from "${configImportPath}";`,
+    "",
+    "export default config;",
     "",
   ].join("\n");
 }
@@ -476,9 +487,12 @@ function renderValueAccountLines(spec: AiSdrScaffoldSpec) {
   const lines = [
     "- `Convex` - live state, dashboard data, workflow persistence, and the default system of record.",
     "- `Vercel` - sandbox execution and AI Gateway model routing in the default happy path.",
-    "- `Firecrawl` - the default web search and extraction provider.",
     "- `Rivet` - actor orchestration, scheduling, and runtime control plane.",
   ];
+
+  if (selectedModuleIds.has("firecrawl")) {
+    lines.push("- `Firecrawl` - web search and extraction.");
+  }
 
   if (selectedModuleIds.has("apify-linkedin")) {
     lines.push("- `Apify` - scheduled LinkedIn public-post discovery.");

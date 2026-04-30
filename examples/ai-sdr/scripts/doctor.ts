@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import config from "../ai-sdr.config.js";
+import config from "../src/app-config.js";
 import {
   aiSdrCompositionProfileIds,
   collectConfigEnv,
@@ -305,7 +305,7 @@ function findAppRoot(startDirs: string[]) {
     let current = path.resolve(startDir);
 
     while (true) {
-      if (fs.existsSync(path.join(current, "ai-sdr.config.ts"))) {
+      if (hasAppConfig(current)) {
         return current;
       }
 
@@ -319,6 +319,14 @@ function findAppRoot(startDirs: string[]) {
   }
 
   return process.cwd();
+}
+
+function hasAppConfig(dirPath: string) {
+  if (!fs.existsSync(dirPath)) {
+    return false;
+  }
+
+  return fs.readdirSync(dirPath).some((entry) => entry.endsWith(".config.ts") || entry.endsWith(".config.js"));
 }
 
 function findWorkspaceRoot(startDir: string) {

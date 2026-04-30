@@ -5,9 +5,14 @@ import { fileURLToPath } from "node:url";
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
 function isAiSdrRoot(candidate: string) {
-  return fs.existsSync(path.join(candidate, "ai-sdr.config.ts"))
+  return hasAppConfig(candidate)
     && fs.existsSync(path.join(candidate, "knowledge"))
     && fs.existsSync(path.join(candidate, "skills"));
+}
+
+function hasAppConfig(candidate: string) {
+  const entries = fs.existsSync(candidate) ? fs.readdirSync(candidate) : [];
+  return entries.some((entry) => entry.endsWith(".config.ts") || entry.endsWith(".config.js"));
 }
 
 function candidateRoots(current: string) {

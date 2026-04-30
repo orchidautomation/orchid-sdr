@@ -28,13 +28,11 @@ export type AiSdrCompositionProfileId = keyof typeof aiSdrCompositionProfiles;
 export const aiSdrCompositionProfiles = {
   minimum: {
     id: "minimum",
-    displayName: "Minimum runnable AI SDR",
-    description: "Smallest stack that can ingest a signal, research it, route model work, run agents, persist state, and expose tools.",
+    displayName: "Minimum runnable Trellis app",
+    description: "Smallest stack that can ingest a signal, route model work, run agents, persist state, and expose tools.",
     requiredCapabilities: [
       "state",
       "source",
-      "search",
-      "extract",
       "runtime",
       "model",
       "mcp",
@@ -43,8 +41,6 @@ export const aiSdrCompositionProfiles = {
       "state.reactive.v1",
       "state.workflow.v1",
       "signal.normalized.v1",
-      "research.search.v1",
-      "research.extract.v1",
       "model.gateway.v1",
       "runtime.actor.v1",
       "mcp.tools.v1",

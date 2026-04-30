@@ -14,7 +14,7 @@ Each part is designed to be inspectable, testable, and replaceable.
 
 ## Configuration Surface
 
-The root [ai-sdr.config.ts](../ai-sdr.config.ts) file describes a deployment in framework terms:
+The root app config file (for example `ai-sdr.config.ts` in the reference app, or `<app-name>.config.ts` in a scaffolded Trellis app) describes a deployment in framework terms:
 
 - knowledge files
 - tracked skills
