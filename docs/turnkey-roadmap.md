@@ -1,6 +1,6 @@
 # Turnkey Roadmap
 
-This document describes the concrete work needed to make the Trellis AI SDR scaffold more turnkey and less custom-code heavy.
+This document describes the concrete work needed to make the Trellis scaffold more turnkey and less custom-code heavy.
 
 The goal is not to hide the system.
 

@@ -86,7 +86,7 @@ if (errors.length > 0) {
 
 async function checkConfigReferences() {
   checks.push({
-    label: `loaded AI SDR config "${config.name}"`,
+    label: `loaded Trellis app config "${config.name}"`,
     ok: true,
     severity: "info",
   });
@@ -117,7 +117,7 @@ function checkConfigComposition() {
   const issues = validateAiSdrConfigReferences(config);
   if (issues.length === 0) {
     checks.push({
-      label: "AI SDR config composition",
+      label: "Trellis app config composition",
       ok: true,
       severity: "info",
     });
@@ -126,7 +126,7 @@ function checkConfigComposition() {
 
   for (const issue of issues) {
     checks.push({
-      label: `AI SDR config ${issue.code}`,
+      label: `Trellis app config ${issue.code}`,
       ok: false,
       severity: issue.severity,
       detail: issue.message,

@@ -1,8 +1,8 @@
 # Getting Started
 
-This is the shortest path to a working Trellis reference app.
+This is the shortest path to a working Trellis app.
 
-If your goal is one demo, use the reference AI SDR already in this repo before scaffolding a custom app.
+If your goal is one demo, use the reference app already in this repo before scaffolding a custom app.
 
 Canonical order:
 
@@ -35,7 +35,6 @@ Minimum core env for a real demo:
 - `HANDOFF_WEBHOOK_SECRET`
 - `RIVET_ENDPOINT`
 - `RIVET_TOKEN`
-- `FIRECRAWL_API_KEY`
 - `AI_GATEWAY_API_KEY` or `VERCEL_AI_GATEWAY_KEY`
 - `NO_SENDS_MODE=true`
 
@@ -49,7 +48,7 @@ npm run doctor
 npm run dev
 ```
 
-Keep `npx convex dev` running while you do real local development against Convex. Trellis uses the repo-root `convex.json` file to point Convex at the AI SDR functions in `examples/ai-sdr/convex`.
+Keep `npx convex dev` running while you do real local development against Convex. Trellis uses the repo-root `convex.json` file to point Convex at the reference app functions in `examples/ai-sdr/convex`.
 
 If port `3000` is already in use, either stop the old process or set a new app port:
 

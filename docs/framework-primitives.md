@@ -1,10 +1,10 @@
 # Framework Primitives
 
-This page describes the main framework contracts behind the Trellis reference AI SDR. It is written for GTM engineers and developers extending the system with coding agents or direct code changes.
+This page describes the main framework contracts behind the Trellis reference app. It is written for GTM engineers and developers extending the system with coding agents or direct code changes.
 
 ## Mental Model
 
-An AI SDR deployment is composed from a small set of explicit parts:
+A Trellis app deployment is composed from a small set of explicit parts:
 
 ```text
 signals -> prospects -> threads -> skills -> providers -> MCP tools

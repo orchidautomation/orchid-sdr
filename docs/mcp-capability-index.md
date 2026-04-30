@@ -1,6 +1,6 @@
 # MCP Capability Index
 
-This index maps hosted MCP servers to AI SDR capabilities. It is the working source of truth for what `trellis add <capability> <provider>` should mount into the sandbox.
+This index maps hosted MCP servers to Trellis capabilities. It is the working source of truth for what `trellis add <capability> <provider>` should mount into the sandbox.
 
 Provider packages can expose more than one capability. The CLI should install by capability/provider pair, but it should mount the provider's MCP servers from the package manifest.
 

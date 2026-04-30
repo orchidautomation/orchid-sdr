@@ -680,7 +680,7 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
 async function resolveInitInput(targetArg: string | undefined, flags: Record<string, string | boolean>) {
   if (flags.interactive === true || flags.wizard === true) {
     throw new Error(
-      "Interactive init has been removed. Use a Pluxx-guided Trellis onboarding plugin or run init with explicit flags, for example: npm run trellis -- init ../trellis-ai-sdr --name trellis-ai-sdr --with-discovery --with-deep-research --with-enrichment",
+      "Interactive init has been removed. Use a Pluxx-guided Trellis onboarding plugin or run init with explicit flags, for example: npm run trellis -- init ../trellis-app --name trellis-app --with-discovery --with-deep-research --with-enrichment",
     );
   }
 

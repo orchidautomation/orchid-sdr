@@ -1,6 +1,6 @@
 # Trellis New User Guide
 
-This guide covers the Trellis reference AI SDR from a product and implementation perspective:
+This guide covers the Trellis reference app from a product and implementation perspective:
 
 - what Trellis includes
 - which core and optional lanes are available
@@ -24,14 +24,14 @@ If you are trying to get one demo live, use this order:
 
 Trellis is a framework for composing agentic GTM systems. This repository includes:
 
-1. a reference AI SDR application
+1. a reference application
 2. the framework packages and contracts that support it
 
 The reference app provides a working control plane for signal ingestion, research, qualification, workflow state, dashboard operations, and MCP access.
 
 ## What The Reference App Does
 
-At a high level, the AI SDR workflow:
+At a high level, the reference workflow:
 
 1. ingests normalized signals
 2. researches the person, company, and source context
@@ -44,7 +44,6 @@ Core capabilities:
 
 - normalized inbound signal ingest through webhooks
 - optional scheduled discovery from public sources such as LinkedIn
-- web research for person and company context
 - Convex-backed state and audit history
 - Rivet orchestration
 - dashboard and first-party MCP control surfaces
@@ -71,7 +70,6 @@ Start with:
 
 Then add only what you plan to show:
 
-- `Firecrawl` for search and extraction
 - `Apify` for scheduled discovery
 - `Prospeo` for enrichment
 - `Attio` for CRM sync

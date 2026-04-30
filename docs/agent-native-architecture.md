@@ -1,6 +1,6 @@
 # Agent-Native Architecture
 
-This page defines the default architecture direction for the open-source AI SDR framework.
+This page defines the default architecture direction for the open-source Trellis framework.
 
 The goal is an opinionated best-in-class stack that works out of the box, while still letting technical teams swap providers when they have strong preferences.
 

@@ -37,7 +37,7 @@ Trellis gives you the primitives to build agentic GTM systems with explicit stru
 
 That means you can compose different systems from the same substrate:
 
-- AI SDR
+- outbound SDR workflows
 - meeting prep
 - account research
 - customer success copilots
@@ -66,7 +66,7 @@ docs       people      retrieval      models   handoff   Rivet      agents
 warehouse  context     enrichment     rules    updates   history    copilots
 ```
 
-The important point is not "AI SDR."
+The important point is not one specific workflow.
 
 The important point is that GTM workflows are assembled from clear parts that can be inspected, tested, swapped, and operated.
 
@@ -106,11 +106,11 @@ docs/                product, deployment, and architecture docs
 
 ## Fastest Ways To See It
 
-### 1. Run one concrete AI SDR demo
+### 1. Run the reference app once
 
 If you want the least confusing path, do not start by scaffolding a custom app.
 
-Start with the reference AI SDR already in this repo:
+Start with the reference app already in this repo:
 
 1. fill the minimum env for the reference app
 2. keep `NO_SENDS_MODE=true`
@@ -128,7 +128,7 @@ npm run trellis:demo:check
 ```
 
 - `trellis:demo:smoke`
-  - starts the reference AI SDR in local smoke mode
+  - starts the reference app in local smoke mode
   - verifies `/healthz`, dashboard auth/state, `/mcp/trellis`, and one safe signal ingest
   - keeps `NO_SENDS_MODE=true`, so the flow stops safely without outbound
 - `trellis:demo:check`
@@ -173,11 +173,11 @@ npm run trellis -- add search firecrawl --apply
 npm run trellis -- add extract firecrawl --apply
 ```
 
-For the current reference AI SDR shape:
+For the current optional-lane shape that matches the reference app:
 
 ```bash
-npm run trellis -- init ../my-ai-sdr \
-  --name my-ai-sdr \
+npm run trellis -- init ../my-trellis-app \
+  --name my-trellis-app \
   --with-discovery \
   --with-deep-research \
   --with-enrichment \
