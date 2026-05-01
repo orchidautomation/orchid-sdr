@@ -109,4 +109,24 @@ describe("ApifySourceAdapter", () => {
       postNestedComments: false,
     });
   });
+
+  it("does not trust a noisy top-level title when stronger linkedin role signals are absent", () => {
+    const adapter = new ApifySourceAdapter();
+    const [signal] = adapter.normalizeLinkedInSignals([
+      {
+        id: "profile_like_1",
+        publicIdentifier: "officebutler24",
+        linkedinUrl: "https://www.linkedin.com/company/officebutler24/",
+        name: "OfficeButler24",
+        title: "7 followers",
+        followerCount: 7,
+      },
+    ]);
+
+    expect(signal).toBeDefined();
+    if (!signal) {
+      throw new Error("signal was not normalized");
+    }
+    expect(signal.authorTitle).toBeNull();
+  });
 });

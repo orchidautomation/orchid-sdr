@@ -11,7 +11,6 @@ import {
 } from "./services/runtime-bootstrap.js";
 import { createTrellisMcpServer } from "./mcp/server-factory.js";
 import {
-  handleHandoffWebhook,
   handleSignalWebhook,
 } from "./orchestration/webhook-handlers.js";
 import { runSandboxTurn } from "./orchestration/sandbox-broker.js";
@@ -22,6 +21,7 @@ import {
 import {
   buildDefaultSdrActorBackedWorkflowDependencies,
   buildDefaultSdrActorBackedWebhookHandlers,
+  createDefaultSdrHandoffWebhookHandler,
   mountDefaultSdrActorBackedOperatorSurface,
 } from "../../../packages/default-sdr/src/runtime-dispatch.js";
 import { mountDefaultSdrWebhookRoutes } from "../../../packages/default-sdr/src/webhook-bootstrap.js";
@@ -42,6 +42,10 @@ export function createApp() {
     actorClient: actorClient as any,
     resolveProspectIdByProviderThreadId: async (providerThreadId) =>
       (await context.repository.getProspectIdByProviderThreadId(providerThreadId))?.prospectId ?? null,
+  });
+  const handleHandoff = createDefaultSdrHandoffWebhookHandler({
+    appendAuditEvent: (entityType, entityId, eventName, payload) =>
+      context.repository.appendAuditEvent(entityType, entityId, eventName, payload),
   });
 
   const { dashboardRoutes } = mountDefaultSdrActorBackedOperatorSurface(app, {
@@ -86,25 +90,8 @@ export function createApp() {
     handlers: {
       onApifyRunCompleted: actorBackedWebhookHandlers.onApifyRunCompleted,
       onSignal: async (payload) => handleSignalWebhook(workflowDeps, payload),
-      onAgentMail: async (payload) => {
-        if (!payload.threadId || !payload.bodyText) {
-          return {
-            ok: true,
-            ignored: true,
-            reason: "threadId or bodyText missing",
-          };
-        }
-
-        return actorBackedWebhookHandlers.onAgentMail({
-          providerInboxId: payload.inboxId ?? null,
-          providerThreadId: payload.threadId,
-          providerMessageId: payload.messageId ?? null,
-          subject: payload.subject ?? null,
-          bodyText: payload.bodyText,
-          rawPayload: payload.payload ?? {},
-        });
-      },
-      onHandoff: async (payload) => handleHandoffWebhook(workflowDeps, payload),
+      onAgentMail: actorBackedWebhookHandlers.onAgentMail,
+      onHandoff: handleHandoff,
     },
   });
 

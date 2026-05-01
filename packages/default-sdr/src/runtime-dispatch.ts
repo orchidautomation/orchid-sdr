@@ -145,9 +145,83 @@ export function buildDefaultSdrActorBackedWebhookHandlers<
 }) {
   return {
     onApifyRunCompleted: createActorBackedDiscoveryCompletionHandler(input.actorClient),
-    onAgentMail: createActorBackedInboundReplyHandler(input.actorClient, {
-      resolveProspectIdByProviderThreadId: input.resolveProspectIdByProviderThreadId,
-    }),
+    onAgentMail: createDefaultSdrAgentMailWebhookHandler(
+      createActorBackedInboundReplyHandler(input.actorClient, {
+        resolveProspectIdByProviderThreadId: input.resolveProspectIdByProviderThreadId,
+      }),
+    ),
+  };
+}
+
+export function createDefaultSdrAgentMailWebhookHandler<Outcome = unknown>(
+  handleInboundReply: (payload: {
+    providerInboxId?: string | null;
+    providerThreadId: string;
+    providerMessageId?: string | null;
+    subject?: string | null;
+    bodyText: string;
+    rawPayload?: Record<string, unknown>;
+  }) => Promise<Outcome | null>,
+) {
+  return async (payload: {
+    type: string;
+    inboxId?: string | null;
+    threadId?: string | null;
+    messageId?: string | null;
+    subject?: string | null;
+    bodyText?: string | null;
+    payload?: Record<string, unknown>;
+  }) => {
+    if (payload.type !== "message.received") {
+      return {
+        ok: true,
+        ignored: true,
+        reason: `unsupported event type ${payload.type}`,
+      };
+    }
+
+    if (!payload.threadId || !payload.bodyText) {
+      return {
+        ok: true,
+        ignored: true,
+        reason: "threadId or bodyText missing",
+      };
+    }
+
+    return handleInboundReply({
+      providerInboxId: payload.inboxId ?? null,
+      providerThreadId: payload.threadId,
+      providerMessageId: payload.messageId ?? null,
+      subject: payload.subject ?? null,
+      bodyText: payload.bodyText,
+      rawPayload: payload.payload ?? {},
+    });
+  };
+}
+
+export function createDefaultSdrHandoffWebhookHandler(input: {
+  appendAuditEvent(
+    entityType: string,
+    entityId: string,
+    eventName: string,
+    payload: Record<string, unknown>,
+  ): Promise<void>;
+}) {
+  return async (payload: {
+    threadId: string;
+    disposition: string;
+    notes?: string;
+    actor?: string;
+  }) => {
+    await input.appendAuditEvent("thread", payload.threadId, "HandoffRequested", {
+      disposition: payload.disposition,
+      notes: payload.notes ?? null,
+      actor: payload.actor ?? null,
+    });
+
+    return {
+      ok: true,
+    };
   };
 }
 

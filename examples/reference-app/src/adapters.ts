@@ -335,7 +335,6 @@ export class ApifySourceAdapter implements DiscoverySignalSourceAdapter<Discover
         pickString(item, ["jobTitle"]),
         pickString(item, ["headline"]),
         authorInfo,
-        pickString(item, ["title"]),
       ]);
 
       return {
