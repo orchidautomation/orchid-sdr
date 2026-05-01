@@ -222,7 +222,7 @@ export function trellisMcpProvider(): AiSdrProviderDefinition {
         description: "Fallback MCP token and sandbox callback token.",
       },
     ],
-    capabilities: ["mcp.remote", "pipeline.summary", "lead.inspect", "mail.send", "crm.syncProspect"],
+    capabilities: ["mcp.remote", "records.read", "workflows.inspect", "runtime.control"],
   });
 }
 

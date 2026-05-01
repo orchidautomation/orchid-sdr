@@ -2,6 +2,7 @@ import {
   aiSdrCompositionProfileIds,
   collectConfigEnv,
   collectWebhookDefinitions,
+  defaultTrellisModules,
   defineAiSdr,
   providersFromModules,
   type AiSdrCapabilityBinding,
@@ -33,7 +34,7 @@ export const aiSdrInitProfiles = {
   core: {
     id: "core",
     displayName: "Core Trellis app",
-    description: "Smallest honest Trellis runtime that can ingest normalized signals, research the web, run actors, persist state, and expose MCP tools. Discovery, CRM, outbound email, enrichment, and handoff stay optional until you add them.",
+    description: "Smallest honest Trellis runtime that can ingest structured events, run actors, persist state, execute sandboxed turns, and expose MCP tools. Discovery, CRM, outbound email, enrichment, and handoff stay optional until you add them.",
     defaultDirectoryName: "trellis-core",
     compositionTargets: ["minimum"],
     moduleIds: [
@@ -95,6 +96,7 @@ export const aiSdrInitModuleChoices = [
 export type AiSdrScaffoldSpec = {
   profile: AiSdrInitProfile;
   configFileName: string;
+  kitIds: string[];
   selection: {
     id: string;
     displayName: string;
@@ -126,11 +128,12 @@ export function buildScaffoldSpec(
     description?: string;
     profile?: string;
     moduleIds?: string[];
+    kitIds?: string[];
   },
 ): AiSdrScaffoldSpec {
   const profile = resolveInitProfile(input.profile);
   const selectedModuleIdSet = new Set(input.moduleIds ?? profile.moduleIds);
-  const selectedModules = (baseConfig.modules ?? []).filter((module) => selectedModuleIdSet.has(module.id));
+  const selectedModules = defaultTrellisModules().filter((module) => selectedModuleIdSet.has(module.id));
   const selectedProviderIdSet = new Set(providersFromModules(selectedModules).map((provider) => provider.id));
   const compositionTargets = resolveScaffoldCompositionTargets(profile, selectedModules);
   const selection = describeScaffoldSelection({
@@ -173,6 +176,7 @@ export function buildScaffoldSpec(
   return {
     profile,
     configFileName: `${input.name}.config.ts`,
+    kitIds: input.kitIds ?? [],
     selection,
     config,
     selectedModules,
@@ -240,8 +244,9 @@ export function describeScaffoldSelection(input: {
 export function renderScaffoldConfigModule(spec: AiSdrScaffoldSpec) {
   const selectedModuleIds = spec.selectedModules.map((module) => module.id);
   const scaffoldName = spec.config.name;
-  const scaffoldDescription = spec.config.description ?? `${spec.config.name} generated from the Trellis reference app scaffold.`;
+  const scaffoldDescription = spec.config.description ?? `${spec.config.name} generated from the Trellis scaffold.`;
   const selectedProfileId = spec.profile.id;
+  const selectedKitIds = spec.kitIds;
   const configBody = {
     name: "scaffoldName",
     description: "scaffoldDescription",
@@ -270,6 +275,7 @@ export function renderScaffoldConfigModule(spec: AiSdrScaffoldSpec) {
     `const scaffoldName = ${JSON.stringify(scaffoldName)};`,
     `const scaffoldDescription = ${JSON.stringify(scaffoldDescription)};`,
     `const selectedProfileId = ${JSON.stringify(selectedProfileId)};`,
+    `const selectedKitIds = ${JSON.stringify(selectedKitIds, null, 2)};`,
     `const selectedModuleIds = ${JSON.stringify(selectedModuleIds, null, 2)};`,
     "const modules = defaultTrellisModules().filter((module) => selectedModuleIds.includes(module.id));",
     "",
@@ -293,14 +299,12 @@ export function renderScaffoldEnvExample(spec: AiSdrScaffoldSpec) {
     ["PORT", "3000"],
     ["APP_URL", "http://localhost:3000"],
     ["NODE_ENV", "development"],
-    ["NO_SENDS_MODE", "true"],
     ["DASHBOARD_PASSWORD", ""],
     ["CONVEX_URL", "https://your-deployment.convex.cloud"],
     ["NEXT_PUBLIC_CONVEX_URL", "https://your-deployment.convex.cloud"],
-    ["DEFAULT_CAMPAIGN_TIMEZONE", "UTC"],
     ["TRELLIS_SANDBOX_TOKEN", "change-me"],
     ["TRELLIS_MCP_TOKEN", ""],
-    ["HANDOFF_WEBHOOK_SECRET", "change-me"],
+    ["SIGNAL_WEBHOOK_SECRET", "change-me"],
   ]);
 
   for (const envVar of spec.envVars) {
@@ -313,14 +317,12 @@ export function renderScaffoldEnvExample(spec: AiSdrScaffoldSpec) {
     "PORT",
     "APP_URL",
     "NODE_ENV",
-    "NO_SENDS_MODE",
-    "DEFAULT_CAMPAIGN_TIMEZONE",
     "DASHBOARD_PASSWORD",
     "TRELLIS_SANDBOX_TOKEN",
     "TRELLIS_MCP_TOKEN",
     "CONVEX_URL",
     "NEXT_PUBLIC_CONVEX_URL",
-    "HANDOFF_WEBHOOK_SECRET",
+    "SIGNAL_WEBHOOK_SECRET",
   ].filter((name) => defaults.has(name));
 
   const required = spec.envVars
@@ -373,7 +375,7 @@ export function renderScaffoldSetupChecklist(spec: AiSdrScaffoldSpec) {
 
   return `# Trellis Setup Checklist
 
-This project was scaffolded as **${spec.selection.displayName}**.
+This project was scaffolded as **${spec.selection.displayName}**${spec.kitIds.length > 0 ? ` with kit${spec.kitIds.length > 1 ? "s" : ""} **${spec.kitIds.join(", ")}**` : ""}.
 
 ${spec.selection.description}
 
@@ -459,9 +461,8 @@ npm run dev
 
 ## Safe First Actions
 
-- Keep \`NO_SENDS_MODE=true\`
 - Use the dashboard or MCP to inspect runtime flags
-- Post a normalized signal before enabling discovery or outbound
+- Post a structured webhook event before layering in optional providers
 - Only enable optional providers after \`npm run doctor\` is clean
 
 ## Useful Commands
@@ -476,7 +477,7 @@ npm run trellis:sandbox:probe
 
 - Missing \`CONVEX_URL\` or \`NEXT_PUBLIC_CONVEX_URL\`
 - Missing \`TRELLIS_SANDBOX_TOKEN\`
-- Missing \`HANDOFF_WEBHOOK_SECRET\`
+- Missing \`SIGNAL_WEBHOOK_SECRET\`
 - Provider API keys present in config intent but absent in \`.env\`
 - Running discovery or probe before the dashboard and health check are healthy
 `;

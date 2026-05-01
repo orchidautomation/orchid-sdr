@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import baseConfig from "../trellis.config.js";
+import baseConfig from "../../core-app/trellis.config.js";
 import {
   aiSdrInitModuleChoices,
   buildScaffoldSpec,
@@ -8,7 +8,7 @@ import {
   renderScaffoldEnvExample,
   renderScaffoldSetupChecklist,
   resolveInitModuleIds,
-} from "@trellis/framework/scaffold";
+} from "../../../packages/framework/src/scaffold.js";
 
 describe("framework scaffold profiles", () => {
   it("builds a core scaffold for manual signal workflows", () => {
@@ -21,7 +21,7 @@ describe("framework scaffold profiles", () => {
     expect(spec.selection.id).toBe("core");
     expect(spec.profile.defaultDirectoryName).toBe("trellis-core");
     expect(spec.config.compositionTargets).toEqual(["minimum"]);
-    expect(spec.config.campaigns?.[0]?.sources).toEqual(["normalized-webhook"]);
+    expect(spec.config.webhooks?.[0]?.path).toEqual("/webhooks/intake");
     expect(spec.selectedModules.map((module) => module.id)).toEqual([
       "normalized-webhook",
       "convex",
@@ -69,7 +69,7 @@ describe("framework scaffold profiles", () => {
     expect(spec.selection.displayName).toBe("Custom Trellis stack");
     expect(spec.selectedModules.map((module) => module.id)).toContain("apify-linkedin");
     expect(spec.selectedModules.map((module) => module.id)).toContain("parallel");
-    expect(spec.config.campaigns?.[0]?.sources).toEqual(["normalized-webhook", "apify-linkedin"]);
+    expect(spec.config.webhooks?.[0]?.path).toEqual("/webhooks/intake");
   });
 
   it("can reach production parity by starting from core and toggling all optional lanes on", () => {
@@ -119,13 +119,14 @@ describe("framework scaffold profiles", () => {
     expect(configModule).toContain('const selectedModuleIds =');
     expect(configModule).toContain('"compositionTargets": [');
     expect(configModule).toContain('"name": scaffoldName');
-    expect(configModule).not.toContain('"mcp": {');
+    expect(configModule).toContain('"mcp": {');
     expect(configModule).toContain('"capabilityId": "mcp"');
     expect(configModule).not.toContain('./src/framework/index.js');
     expect(envExample).toContain("CONVEX_URL=https://your-deployment.convex.cloud");
     expect(envExample).toContain("TRELLIS_SANDBOX_TOKEN=change-me");
     expect(envExample).toContain("TRELLIS_MCP_TOKEN=");
     expect(envExample).toContain("DASHBOARD_PASSWORD=");
+    expect(envExample).toContain("SIGNAL_WEBHOOK_SECRET=change-me");
     expect(setupChecklist).toContain("# Trellis Setup Checklist");
     expect(setupChecklist).toContain(spec.selection.description);
     expect(setupChecklist).toContain("External Accounts You Actually Need");

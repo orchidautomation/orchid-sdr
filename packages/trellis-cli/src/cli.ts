@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { cpSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,8 @@ import { loadProcessEnvFiles } from "../../framework/src/env-loader.js";
 import { convexMutations, convexQueries } from "../../default-sdr/src/convex-repository.js";
 
 import config from "../../../examples/reference-app/trellis.config.js";
+import coreConfig from "../../../examples/core-app/trellis.config.js";
+import meetingPrepConfig from "../../../examples/meeting-prep/trellis.config.js";
 import { registry } from "../../../examples/reference-app/src/registry.js";
 import {
   aiSdrCompositionProfileIds,
@@ -43,6 +45,8 @@ const cliFlags = parsedCliArgs.flags;
 const jsonOutput = isJsonOutput(cliFlags);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const referenceAppRoot = path.resolve(repoRoot, "examples/reference-app");
+const coreAppRoot = path.resolve(repoRoot, "examples/core-app");
+const meetingPrepRoot = path.resolve(repoRoot, "examples/meeting-prep");
 const SHARED_SCAFFOLD_COPY_ENTRIES = [
   ".dockerignore",
   ".gitignore",
@@ -53,7 +57,7 @@ const SHARED_SCAFFOLD_COPY_ENTRIES = [
   "tsconfig.json",
   "vercel.json",
 ];
-const REFERENCE_APP_SCAFFOLD_COPY_ENTRIES = [
+const CORE_SCAFFOLD_COPY_ENTRIES = [
   "convex",
   "knowledge",
   "scripts",
@@ -61,6 +65,25 @@ const REFERENCE_APP_SCAFFOLD_COPY_ENTRIES = [
   "src",
   "tests",
 ];
+
+const DOMAIN_KITS = {
+  sdr: {
+    id: "sdr",
+    displayName: "AI SDR",
+    root: referenceAppRoot,
+    baseConfig: config,
+    copyEntries: ["convex", "knowledge", "scripts", "skills", "src", "tests"],
+  },
+  "meeting-prep": {
+    id: "meeting-prep",
+    displayName: "Meeting prep",
+    root: meetingPrepRoot,
+    baseConfig: meetingPrepConfig,
+    copyEntries: ["knowledge", "skills", "tests"],
+  },
+} as const;
+
+type DomainKitId = keyof typeof DOMAIN_KITS;
 
 await main();
 
@@ -133,7 +156,8 @@ function printHelp() {
   npm run trellis -- mcp claude-code [--local|--remote] [--write]
   npm run trellis -- add <module-id>
   npm run trellis -- add <capability> <provider>
-  npm run trellis -- init <target-dir> [--name my-app]
+  npm run trellis -- add kit <sdr|meeting-prep> --apply
+  npm run trellis -- init <target-dir> [--name my-app] [--kit sdr|meeting-prep]
   npm run trellis -- <command> --json
 
 Examples:
@@ -158,20 +182,27 @@ Examples:
   npm run trellis -- add model vercel-ai-gateway
   npm run trellis -- add runtime vercel-sandbox
   npm run trellis -- add handoff slack
+  npm run trellis -- add kit sdr --apply
+  npm run trellis -- add kit meeting-prep --apply
   npm run trellis -- connect source apify
   npm run trellis -- deploy vercel
   npm run trellis -- deploy vercel --json
   npm run trellis -- mcp claude-code --local --write
   npm run trellis -- mcp claude-code --local --write --json
   npm run trellis -- init ../trellis-core --name trellis-core
+  npm run trellis -- init ../trellis-sdr --name trellis-sdr --kit sdr
+  npm run trellis -- init ../meeting-prep --name meeting-prep --kit meeting-prep
   npm run trellis -- init ../trellis-core --name trellis-core --json
-  npm run trellis -- init ../trellis-core-plus --name trellis-core-plus --with-discovery --with-deep-research
+  npm run trellis -- init ../trellis-core-plus --name trellis-core-plus --with-crm --with-email
 
 Simple labels stay short in the CLI: search, extract, deep-research, monitor, enrichment.
 The alias "research" resolves to the full research contract family.
 
-Init now always scaffolds the core Trellis app.
+Init now always scaffolds the neutral core Trellis app unless you add a domain kit.
 Add optional lanes with explicit flags or later with add/connect commands.
+Domain kits available today:
+  sdr
+  meeting-prep
 Optional lane flags:
   --with-discovery
   --with-deep-research
@@ -396,6 +427,24 @@ function printAddPlan(moduleId: string | undefined) {
   if (!moduleId) {
     console.error("Missing module or capability. Example: npm run trellis -- add search firecrawl");
     process.exitCode = 1;
+    return;
+  }
+
+  if (moduleId === "kit") {
+    const kitId = providerArg;
+    if (!kitId || !(kitId in DOMAIN_KITS)) {
+      console.error(`Unknown or missing kit. Available kits: ${Object.keys(DOMAIN_KITS).join(", ")}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    if (cliFlags.apply === true || cliFlags.write === true) {
+      applyKitToScaffold(kitId as DomainKitId);
+      return;
+    }
+
+    console.log(`Kit: ${kitId}`);
+    console.log(`Run: npm run trellis -- add kit ${kitId} --apply`);
     return;
   }
 
@@ -660,11 +709,13 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
   const profile = initInput.profile;
   const appName = initInput.appName;
   const packageName = sanitizePackageName(appName);
-  const spec = buildScaffoldSpec(config, {
+  const baseConfig = resolveScaffoldBaseConfig(initInput.kitIds);
+  const spec = buildScaffoldSpec(baseConfig, {
     name: packageName,
-    description: `${appName} generated from the Trellis reference app scaffold.`,
+    description: `${appName} generated from the Trellis ${initInput.kitIds.length > 0 ? `${initInput.kitIds.join(", ")} kit` : "core"} scaffold.`,
     profile,
     moduleIds: initInput.moduleIds,
+    kitIds: initInput.kitIds,
   });
 
   await ensureEmptyDirectory(targetDir);
@@ -676,10 +727,19 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
     });
   }
 
-  for (const entry of REFERENCE_APP_SCAFFOLD_COPY_ENTRIES) {
-    await cp(path.join(referenceAppRoot, entry), path.join(targetDir, entry), {
+  for (const entry of CORE_SCAFFOLD_COPY_ENTRIES) {
+    await cp(path.join(coreAppRoot, entry), path.join(targetDir, entry), {
       recursive: true,
     });
+  }
+
+  for (const kitId of initInput.kitIds) {
+    const kit = DOMAIN_KITS[kitId];
+    for (const entry of kit.copyEntries) {
+      await cp(path.join(kit.root, entry), path.join(targetDir, entry), {
+        recursive: true,
+      });
+    }
   }
 
   const rootPackage = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8")) as {
@@ -723,6 +783,7 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
       appName,
       packageName,
       profile,
+      kits: initInput.kitIds,
       selection: {
         id: spec.selection.id,
         displayName: spec.selection.displayName,
@@ -787,6 +848,7 @@ async function resolveInitInput(targetArg: string | undefined, flags: Record<str
   const profile = "core";
   const resolvedTargetArg = targetArg;
   const appName = String(flags.name ?? path.basename(path.resolve(process.cwd(), resolvedTargetArg)));
+  const kitIds = resolveKitFlags(flags);
   const moduleIds = resolveInitModuleIds(profile, resolveModuleChoiceFlags(flags));
   const selection = describeScaffoldSelection({
     profile: resolveInitProfile(profile),
@@ -796,6 +858,7 @@ async function resolveInitInput(targetArg: string | undefined, flags: Record<str
   if (!jsonOutput) {
     console.log(`Scaffold target: ${resolvedTargetArg}`);
     console.log(`App name: ${appName}`);
+    printList("Domain kits", kitIds.length > 0 ? kitIds : ["core only"]);
     printList("Optional lanes", summarizeOptionalModuleChoices(moduleIds));
     console.log(`Resulting scaffold: ${selection.displayName}`);
     console.log("");
@@ -806,7 +869,29 @@ async function resolveInitInput(targetArg: string | undefined, flags: Record<str
     profile,
     appName,
     moduleIds,
+    kitIds,
   };
+}
+
+function resolveKitFlags(flags: Record<string, string | boolean>): DomainKitId[] {
+  const raw = typeof flags.kit === "string" ? flags.kit : "";
+  if (!raw) {
+    return [];
+  }
+
+  const values = raw.split(",").map((value) => value.trim()).filter(Boolean);
+  const normalized = [...new Set(values)];
+
+  if (normalized.length > 1) {
+    throw new Error(`Only one domain kit can be applied during init right now. Received: ${normalized.join(", ")}`);
+  }
+
+  const unknown = normalized.filter((value) => !(value in DOMAIN_KITS));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown kit: ${unknown.join(", ")}. Available kits: ${Object.keys(DOMAIN_KITS).join(", ")}`);
+  }
+
+  return normalized as DomainKitId[];
 }
 
 function resolveModuleChoiceFlags(flags: Record<string, string | boolean>) {
@@ -975,11 +1060,12 @@ function applyModuleToScaffold(module: AiSdrModuleDefinition) {
   const selectedModuleIds = new Set(metadata.selectedModuleIds);
   selectedModuleIds.add(module.id);
 
-  const spec = buildScaffoldSpec(config, {
+  const spec = buildScaffoldSpec(resolveScaffoldBaseConfig(metadata.selectedKitIds as DomainKitId[]), {
     name: metadata.scaffoldName,
     description: metadata.scaffoldDescription,
     profile: metadata.selectedProfileId,
     moduleIds: [...selectedModuleIds],
+    kitIds: metadata.selectedKitIds,
   });
 
   writeFileSyncSafe(scaffoldConfigPath, renderScaffoldConfigModule(spec));
@@ -1036,6 +1122,7 @@ function parseScaffoldConfigMetadata(source: string) {
   const scaffoldName = parseQuotedConst(source, "scaffoldName");
   const scaffoldDescription = parseQuotedConst(source, "scaffoldDescription");
   const selectedProfileId = parseQuotedConst(source, "selectedProfileId");
+  const selectedKitIds = parseJsonConst<string[]>(source, "selectedKitIds") ?? [];
   const selectedModuleIds = parseJsonConst<string[]>(source, "selectedModuleIds");
 
   if (!scaffoldName || !scaffoldDescription || !selectedProfileId || !selectedModuleIds) {
@@ -1046,6 +1133,7 @@ function parseScaffoldConfigMetadata(source: string) {
     scaffoldName,
     scaffoldDescription,
     selectedProfileId,
+    selectedKitIds,
     selectedModuleIds,
   };
 }
@@ -1176,7 +1264,7 @@ function renderScaffoldReadme(
 ) {
   return `# ${appName}
 
-This project was scaffolded from the Trellis reference app.
+This project was scaffolded from the Trellis ${spec.kitIds.length > 0 ? `${spec.kitIds.join(", ")} kit` : "core app"}.
 
 - Stack: \`${spec.selection.id}\` (${spec.selection.displayName})
 - Generated in: \`${targetDir}\`
@@ -1228,8 +1316,51 @@ npm run trellis -- mcp claude-code --local --write
 - \`${spec.configFileName}\` controls the active modules and provider bindings
 - \`packages/\` contains the extracted Trellis workspace packages used by this scaffold
 - optional providers can be removed or added by editing the config and env
-- this scaffold preserves the current reference app behavior while keeping the framework and provider packages local to the workspace
+- this scaffold keeps the framework and provider packages local to the workspace
 `;
+}
+
+function resolveScaffoldBaseConfig(kitIds: DomainKitId[]) {
+  if (kitIds.length === 0) {
+    return coreConfig;
+  }
+
+  return DOMAIN_KITS[kitIds[0] ?? "sdr"].baseConfig;
+}
+
+function applyKitToScaffold(kitId: DomainKitId) {
+  const scaffoldConfigPath = resolveScaffoldConfigPath(process.cwd());
+  const scaffoldConfigSource = readFileSyncSafe(scaffoldConfigPath);
+  const metadata = parseScaffoldConfigMetadata(scaffoldConfigSource);
+  if (!metadata) {
+    throw new Error(
+      `Cannot apply kit "${kitId}" automatically. This works only for scaffold-generated <app>.config.ts files.`,
+    );
+  }
+
+  const kit = DOMAIN_KITS[kitId];
+  for (const entry of kit.copyEntries) {
+    cpSync(path.join(kit.root, entry), path.join(process.cwd(), entry), {
+      recursive: true,
+      force: true,
+    });
+  }
+
+  const spec = buildScaffoldSpec(kit.baseConfig, {
+    name: metadata.scaffoldName,
+    description: metadata.scaffoldDescription,
+    profile: metadata.selectedProfileId,
+    moduleIds: metadata.selectedModuleIds,
+    kitIds: [kitId],
+  });
+
+  writeFileSyncSafe(scaffoldConfigPath, renderScaffoldConfigModule(spec));
+  writeFileSyncSafe(path.join(process.cwd(), "src", "app-config.ts"), renderScaffoldAppConfigModule(spec));
+  writeFileSyncSafe(path.join(process.cwd(), ".env.example"), renderScaffoldEnvExample(spec));
+  writeFileSyncSafe(path.join(process.cwd(), "TRELLIS_SETUP.md"), renderScaffoldSetupChecklist(spec));
+  writeFileSyncSafe(path.join(process.cwd(), "README.md"), renderScaffoldReadme(metadata.scaffoldName, process.cwd(), spec));
+
+  console.log(`Applied kit "${kitId}" to ${scaffoldConfigPath}`);
 }
 
 function resolveScaffoldConfigPath(cwd: string) {
@@ -1288,7 +1419,6 @@ function buildScaffoldPackage(
       "test:watch": "vitest",
       trellis: "tsx packages/trellis-cli/src/cli.ts",
       doctor: "tsx scripts/doctor.ts",
-      "trellis:discovery:tick": "tsx scripts/discovery-tick.ts",
       "trellis:sandbox:probe": "tsx scripts/sandbox-probe.ts",
     },
     dependencies: {

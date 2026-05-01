@@ -78,7 +78,7 @@ export function apifyLinkedInModule(): AiSdrModuleDefinition {
     id: "apify-linkedin",
     displayName: "Apify LinkedIn public-post discovery",
     packageName: "@trellis/apify-linkedin",
-    description: "Discover LinkedIn public posts and normalize them into SDR signals.",
+    description: "Discover LinkedIn public posts and normalize them into Trellis intake events.",
     providerKey: "apify",
     capabilityIds: ["source"],
     contracts: ["signal.discovery.v1", "signal.normalized.v1"],
@@ -103,7 +103,7 @@ export function normalizedWebhookModule(): AiSdrModuleDefinition {
     id: "normalized-webhook",
     displayName: "Normalized signal webhook",
     packageName: "@trellis/webhooks",
-    description: "Accept warm leads and custom source signals through a normalized webhook contract.",
+    description: "Accept structured intake events through a normalized webhook contract.",
     providerKey: "webhook",
     capabilityIds: ["source"],
     contracts: ["signal.webhook.v1", "signal.normalized.v1"],
@@ -117,7 +117,7 @@ export function normalizedWebhookModule(): AiSdrModuleDefinition {
     smokeChecks: [
       {
         id: "webhooks.signals",
-        description: "Post one normalized signal and inspect the resulting lead.",
+        description: "Post one normalized event and inspect the resulting work item.",
       },
     ],
   });

@@ -51,14 +51,10 @@ export const aiSdrSkillDefinitionSchema = z.object({
   description: z.string().optional(),
 });
 
-export const aiSdrKnowledgeDefinitionSchema = z.object({
-  product: z.string().min(1),
-  icp: z.string().min(1),
-  compliance: z.string().optional(),
-  usp: z.string().optional(),
-  handoff: z.string().optional(),
-  negativeSignals: z.string().optional(),
-});
+export const aiSdrKnowledgeDefinitionSchema = z.record(z.string().min(1), z.string().min(1))
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "knowledge must declare at least one markdown file",
+  });
 
 export const aiSdrCampaignDefinitionSchema = z.object({
   id: z.string().min(1),
@@ -277,9 +273,9 @@ export function defineAiSdr(config: AiSdrConfig): AiSdrConfig {
 
 const defaultCapabilityDrivenMcpToolGroups = [
   "knowledge",
-  "lead",
-  "pipeline",
-  "thread",
+  "records",
+  "workflows",
+  "runtime",
 ] as const;
 
 const capabilityToMcpToolGroups: Partial<Record<AiSdrCapabilityId, string[]>> = {
