@@ -57,12 +57,12 @@ export async function buildDefaultSdrDashboardCoreState(context: DefaultSdrDashb
     controls,
   ] = await Promise.all([
     context.repository.getDashboardSummary(),
-    context.repository.listRecentSignals(24),
-    context.repository.listRecentProspects(48),
-    context.repository.listQualifiedLeads(12),
-    context.repository.listActiveThreads(48),
-    context.repository.listRecentProviderRuns(24),
-    context.repository.listRecentAuditEvents(16),
+    context.repository.listRecentSignals(72),
+    context.repository.listRecentProspects(96),
+    context.repository.listQualifiedLeads(24),
+    context.repository.listActiveThreads(96),
+    context.repository.listRecentProviderRuns(48),
+    context.repository.listRecentAuditEvents(32),
     context.repository.getControlFlags(),
   ]);
 

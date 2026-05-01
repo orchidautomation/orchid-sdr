@@ -6,13 +6,20 @@ import {
   type SignalWebhookPayload as FrameworkSignalWebhookPayload,
 } from "@trellis/framework/signals";
 import type { WorkflowDependencies } from "./types.js";
-import { executeProspectWorkflow } from "./prospect-workflow.js";
 import { getAutomationPauseReason } from "./workflow-control.js";
 import { pauseThreadWithAudit } from "../../../../packages/default-sdr/src/prospect-workflow-helpers.js";
 
 export type NormalizedInboundSignal = NormalizedSignal;
 export type SignalWebhookPayload = FrameworkSignalWebhookPayload;
 export { normalizeSignalWebhookPayload };
+
+function requireProspectLifecycleDispatch(deps: WorkflowDependencies) {
+  if (!deps.dispatchProspectLifecycle) {
+    throw new Error("dispatchProspectLifecycle is required for signal ingest");
+  }
+
+  return deps.dispatchProspectLifecycle;
+}
 
 async function ingestNormalizedSignals(
   deps: WorkflowDependencies,
@@ -158,9 +165,7 @@ async function ingestNormalizedSignals(
       const { prospectId, threadId } = await deps.context.repository.createOrUpdateProspectFromSignal(signalId, campaign.id);
 
       try {
-        const outcome = deps.dispatchProspectLifecycle
-          ? await deps.dispatchProspectLifecycle({ prospectId })
-          : await executeProspectWorkflow(deps, prospectId);
+        const outcome = await requireProspectLifecycleDispatch(deps)({ prospectId });
         await deps.context.state.recordWorkflowCheckpoint({
           workflowName: "prospect-workflow",
           entityType: "prospect",

@@ -17,30 +17,14 @@ import {
 import { runSandboxTurn } from "./orchestration/sandbox-broker.js";
 import { getAutomationPauseReason } from "./orchestration/workflow-control.js";
 import {
-  createDashboardStateController,
   getDashboardPassword as resolveDashboardPassword,
 } from "../../../packages/default-sdr/src/dashboard-bootstrap.js";
 import {
-  buildDefaultSdrDashboardCoreState,
-  buildDefaultSdrDashboardRuntimeState,
-} from "../../../packages/default-sdr/src/dashboard-state.js";
-import {
-  mountDefaultSdrDashboardRoutes,
-  mountDefaultSdrMcpHttpRoute,
-  mountDefaultSdrRuntimeRoutes,
-} from "../../../packages/default-sdr/src/http-routes.js";
-import {
-  buildDefaultSdrStandardDashboardActions,
-  buildDefaultSdrPageTitleSandboxProbeRequest,
-  mountDefaultSdrDashboardActionRoutes,
-} from "../../../packages/default-sdr/src/dashboard-actions.js";
-import {
   buildDefaultSdrActorBackedWorkflowDependencies,
-  createActorBackedDiscoveryCompletionHandler,
-  createActorBackedInboundReplyHandler,
+  buildDefaultSdrActorBackedWebhookHandlers,
+  mountDefaultSdrActorBackedOperatorSurface,
 } from "../../../packages/default-sdr/src/runtime-dispatch.js";
 import { mountDefaultSdrWebhookRoutes } from "../../../packages/default-sdr/src/webhook-bootstrap.js";
-import type { DefaultSdrDashboardActorClient } from "../../../packages/default-sdr/src/dashboard-state.js";
 import type { WorkflowDependencies } from "./orchestration/types.js";
 
 export function createApp() {
@@ -48,35 +32,30 @@ export function createApp() {
   const context = getAppContext();
   const actorClient = getActorClient();
   const dashboardCookieName = "trellis_dashboard_auth";
-  const dashboardState = createDashboardStateController({
-    buildCoreState: () => buildDefaultSdrDashboardCoreState(context),
-    buildRuntimeState: () =>
-      buildDefaultSdrDashboardRuntimeState(context, {
-        getActorClient: () => actorClient as unknown as DefaultSdrDashboardActorClient,
-      }),
-  });
 
   const workflowDeps: WorkflowDependencies = buildDefaultSdrActorBackedWorkflowDependencies({
     context,
     actorClient: actorClient as any,
     runSandboxTurn,
   }) as WorkflowDependencies;
-  const handleApifyCompletion = createActorBackedDiscoveryCompletionHandler(actorClient);
-  const handleInboundReply = createActorBackedInboundReplyHandler(actorClient as any, {
+  const actorBackedWebhookHandlers = buildDefaultSdrActorBackedWebhookHandlers({
+    actorClient: actorClient as any,
     resolveProspectIdByProviderThreadId: async (providerThreadId) =>
       (await context.repository.getProspectIdByProviderThreadId(providerThreadId))?.prospectId ?? null,
   });
 
-  const dashboardRoutes = mountDefaultSdrDashboardRoutes(app, {
+  const { dashboardRoutes } = mountDefaultSdrActorBackedOperatorSurface(app, {
+    context,
+    actorClient: actorClient as any,
     dashboardCookieName,
     getPassword: () => getDashboardPassword(context),
     renderLoginPage: renderDashboardLoginPage,
     renderDashboardPage,
-    dashboardState,
-  });
-
-  mountDefaultSdrRuntimeRoutes(app, {
+    mcpBearerToken: context.config.mcpToken,
     ensureRuntimeBootstrapped,
+    localSmokeMode: context.localSmokeMode,
+    getAutomationPauseReason: (controlFlags, campaignId) => getAutomationPauseReason(controlFlags as any, campaignId),
+    createMcpServer: () => createTrellisMcpServer(context),
     shouldUseRemoteRivetRuntime,
     shouldSkipLocalRivetRuntime,
     handleRemoteRivetRequest: (request) => registry.handler(request),
@@ -88,30 +67,6 @@ export function createApp() {
         localSmokeMode: context.localSmokeMode,
       };
     },
-  });
-
-  mountDefaultSdrDashboardActionRoutes(app, {
-    requireAuth: dashboardRoutes.requireAuth,
-    actions: buildDefaultSdrStandardDashboardActions({
-      localSmokeMode: context.localSmokeMode,
-      discoveryLinkedinEnabled: context.config.DISCOVERY_LINKEDIN_ENABLED,
-      discoveryXEnabled: context.config.DISCOVERY_X_ENABLED,
-      ensureDefaultCampaign: () => context.repository.ensureDefaultCampaign(),
-      getControlFlags: () => context.repository.getControlFlags(),
-      getAutomationPauseReason: (controlFlags, campaignId) => getAutomationPauseReason(controlFlags as any, campaignId),
-      getActorClient: () => getActorClient() as any,
-      buildSandboxProbeRequest: ({ campaignId }) => buildDefaultSdrPageTitleSandboxProbeRequest({
-        campaignId,
-        url: "https://playkit.sh",
-        mcpServerName: "Firecrawl",
-        metadataKind: "dashboard-firecrawl-probe",
-      }),
-    }),
-  });
-
-  mountDefaultSdrMcpHttpRoute(app, {
-    bearerToken: context.config.mcpToken,
-    createServer: () => createTrellisMcpServer(context),
   });
 
   mountDefaultSdrWebhookRoutes(app, {
@@ -129,7 +84,7 @@ export function createApp() {
       providers: context.providers,
     },
     handlers: {
-      onApifyRunCompleted: handleApifyCompletion,
+      onApifyRunCompleted: actorBackedWebhookHandlers.onApifyRunCompleted,
       onSignal: async (payload) => handleSignalWebhook(workflowDeps, payload),
       onAgentMail: async (payload) => {
         if (!payload.threadId || !payload.bodyText) {
@@ -140,7 +95,7 @@ export function createApp() {
           };
         }
 
-        return handleInboundReply({
+        return actorBackedWebhookHandlers.onAgentMail({
           providerInboxId: payload.inboxId ?? null,
           providerThreadId: payload.threadId,
           providerMessageId: payload.messageId ?? null,

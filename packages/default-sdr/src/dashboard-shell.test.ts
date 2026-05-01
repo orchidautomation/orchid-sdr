@@ -72,13 +72,21 @@ describe("summarizeDashboardBurstWindow", () => {
         { stage: "capture_signal", status: "active" },
         { stage: "build_research_brief", status: "active" },
         { stage: "qualify", status: "paused", pausedReason: "workflow failed: knowledge path missing" },
+        { stage: "qualify", status: "paused", pausedReason: "campaign paused" },
+      ],
+      visibleProspects: [
+        { stage: "capture_signal", status: "active" },
+        { stage: "qualify", status: "paused", pausedReason: "workflow failed: knowledge path missing" },
       ],
       recentSignals: [{ id: "sig_1" }],
+      activeThreads: [{ id: "thr_1" }, { id: "thr_2" }],
       providerRuns: [{ status: "running" }, { status: "failed" }],
     });
 
-    expect(summary.prospectWindowSize).toBe(3);
+    expect(summary.prospectWindowSize).toBe(4);
+    expect(summary.visibleProspectWindowSize).toBe(2);
     expect(summary.signalWindowSize).toBe(1);
+    expect(summary.activeThreadWindowSize).toBe(2);
     expect(summary.providerStatus).toEqual({
       running: 1,
       failed: 1,
@@ -86,7 +94,6 @@ describe("summarizeDashboardBurstWindow", () => {
     expect(summary.workflowStates.map((row) => row.label)).toEqual([
       "workflow failed",
       "qualification pending",
-      "research pending",
     ]);
   });
 });

@@ -1,16 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/orchestration/prospect-workflow.js", () => ({
-  executeProspectWorkflow: vi.fn(async (_deps, prospectId: string) => ({
-    action: "researched",
-    prospectId,
-    threadId: "thr_1",
-    reason: "test workflow",
-  })),
-}));
-
 import { ingestSignalWebhook, normalizeSignalWebhookPayload } from "../src/orchestration/source-ingest.js";
-import { executeProspectWorkflow } from "../src/orchestration/prospect-workflow.js";
 
 describe("normalizeSignalWebhookPayload", () => {
   it("normalizes a single arbitrary-source signal payload", () => {
@@ -105,6 +95,12 @@ describe("normalizeSignalWebhookPayload", () => {
           state,
         },
         runSandboxTurn: vi.fn(),
+        dispatchProspectLifecycle: vi.fn(async ({ prospectId }: { prospectId: string }) => ({
+          action: "researched" as const,
+          prospectId,
+          threadId: "thr_1",
+          reason: "test workflow",
+        })),
       } as any,
       {
         provider: "custom-source",
@@ -281,6 +277,12 @@ describe("normalizeSignalWebhookPayload", () => {
           state,
         },
         runSandboxTurn: vi.fn(),
+        dispatchProspectLifecycle: vi.fn(async ({ prospectId }: { prospectId: string }) => ({
+          action: "researched" as const,
+          prospectId,
+          threadId: "thr_1",
+          reason: "test workflow",
+        })),
       } as any,
       {
         provider: "custom-source",
@@ -323,7 +325,9 @@ describe("normalizeSignalWebhookPayload", () => {
   });
 
   it("pauses the thread when the prospect workflow throws after signal capture", async () => {
-    vi.mocked(executeProspectWorkflow).mockRejectedValueOnce(new Error("knowledge path missing"));
+    const dispatchProspectLifecycle = vi.fn(async () => {
+      throw new Error("knowledge path missing");
+    });
 
     const repository = {
       ensureDefaultCampaign: vi.fn(async () => ({ id: "cmp_default" })),
@@ -364,6 +368,7 @@ describe("normalizeSignalWebhookPayload", () => {
           state,
         },
         runSandboxTurn: vi.fn(),
+        dispatchProspectLifecycle,
       } as any,
       {
         provider: "custom-source",

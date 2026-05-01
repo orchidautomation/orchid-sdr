@@ -18,8 +18,10 @@ export type DashboardWorkflowStateFilter =
 
 export interface DashboardBurstSummary {
   prospectWindowSize: number;
+  visibleProspectWindowSize: number;
   signalWindowSize: number;
   providerWindowSize: number;
+  activeThreadWindowSize: number;
   workflowStates: Array<DashboardWorkflowStateDescriptor & { count: number }>;
   providerStatus: {
     running: number;
@@ -77,17 +79,26 @@ export function summarizeDashboardBurstWindow(input: {
     pausedReason?: string | null;
     qualification?: { ok?: boolean | null } | null;
   }> | null;
+  visibleProspects?: Array<{
+    stage?: string | null;
+    status?: string | null;
+    pausedReason?: string | null;
+    qualification?: { ok?: boolean | null } | null;
+  }> | null;
   recentSignals?: unknown[] | null;
+  activeThreads?: unknown[] | null;
   providerRuns?: Array<{
     status?: string | null;
   }> | null;
 }): DashboardBurstSummary {
   const recentProspects = Array.isArray(input.recentProspects) ? input.recentProspects : [];
+  const visibleProspects = Array.isArray(input.visibleProspects) ? input.visibleProspects : recentProspects;
   const recentSignals = Array.isArray(input.recentSignals) ? input.recentSignals : [];
+  const activeThreads = Array.isArray(input.activeThreads) ? input.activeThreads : [];
   const providerRuns = Array.isArray(input.providerRuns) ? input.providerRuns : [];
 
   const workflowCounts = new Map<string, DashboardWorkflowStateDescriptor & { count: number }>();
-  for (const prospect of recentProspects) {
+  for (const prospect of visibleProspects) {
     const state = classifyDashboardWorkflowState(prospect);
     const existing = workflowCounts.get(state.label);
     if (existing) {
@@ -138,8 +149,10 @@ export function summarizeDashboardBurstWindow(input: {
 
   return {
     prospectWindowSize: recentProspects.length,
+    visibleProspectWindowSize: visibleProspects.length,
     signalWindowSize: recentSignals.length,
     providerWindowSize: providerRuns.length,
+    activeThreadWindowSize: activeThreads.length,
     workflowStates,
     providerStatus,
   };
@@ -1697,7 +1710,9 @@ export function renderDashboardPage() {
         const target = byId("burst-summary");
         const summary = summarizeBurstWindow({
           recentProspects: state.recentProspects,
+          visibleProspects: state.visibleProspects,
           recentSignals: state.recentSignals,
+          activeThreads: state.activeThreads,
           providerRuns: state.providerRuns,
         });
 
@@ -1713,7 +1728,7 @@ export function renderDashboardPage() {
                 <span class="feed-event">\${escapeHtml(entry.label)}</span>
                 <span class="chip \${entry.kind}">\${escapeHtml(entry.count)}</span>
               </div>
-              <p>\${escapeHtml("Visible in the newest " + summary.prospectWindowSize + " prospect rows.")}</p>
+              <p>\${escapeHtml("Showing " + summary.visibleProspectWindowSize + " of the newest " + summary.prospectWindowSize + " prospect rows.")}</p>
             </article>
           \`).join("")
           : \`
@@ -1734,7 +1749,16 @@ export function renderDashboardPage() {
                 <span class="feed-event">Signal window</span>
                 <span class="chip">\${escapeHtml(summary.signalWindowSize)}</span>
               </div>
-              <p>\${escapeHtml("Newest visible source captures currently in view.")}</p>
+              <p>\${escapeHtml("Newest source captures retained in the operator window.")}</p>
+            </article>
+          \`,
+          \`
+            <article class="reasoning-item">
+              <div class="feed-top">
+                <span class="feed-event">Active thread window</span>
+                <span class="chip">\${escapeHtml(summary.activeThreadWindowSize)}</span>
+              </div>
+              <p>\${escapeHtml("Newest active or paused thread rows currently retained.")}</p>
             </article>
           \`,
           \`
@@ -1830,8 +1854,10 @@ export function renderDashboardPage() {
         renderFeed(state.auditEvents);
         renderQualificationOverview(visibleRecentProspects);
         renderBurstSummary({
-          recentProspects: visibleRecentProspects,
+          recentProspects: state.recentProspects,
+          visibleProspects: visibleRecentProspects,
           recentSignals: state.recentSignals,
+          activeThreads: visibleActiveThreads,
           providerRuns: state.providerRuns,
         });
         updateTopline(mergedState);
@@ -1860,7 +1886,7 @@ export function renderDashboardPage() {
             <td>\${renderLinkedinCell(thread.linkedinUrl)}</td>
             <td>\${escapeHtml(timeLabel(thread.updatedAt))}</td>
           </tr>
-        \`, 5);
+        \`, 8);
 
         renderRows("provider-runs", state.providerRuns, (run) => \`
           <tr>
@@ -1881,7 +1907,7 @@ export function renderDashboardPage() {
               </div>
             </td>
           </tr>
-        \`, 5);
+        \`, 8);
 
         renderRows("qualified-leads", state.qualifiedLeads, (lead) => \`
           <tr>
@@ -1908,7 +1934,7 @@ export function renderDashboardPage() {
             <td>\${badge(lead.threadStatus)}</td>
             <td>\${escapeHtml(timeLabel(lead.updatedAt))}</td>
           </tr>
-        \`, 6);
+        \`, 8);
 
         renderRows("recent-prospects", visibleRecentProspects, (prospect) => \`
           <tr>
@@ -1936,7 +1962,7 @@ export function renderDashboardPage() {
             </td>
             <td>\${escapeHtml(timeLabel(prospect.updatedAt))}</td>
           </tr>
-        \`, 4);
+        \`, 8);
 
         renderRows("recent-signals", state.recentSignals, (signal) => \`
           <tr>
@@ -1950,7 +1976,7 @@ export function renderDashboardPage() {
             <td>\${escapeHtml(signal.topic)}</td>
             <td>\${escapeHtml(timeLabel(signal.capturedAt))}</td>
           </tr>
-        \`, 4);
+        \`, 8);
       }
 
       function renderRuntimeLoadingState() {
