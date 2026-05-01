@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-export const workItemStatusSchema = z.enum(["new", "processing", "ready", "paused", "failed"]);
-export type WorkItemStatus = z.infer<typeof workItemStatusSchema>;
+export const workflowRunStatusSchema = z.enum(["pending", "processing", "ready", "paused", "failed"]);
+export type WorkflowRunStatus = z.infer<typeof workflowRunStatusSchema>;
 
 export const intakePayloadSchema = z.object({
   source: z.string().min(1),
@@ -24,32 +24,34 @@ export const workArtifactSchema = z.object({
 
 export type WorkArtifact = z.infer<typeof workArtifactSchema>;
 
-export interface WorkItemRecord {
+export interface IntakeEventRecord {
   id: string;
-  type: string;
   source: string;
   externalId: string | null;
+  eventType: string;
   title: string;
   body: string | null;
   metadata: Record<string, unknown>;
-  status: WorkItemStatus;
-  stage: string;
-  summary: string | null;
   createdAt: number;
   updatedAt: number;
 }
 
-export interface WorkEventRecord {
+export interface WorkflowRunRecord {
   id: string;
-  workItemId: string;
-  eventType: string;
-  payload: Record<string, unknown>;
+  targetType: string;
+  targetId: string;
+  workflowName: string;
+  status: WorkflowRunStatus;
+  stage: string;
+  summary: string | null;
+  error: string | null;
   createdAt: number;
+  updatedAt: number;
 }
 
 export interface SandboxTurnRequest {
   turnId: string;
-  workItemId: string;
+  targetId: string;
   stage: string;
   systemPrompt: string;
   prompt: string;
@@ -62,4 +64,3 @@ export interface SandboxTurnResponse {
   transcript: unknown[];
   usage?: Record<string, unknown>;
 }
-

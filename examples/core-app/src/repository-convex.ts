@@ -1,20 +1,32 @@
 import { ConvexHttpClient } from "convex/browser";
 
-import type { IntakePayload, WorkArtifact, WorkEventRecord, WorkItemRecord } from "./domain/types.js";
-import type { CoreRepository, RuntimeSnapshot, WorkItemDetail } from "./repository.js";
+import type { IntakeEventRecord, IntakePayload, WorkArtifact, WorkflowRunRecord } from "./domain/types.js";
+import type { CoreRepository, IntakeEventDetail, RuntimeSnapshot } from "./repository.js";
 
-function mapWorkItem(record: any): WorkItemRecord {
+function mapIntakeEvent(record: any): IntakeEventRecord {
   return {
     id: record.id,
-    type: record.type,
     source: record.source,
     externalId: record.externalId ?? null,
+    eventType: record.eventType,
     title: record.title,
     body: record.body ?? null,
     metadata: record.metadata ?? {},
+    createdAt: Number(record.createdAt),
+    updatedAt: Number(record.updatedAt),
+  };
+}
+
+function mapWorkflowRun(record: any): WorkflowRunRecord {
+  return {
+    id: record.id,
+    targetType: record.targetType,
+    targetId: record.targetId,
+    workflowName: record.workflowName,
     status: record.status,
     stage: record.stage,
     summary: record.summary ?? null,
+    error: record.error ?? null,
     createdAt: Number(record.createdAt),
     updatedAt: Number(record.updatedAt),
   };
@@ -31,33 +43,39 @@ export class ConvexCoreRepository implements CoreRepository {
     return await (this.client as any).mutation("repository:ingestWebhookEvent", { payload });
   }
 
-  async listWorkItems(limit = 25) {
-    const rows = await (this.client as any).query("repository:listWorkItems", { limit });
-    return rows.map(mapWorkItem);
+  async listIntakeEvents(limit = 25) {
+    const rows = await (this.client as any).query("repository:listIntakeEvents", { limit });
+    return rows.map(mapIntakeEvent);
   }
 
   async getRuntimeSnapshot(limit = 25): Promise<RuntimeSnapshot> {
     const snapshot = await (this.client as any).query("repository:getRuntimeSnapshot", { limit });
     return {
-      items: snapshot.items.map(mapWorkItem),
-      recentEvents: snapshot.recentEvents.map((event: any) => ({
-        workItemId: event.workItemId,
-        eventType: event.eventType,
+      events: snapshot.events.map(mapIntakeEvent),
+      recentAuditEvents: snapshot.recentAuditEvents.map((event: any) => ({
+        entityType: event.entityType,
+        entityId: event.entityId,
+        eventName: event.eventName,
         createdAt: Number(event.createdAt),
       })),
-      totalItems: Number(snapshot.totalItems),
+      totalEvents: Number(snapshot.totalEvents),
     };
   }
 
-  async getWorkItemDetail(workItemId: string): Promise<WorkItemDetail | null> {
-    const detail = await (this.client as any).query("repository:getWorkItemDetail", { workItemId });
+  async getIntakeEventDetail(intakeEventId: string): Promise<IntakeEventDetail | null> {
+    const detail = await (this.client as any).query("repository:getIntakeEventDetail", { intakeEventId });
     if (!detail) {
       return null;
     }
 
     return {
-      item: mapWorkItem(detail.item),
-      events: detail.events as WorkEventRecord[],
+      intakeEvent: mapIntakeEvent(detail.intakeEvent),
+      workflowRun: detail.workflowRun ? mapWorkflowRun(detail.workflowRun) : null,
+      auditEvents: detail.auditEvents.map((event: any) => ({
+        eventName: event.eventName,
+        payload: event.payload ?? null,
+        createdAt: Number(event.createdAt),
+      })),
       latestArtifact: detail.latestArtifact
         ? {
             kind: detail.latestArtifact.kind,
@@ -70,17 +88,17 @@ export class ConvexCoreRepository implements CoreRepository {
     };
   }
 
-  async getWorkItem(workItemId: string) {
-    const item = await (this.client as any).query("repository:getWorkItem", { workItemId });
-    return item ? mapWorkItem(item) : null;
+  async getIntakeEvent(intakeEventId: string) {
+    const intakeEvent = await (this.client as any).query("repository:getIntakeEvent", { intakeEventId });
+    return intakeEvent ? mapIntakeEvent(intakeEvent) : null;
   }
 
-  async updateWorkItem(workItemId: string, update: { status?: WorkItemRecord["status"]; stage?: string; summary?: string | null }) {
-    await (this.client as any).mutation("repository:updateWorkItem", { workItemId, update });
+  async updateWorkflowRun(workflowRunId: string, update: { status?: WorkflowRunRecord["status"]; stage?: string; summary?: string | null; error?: string | null }) {
+    await (this.client as any).mutation("repository:updateWorkflowRun", { workflowRunId, update });
   }
 
-  async storeArtifact(workItemId: string, input: { kind: string; title: string; content: string; structured?: WorkArtifact | Record<string, unknown> }) {
-    await (this.client as any).mutation("repository:storeArtifact", { workItemId, input });
+  async storeArtifact(entityType: string, entityId: string, input: { kind: string; title: string; content: string; structured?: WorkArtifact | Record<string, unknown> }) {
+    await (this.client as any).mutation("repository:storeArtifact", { entityType, entityId, input });
   }
 
   async appendAuditEvent(entityType: string, entityId: string, eventName: string, payload: Record<string, unknown>) {

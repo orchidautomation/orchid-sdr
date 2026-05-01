@@ -92,7 +92,7 @@ export default defineAiSdr({
     {
       id: "core-intake",
       displayName: "Core intake webhook",
-      description: "Generic intake route for structured webhook events that should become Trellis work items.",
+      description: "Generic intake route for structured webhook events that should become Trellis intake events and workflow runs.",
       method: "POST",
       path: "/webhooks/intake",
       providerId: "normalized-webhook",

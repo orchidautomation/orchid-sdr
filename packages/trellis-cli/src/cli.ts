@@ -79,7 +79,7 @@ const DOMAIN_KITS = {
     displayName: "Meeting prep",
     root: meetingPrepRoot,
     baseConfig: meetingPrepConfig,
-    copyEntries: ["knowledge", "skills", "tests"],
+    copyEntries: ["convex", "knowledge", "skills", "src", "tests"],
   },
 } as const;
 

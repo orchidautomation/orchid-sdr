@@ -4,32 +4,32 @@ import { executeWorkItemWorkflow } from "./orchestration/work-item-workflow.js";
 import { runSandboxTurn } from "./orchestration/sandbox-broker.js";
 import { getAppContext, type AppContext } from "./services/runtime-context.js";
 
-const workItemThread = actor({
+const intakeEventThread = actor({
   state: {
-    workItemId: null as string | null,
-    lastEventId: null as string | null,
-    lastStatus: "new" as string,
+    intakeEventId: null as string | null,
+    workflowRunId: null as string | null,
+    lastStatus: "pending" as string,
   },
   actions: {
-    bootstrapFromWebhook: async (c, input: { workItemId: string; eventId: string }) => {
-      c.state.workItemId = input.workItemId;
-      c.state.lastEventId = input.eventId;
-      await executeWorkItemWorkflow(getAppContext(), input.workItemId);
-      const workItem = await getAppContext().repository.getWorkItem(input.workItemId);
-      c.state.lastStatus = workItem?.status ?? "ready";
+    bootstrapFromWebhook: async (c, input: { intakeEventId: string; workflowRunId: string }) => {
+      c.state.intakeEventId = input.intakeEventId;
+      c.state.workflowRunId = input.workflowRunId;
+      await executeWorkItemWorkflow(getAppContext(), input.intakeEventId);
+      const detail = await getAppContext().repository.getIntakeEventDetail(input.intakeEventId);
+      c.state.lastStatus = detail?.workflowRun?.status ?? "ready";
       return {
         ok: true,
-        workItemId: input.workItemId,
+        intakeEventId: input.intakeEventId,
       };
     },
-    rerun: async (c, input: { workItemId: string }) => {
-      c.state.workItemId = input.workItemId;
-      await executeWorkItemWorkflow(getAppContext(), input.workItemId);
-      const workItem = await getAppContext().repository.getWorkItem(input.workItemId);
-      c.state.lastStatus = workItem?.status ?? "ready";
+    rerun: async (c, input: { intakeEventId: string }) => {
+      c.state.intakeEventId = input.intakeEventId;
+      await executeWorkItemWorkflow(getAppContext(), input.intakeEventId);
+      const detail = await getAppContext().repository.getIntakeEventDetail(input.intakeEventId);
+      c.state.lastStatus = detail?.workflowRun?.status ?? "ready";
       return {
         ok: true,
-        workItemId: input.workItemId,
+        intakeEventId: input.intakeEventId,
       };
     },
     getSnapshot: async (c) => ({
@@ -41,12 +41,12 @@ const workItemThread = actor({
 const sandboxBroker = actor({
   state: {
     lastTurnId: null as string | null,
-    lastWorkItemId: null as string | null,
+    lastTargetId: null as string | null,
   },
   actions: {
     runTurn: async (c, input: Parameters<typeof runSandboxTurn>[1]) => {
       c.state.lastTurnId = input.turnId;
-      c.state.lastWorkItemId = input.workItemId;
+      c.state.lastTargetId = input.targetId;
       return await runSandboxTurn(getAppContext() as AppContext, input);
     },
     getSnapshot: async (c) => ({
@@ -59,7 +59,7 @@ export const registry = setup({
   managerHost: "127.0.0.1",
   managerPort: 6420,
   use: {
-    workItemThread,
+    intakeEventThread,
     sandboxBroker,
   },
 });

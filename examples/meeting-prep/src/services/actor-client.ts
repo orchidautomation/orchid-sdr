@@ -3,7 +3,7 @@ import { createClient } from "rivetkit/client";
 import { registry } from "../registry.js";
 
 type TrellisActorClient = ReturnType<typeof createClient<typeof registry>> & {
-  intakeEventThread: {
+  meetingPrepThread: {
     getOrCreate(key: [string]): any;
   };
   sandboxBroker: {

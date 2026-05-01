@@ -2,30 +2,34 @@ import { workArtifactSchema, type WorkArtifact } from "../domain/types.js";
 import type { AppContext } from "../services/runtime-context.js";
 import { createTurnId, runSandboxTurn } from "./sandbox-broker.js";
 
-export async function executeWorkItemWorkflow(context: AppContext, workItemId: string) {
-  const detail = await context.repository.getWorkItemDetail(workItemId);
+export async function executeWorkItemWorkflow(context: AppContext, intakeEventId: string) {
+  const detail = await context.repository.getIntakeEventDetail(intakeEventId);
   if (!detail) {
-    throw new Error(`work item not found: ${workItemId}`);
+    throw new Error(`intake event not found: ${intakeEventId}`);
+  }
+  if (!detail.workflowRun) {
+    throw new Error(`workflow run not found for intake event: ${intakeEventId}`);
   }
 
-  await context.repository.updateWorkItem(workItemId, {
+  await context.repository.updateWorkflowRun(detail.workflowRun.id, {
     status: "processing",
     stage: "intake_review",
+    error: null,
   });
 
   const knowledgeContext = await context.knowledge.composeKnowledgeContext(
-    [detail.item.title, detail.item.body ?? "", JSON.stringify(detail.item.metadata ?? {})].join("\n"),
+    [detail.intakeEvent.title, detail.intakeEvent.body ?? "", JSON.stringify(detail.intakeEvent.metadata ?? {})].join("\n"),
     4,
   );
 
   const heuristicArtifact = await context.ai.buildArtifact({
     payload: {
-      source: detail.item.source,
-      externalId: detail.item.externalId ?? undefined,
-      type: detail.item.type,
-      title: detail.item.title,
-      body: detail.item.body ?? undefined,
-      metadata: detail.item.metadata,
+      source: detail.intakeEvent.source,
+      externalId: detail.intakeEvent.externalId ?? undefined,
+      type: detail.intakeEvent.eventType,
+      title: detail.intakeEvent.title,
+      body: detail.intakeEvent.body ?? undefined,
+      metadata: detail.intakeEvent.metadata,
     },
     knowledgeContext,
   });
@@ -35,7 +39,7 @@ export async function executeWorkItemWorkflow(context: AppContext, workItemId: s
   try {
     const sandboxResult = await runSandboxTurn(context, {
       turnId: createTurnId("work"),
-      workItemId,
+      targetId: intakeEventId,
       stage: "intake_review",
       systemPrompt: [
         "You are a Trellis operator agent.",
@@ -49,10 +53,10 @@ export async function executeWorkItemWorkflow(context: AppContext, workItemId: s
         knowledgeContext || "No matching knowledge snippets found.",
         "",
         "Item:",
-        JSON.stringify(detail.item, null, 2),
+        JSON.stringify(detail.intakeEvent, null, 2),
       ].join("\n"),
       metadata: {
-        workItemId,
+        intakeEventId,
       },
     });
 
@@ -64,18 +68,19 @@ export async function executeWorkItemWorkflow(context: AppContext, workItemId: s
     // keep heuristic artifact
   }
 
-  await context.repository.storeArtifact(workItemId, {
+  await context.repository.storeArtifact("intake_event", intakeEventId, {
     kind: "core-brief",
-    title: `Artifact for ${detail.item.title}`,
+    title: `Artifact for ${detail.intakeEvent.title}`,
     content: renderArtifactMarkdown(artifact),
     structured: artifact,
   });
-  await context.repository.updateWorkItem(workItemId, {
+  await context.repository.updateWorkflowRun(detail.workflowRun.id, {
     status: "ready",
     stage: "artifact_ready",
     summary: artifact.summary,
+    error: null,
   });
-  await context.repository.appendAuditEvent("work_item", workItemId, "ArtifactReady", {
+  await context.repository.appendAuditEvent("intake_event", intakeEventId, "ArtifactReady", {
     summary: artifact.summary,
   });
 
@@ -101,4 +106,3 @@ function renderArtifactMarkdown(artifact: WorkArtifact) {
   ];
   return sections.join("\n\n");
 }
-

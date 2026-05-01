@@ -22,25 +22,25 @@ export function createTrellisMcpServer(context: AppContext) {
   });
 
   server.registerTool(
-    "records.list",
+    "meetings.list",
     {
-      description: "List the most recent intake events processed by this Trellis app.",
+      description: "List the most recent meeting bookings processed by this Trellis app.",
       inputSchema: {
         limit: z.number().int().min(1).max(100).optional(),
       },
     },
-    async ({ limit }) => toToolResult(await context.mcpTools.listIntakeEvents(limit ?? 10)),
+    async ({ limit }) => toToolResult(await context.mcpTools.listMeetings(limit ?? 10)),
   );
 
   server.registerTool(
-    "records.get",
+    "meetings.get",
     {
-      description: "Get an intake event plus its latest artifact, workflow run, and audit trail.",
+      description: "Get a meeting plus its attendees, prep run, and latest prep brief.",
       inputSchema: {
-        intakeEventId: z.string(),
+        meetingId: z.string(),
       },
     },
-    async ({ intakeEventId }) => toToolResult(await context.mcpTools.getIntakeEvent(intakeEventId)),
+    async ({ meetingId }) => toToolResult(await context.mcpTools.getMeeting(meetingId)),
   );
 
   server.registerTool(

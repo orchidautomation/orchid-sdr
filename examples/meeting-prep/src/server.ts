@@ -13,7 +13,7 @@ import { createTrellisMcpServer } from "./mcp/server-factory.js";
 import { mountDefaultSdrDashboardRoutes, mountDefaultSdrMcpHttpRoute, mountDefaultSdrRuntimeRoutes } from "../../../packages/default-sdr/src/http-routes.js";
 import { hashDashboardPassword } from "../../../packages/default-sdr/src/dashboard-bootstrap.js";
 import { DashboardStateService } from "./services/dashboard-state.js";
-import { handleIntakeWebhook } from "./orchestration/webhook-handlers.js";
+import { handleMeetingBookingWebhook } from "./orchestration/webhook-handlers.js";
 
 export function createApp() {
   const app = new Hono();
@@ -21,7 +21,7 @@ export function createApp() {
   const actorClient = getActorClient();
   const dashboardCookieName = "trellis_dashboard_auth";
   const dashboardState = new DashboardStateService(context);
-  const intakePath = context.framework.config.webhooks?.[0]?.path ?? "/webhooks/intake";
+  const intakePath = context.framework.config.webhooks?.[0]?.path ?? "/webhooks/meetings";
 
   mountDefaultSdrRuntimeRoutes(app, {
     ensureRuntimeBootstrapped,
@@ -33,7 +33,7 @@ export function createApp() {
       await context.repository.ensureWorkspace();
       return {
         ok: true,
-        service: "trellis-core",
+        service: "trellis-meeting-prep",
       };
     },
   });
@@ -52,21 +52,21 @@ export function createApp() {
   });
 
   app.post(intakePath, async (c) => {
-    const captured = await handleIntakeWebhook(context, c.req.raw);
+    const captured = await handleMeetingBookingWebhook(context, c.req.raw);
     if (captured instanceof Response) {
       return captured;
     }
 
-    const actor = actorClient.intakeEventThread.getOrCreate([captured.result.intakeEventId]) as any;
+    const actor = actorClient.meetingPrepThread.getOrCreate([captured.result.meetingId]) as any;
     await actor.bootstrapFromWebhook({
-      intakeEventId: captured.result.intakeEventId,
-      workflowRunId: captured.result.workflowRunId,
+      meetingId: captured.result.meetingId,
+      prepRunId: captured.result.prepRunId,
     });
 
     return c.json({
       ok: true,
-      intakeEventId: captured.result.intakeEventId,
-      workflowRunId: captured.result.workflowRunId,
+      meetingId: captured.result.meetingId,
+      prepRunId: captured.result.prepRunId,
     });
   });
 

@@ -11,7 +11,7 @@ export async function handleIntakeWebhook(context: AppContext, request: Request)
 
   const payload = intakePayloadSchema.parse(await request.json());
   const result = await context.repository.ingestWebhookEvent(payload);
-  await context.repository.appendAuditEvent("work_item", result.workItemId, "WebhookCaptured", {
+  await context.repository.appendAuditEvent("intake_event", result.intakeEventId, "WebhookCaptured", {
     source: payload.source,
     type: payload.type,
   });
@@ -21,4 +21,3 @@ export async function handleIntakeWebhook(context: AppContext, request: Request)
     result,
   };
 }
-

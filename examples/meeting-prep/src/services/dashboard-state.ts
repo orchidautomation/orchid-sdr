@@ -6,19 +6,17 @@ export class DashboardStateService {
   async getState() {
     const snapshot = await this.context.repository.getRuntimeSnapshot(24);
     return {
-      service: "trellis-core",
+      service: "trellis-meeting-prep",
       noSendsMode: this.context.config.NO_SENDS_MODE,
-      totalEvents: snapshot.totalEvents,
-      recentItems: snapshot.events,
+      totalMeetings: snapshot.totalMeetings,
+      recentItems: snapshot.meetings,
       recentEvents: snapshot.recentAuditEvents,
     };
   }
 
   async getCoreState() {
-    const items = await this.context.repository.listIntakeEvents(12);
-    return {
-      items,
-    };
+    const items = await this.context.repository.listMeetings(12);
+    return { items };
   }
 
   async getRuntimeState() {

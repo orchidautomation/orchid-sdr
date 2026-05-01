@@ -5,7 +5,7 @@ export async function runSandboxCompatibilityProbe(context: AppContext) {
   const result = await runSandboxTurn(context, {
     turnId: "sandbox-compat-probe",
     targetId: "probe",
-    stage: "intake_review",
+    stage: "respond_or_handoff",
     systemPrompt: "Reply with the single word ok.",
     prompt: context.config.SANDBOX_COMPAT_PROBE_PROMPT,
     metadata: {
