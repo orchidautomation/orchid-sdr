@@ -417,6 +417,22 @@ export class ConvexRepository implements TrellisRepositoryPort {
   getCampaignPolicyForProspect(prospectId: string): Promise<CampaignPolicy> {
     return this.client.query(convexQueries.getCampaignPolicyForProspect, { prospectId });
   }
+
+  auditDataQuality(input: {
+    limit?: number;
+    staleMinutes?: number;
+  }) {
+    return this.client.query(convexQueries.auditDataQuality, stripUndefinedDeep(input));
+  }
+
+  cleanupDataQuality(input: {
+    limit?: number;
+    staleMinutes?: number;
+    pauseReason?: string;
+    dryRun?: boolean;
+  }) {
+    return this.client.mutation(convexMutations.cleanupDataQuality, stripUndefinedDeep(input));
+  }
 }
 
 function stripUndefinedDeep<T>(value: T): T {

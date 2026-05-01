@@ -1,4 +1,5 @@
 import { calculateDurationMs, withFallback } from "./dashboard-bootstrap.js";
+import type { DataQualityAuditResult, DataQualityCleanupResult } from "./repository-contracts.js";
 
 export interface DefaultSdrDashboardStateContext {
   localSmokeMode: boolean;
@@ -16,6 +17,16 @@ export interface DefaultSdrDashboardStateContext {
     listRecentProviderRuns(limit?: number): Promise<unknown[]>;
     listRecentAuditEvents(limit?: number): Promise<unknown[]>;
     getControlFlags(): Promise<unknown>;
+    auditDataQuality?(input: {
+      limit?: number;
+      staleMinutes?: number;
+    }): Promise<DataQualityAuditResult>;
+    cleanupDataQuality?(input: {
+      limit?: number;
+      staleMinutes?: number;
+      pauseReason?: string;
+      dryRun?: boolean;
+    }): Promise<DataQualityCleanupResult>;
   };
 }
 

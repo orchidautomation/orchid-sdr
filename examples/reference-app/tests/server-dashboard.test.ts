@@ -113,6 +113,18 @@ describe("dashboard bootstrap bypass", () => {
         listActiveThreads: vi.fn(async () => []),
         listRecentProviderRuns: vi.fn(async () => []),
         listRecentAuditEvents: vi.fn(async () => []),
+        auditDataQuality: vi.fn(async () => ({
+          summary: {
+            titleNormalized: 2,
+            paused: 3,
+          },
+        })),
+        cleanupDataQuality: vi.fn(async () => ({
+          summary: {
+            titleNormalized: 2,
+            paused: 3,
+          },
+        })),
         getControlFlags: vi.fn(async () => ({
           globalKillSwitch: false,
           noSendsMode: true,
@@ -256,6 +268,46 @@ describe("dashboard bootstrap bypass", () => {
         sourceIngest: null,
         campaignOps: null,
         sandboxBroker: null,
+      },
+    });
+  });
+
+  it("runs the admin cleanup flow through the framework action route", async () => {
+    ensureRuntimeBootstrapped.mockResolvedValue(undefined);
+    const { createApp } = await import("../src/server.js");
+    const app = createApp();
+    const cookie = "trellis_dashboard_auth="
+      + "12be3e4ce790b3c729fe1c5025ed58bbcf2fddd134dc770490a256cc0d9417cb";
+
+    const response = await app.request("/api/dashboard/admin-cleanup-stale", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie,
+      },
+      body: JSON.stringify({
+        apply: true,
+        pauseAutomation: true,
+      }),
+    });
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toMatchObject({
+      ok: true,
+      applied: true,
+      pausedAutomation: true,
+      audit: {
+        summary: {
+          titleNormalized: 2,
+          paused: 3,
+        },
+      },
+      cleanup: {
+        summary: {
+          titleNormalized: 2,
+          paused: 3,
+        },
       },
     });
   });

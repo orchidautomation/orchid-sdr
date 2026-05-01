@@ -4,8 +4,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
 
+import { ConvexHttpClient } from "convex/browser";
 import { createClient } from "rivetkit/client";
 import { loadProcessEnvFiles } from "../../framework/src/env-loader.js";
+import { convexMutations, convexQueries } from "../../default-sdr/src/convex-repository.js";
 
 import config from "../../../examples/reference-app/trellis.config.js";
 import { registry } from "../../../examples/reference-app/src/registry.js";
@@ -84,6 +86,9 @@ async function main() {
       case "deploy":
         handleDeployCommand(arg);
         break;
+      case "admin":
+        await handleAdminCommand(arg, cliFlags);
+        break;
       case "discovery":
         await handleDiscoveryCommand(arg, providerArg, cliFlags);
         break;
@@ -121,6 +126,7 @@ function printHelp() {
   npm run trellis -- connect <module-id>
   npm run trellis -- connect <capability> <provider>
   npm run trellis -- deploy <local|vercel|self-hosted>
+  npm run trellis -- admin cleanup-stale [--apply] [--limit 50] [--stale-minutes 90]
   npm run trellis -- discovery seed <term>
   npm run trellis -- discovery run <term>
   npm run trellis -- discovery tick
@@ -181,6 +187,88 @@ Init is deterministic, not an interactive wizard.
 Use --json when a plugin or coding agent is orchestrating the setup.
 Use add ... --apply to layer in new providers and sources after boot.
 Apply mode works on scaffold-generated workspaces.`);
+}
+
+async function handleAdminCommand(subcommand: string | undefined, flags: Record<string, string | boolean>) {
+  switch (subcommand) {
+    case "cleanup-stale":
+    case "cleanup":
+      await handleCleanupStaleAdminCommand(flags);
+      return;
+    default:
+      throw new Error("Unknown admin command. Use: npm run trellis -- admin cleanup-stale [--apply]");
+  }
+}
+
+async function handleCleanupStaleAdminCommand(flags: Record<string, string | boolean>) {
+  const convexUrl = requireEnv("CONVEX_URL");
+  const client = new ConvexHttpClient(convexUrl);
+  const limit = Number(flags["limit"] ?? "50");
+  const staleMinutes = Number(flags["stale-minutes"] ?? "90");
+  const apply = Boolean(flags.apply);
+  const pauseReason = typeof flags["pause-reason"] === "string"
+    ? flags["pause-reason"]
+    : "stale capture_signal cleanup";
+
+  const audit = await client.query(convexQueries.auditDataQuality, {
+    limit,
+    staleMinutes,
+  });
+
+  if (jsonOutput) {
+    if (!apply) {
+      emitJson({
+        ok: true,
+        command: "admin",
+        subcommand: "cleanup-stale",
+        applied: false,
+        audit,
+      });
+      return;
+    }
+
+    const cleanup = await client.mutation(convexMutations.cleanupDataQuality, {
+      limit,
+      staleMinutes,
+      pauseReason,
+      dryRun: false,
+    });
+    emitJson({
+      ok: true,
+      command: "admin",
+      subcommand: "cleanup-stale",
+      applied: true,
+      audit,
+      cleanup,
+    });
+    return;
+  }
+
+  console.log("Stale-state cleanup audit:");
+  console.log(JSON.stringify(audit, null, 2));
+  if (!apply) {
+    console.log("");
+    console.log("Dry run only. Re-run with --apply to patch noisy titles and pause stale capture_signal rows.");
+    return;
+  }
+
+  const cleanup = await client.mutation(convexMutations.cleanupDataQuality, {
+    limit,
+    staleMinutes,
+    pauseReason,
+    dryRun: false,
+  });
+  console.log("");
+  console.log("Applied cleanup:");
+  console.log(JSON.stringify(cleanup, null, 2));
+}
+
+function requireEnv(name: string) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+  return value;
 }
 
 async function handleDiscoveryCommand(

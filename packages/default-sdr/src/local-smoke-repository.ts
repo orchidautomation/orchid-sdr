@@ -786,6 +786,72 @@ export class LocalSmokeRepository implements TrellisRepositoryPort {
 
   getCampaignPolicyForProspect: TrellisRepositoryPort["getCampaignPolicyForProspect"] = async () => ({ ...this.campaign });
 
+  auditDataQuality: TrellisRepositoryPort["auditDataQuality"] = async ({ limit = 50, staleMinutes = 90 }) => {
+    const cutoff = Date.now() - (staleMinutes * 60 * 1000);
+    const titleFixes = [...this.prospects.values()]
+      .filter((prospect) => typeof prospect.title === "string" && /\bfollowers?\b/i.test(prospect.title))
+      .slice(0, limit)
+      .map((prospect) => ({
+        prospectId: prospect.prospectId,
+        from: prospect.title,
+        to: null,
+      }));
+    const pausedProspects = [...this.prospects.values()]
+      .filter((prospect) =>
+        prospect.stage === "capture_signal"
+        && prospect.status === "active"
+        && !prospect.qualification
+        && Date.parse(prospect.updatedAt) <= cutoff
+      )
+      .slice(0, limit)
+      .map((prospect) => ({
+        prospectId: prospect.prospectId,
+        threadId: this.requireThreadByProspect(prospect.prospectId).id,
+      }));
+
+    return {
+      dryRun: true,
+      staleMinutes,
+      titleFixes,
+      pausedProspects,
+    };
+  };
+
+  cleanupDataQuality: TrellisRepositoryPort["cleanupDataQuality"] = async ({
+    limit = 50,
+    staleMinutes = 90,
+    pauseReason = "stale capture_signal cleanup",
+    dryRun = true,
+  }) => {
+    const audit = await this.auditDataQuality({ limit, staleMinutes });
+    if (!dryRun) {
+      for (const item of audit.titleFixes as Array<{ prospectId: string }>) {
+        const prospect = this.requireProspect(item.prospectId);
+        prospect.title = null;
+        prospect.updatedAt = nowIso();
+      }
+      for (const item of audit.pausedProspects as Array<{ prospectId: string; threadId: string }>) {
+        const prospect = this.requireProspect(item.prospectId);
+        const thread = this.requireThread(item.threadId);
+        prospect.status = "paused";
+        prospect.pausedReason = pauseReason;
+        prospect.updatedAt = nowIso();
+        thread.status = "paused";
+        thread.pausedReason = pauseReason;
+        thread.updatedAt = nowIso();
+      }
+    }
+
+    return {
+      ...audit,
+      dryRun,
+      summary: {
+        titleNormalized: (audit.titleFixes as Array<unknown>).length,
+        paused: (audit.pausedProspects as Array<unknown>).length,
+      },
+    };
+  };
+
   private getLatestResearchBriefSync(prospectId: string) {
     return (this.researchBriefs.get(prospectId) ?? [])
       .slice()

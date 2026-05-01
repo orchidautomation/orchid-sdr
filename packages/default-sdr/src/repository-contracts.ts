@@ -172,6 +172,9 @@ export interface MessageInsertInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface DataQualityAuditResult extends Record<string, unknown> {}
+export interface DataQualityCleanupResult extends Record<string, unknown> {}
+
 export interface TrellisRepositoryPort {
   ensureDefaultCampaign(): Promise<CampaignPolicy>;
   getCampaign(campaignId: string): Promise<CampaignPolicy>;
@@ -282,4 +285,14 @@ export interface TrellisRepositoryPort {
     usage?: Record<string, unknown>;
   }): Promise<void>;
   getCampaignPolicyForProspect(prospectId: string): Promise<CampaignPolicy>;
+  auditDataQuality(input: {
+    limit?: number;
+    staleMinutes?: number;
+  }): Promise<DataQualityAuditResult>;
+  cleanupDataQuality(input: {
+    limit?: number;
+    staleMinutes?: number;
+    pauseReason?: string;
+    dryRun?: boolean;
+  }): Promise<DataQualityCleanupResult>;
 }

@@ -221,6 +221,12 @@ export function mountDefaultSdrActorBackedOperatorSurface<
       getControlFlags: () => input.context.repository.getControlFlags(),
       getAutomationPauseReason: input.getAutomationPauseReason,
       getActorClient: () => input.actorClient,
+      auditDataQuality: input.context.repository.auditDataQuality
+        ? (payload) => input.context.repository.auditDataQuality!(payload)
+        : undefined,
+      cleanupDataQuality: input.context.repository.cleanupDataQuality
+        ? (payload) => input.context.repository.cleanupDataQuality!(payload)
+        : undefined,
       buildSandboxProbeRequest: input.buildSandboxProbeRequest
         ?? (({ campaignId }) =>
           buildDefaultSdrPageTitleSandboxProbeRequest({

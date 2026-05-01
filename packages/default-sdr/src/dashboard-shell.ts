@@ -1164,6 +1164,7 @@ export function renderDashboardPage() {
               <button id="toggle-pause" class="btn btn-danger" type="button">Pause Automation</button>
               <button id="trigger-discovery" class="btn btn-primary" type="button">Run Discovery</button>
               <button id="run-probe" class="btn" type="button">Run Probe</button>
+              <button id="cleanup-stale" class="btn btn-ghost" type="button">Cleanup Stale</button>
               <form method="post" action="/dashboard/logout">
                 <button class="btn btn-ghost" type="submit">Log Out</button>
               </form>
@@ -1830,6 +1831,7 @@ export function renderDashboardPage() {
 
         byId("trigger-discovery").disabled = automationPaused;
         byId("run-probe").disabled = automationPaused;
+        byId("cleanup-stale").disabled = false;
       }
 
       function setGeneratedAtLabel(state, options) {
@@ -2163,6 +2165,26 @@ export function renderDashboardPage() {
           void refreshRuntime({ force: true }).catch(() => {});
         } catch (error) {
           showToast(\`Probe failed: \${error.message || error}\`);
+        }
+      });
+
+      byId("cleanup-stale").addEventListener("click", async () => {
+        try {
+          const apply = window.confirm("Pause automation and apply stale-state cleanup now? Click Cancel to audit only.");
+          const result = await postJson("/api/dashboard/admin-cleanup-stale", {
+            apply,
+            pauseAutomation: true,
+          });
+          const summary = result?.cleanup?.summary || result?.audit?.summary || {};
+          showToast(
+            apply
+              ? \`Cleanup applied: titles \${Number(summary.titleNormalized || 0)}, paused \${Number(summary.paused || 0)}\`
+              : \`Cleanup audit: titles \${Number(summary.titleNormalized || 0)}, paused \${Number(summary.paused || 0)}\`,
+          );
+          await refreshCore({ force: true });
+          void refreshRuntime({ force: true }).catch(() => {});
+        } catch (error) {
+          showToast(\`Cleanup failed: \${error.message || error}\`);
         }
       });
 
