@@ -17,3 +17,4 @@ export * from "./mcp-tool-service.js";
 export * from "./discovery-coordinator.js";
 export * from "./prospect-workflow-helpers.js";
 export * from "./http-routes.js";
+export * from "./runtime-dispatch.js";

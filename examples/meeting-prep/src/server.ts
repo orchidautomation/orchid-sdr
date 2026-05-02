@@ -3,22 +3,25 @@ import { Hono } from "hono";
 import { renderDashboardLoginPage, renderDashboardPage } from "./dashboard/page.js";
 import { registry } from "./registry.js";
 import { getAppContext } from "./services/runtime-context.js";
-import { getActorClient } from "./services/actor-client.js";
 import {
   ensureRuntimeBootstrapped,
   shouldSkipLocalRivetRuntime,
   shouldUseRemoteRivetRuntime,
 } from "./services/runtime-bootstrap.js";
 import { createTrellisMcpServer } from "./mcp/server-factory.js";
-import { mountDefaultSdrDashboardRoutes, mountDefaultSdrMcpHttpRoute, mountDefaultSdrRuntimeRoutes } from "../../../packages/default-sdr/src/http-routes.js";
-import { hashDashboardPassword } from "../../../packages/default-sdr/src/dashboard-bootstrap.js";
+import {
+  hashDashboardPassword,
+  mountDefaultSdrDashboardRoutes,
+  mountDefaultSdrMcpHttpRoute,
+  mountDefaultSdrRuntimeRoutes,
+} from "@trellis/default-sdr";
 import { DashboardStateService } from "./services/dashboard-state.js";
+import { executeMeetingPrepWorkflow } from "./orchestration/work-item-workflow.js";
 import { handleMeetingBookingWebhook } from "./orchestration/webhook-handlers.js";
 
 export function createApp() {
   const app = new Hono();
   const context = getAppContext();
-  const actorClient = getActorClient();
   const dashboardCookieName = "trellis_dashboard_auth";
   const dashboardState = new DashboardStateService(context);
   const intakePath = context.framework.config.webhooks?.[0]?.path ?? "/webhooks/meetings";
@@ -57,11 +60,7 @@ export function createApp() {
       return captured;
     }
 
-    const actor = actorClient.meetingPrepThread.getOrCreate([captured.result.meetingId]) as any;
-    await actor.bootstrapFromWebhook({
-      meetingId: captured.result.meetingId,
-      prepRunId: captured.result.prepRunId,
-    });
+    await executeMeetingPrepWorkflow(context, captured.result.meetingId);
 
     return c.json({
       ok: true,

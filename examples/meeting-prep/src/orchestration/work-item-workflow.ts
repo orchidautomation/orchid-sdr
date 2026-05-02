@@ -14,7 +14,7 @@ export async function executeMeetingPrepWorkflow(context: AppContext, meetingId:
   await context.repository.updatePrepRun(detail.prepRun.id, {
     status: "processing",
     stage: "building_brief",
-    error: null,
+    error: undefined,
   });
 
   const attendeeContext = detail.attendees
@@ -81,7 +81,7 @@ export async function executeMeetingPrepWorkflow(context: AppContext, meetingId:
     status: "ready",
     stage: "brief_ready",
     summary: brief.summary,
-    error: null,
+    error: undefined,
   });
   await context.repository.appendAuditEvent("meeting", meetingId, "PrepBriefReady", {
     summary: brief.summary,

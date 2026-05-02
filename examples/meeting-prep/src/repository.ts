@@ -30,8 +30,8 @@ export interface MeetingPrepRepository {
     update: {
       status?: PrepRunStatus;
       stage?: string;
-      summary?: string | null;
-      error?: string | null;
+      summary?: string;
+      error?: string;
     },
   ): Promise<void>;
   savePrepBrief(meetingId: string, input: { kind: string; title: string; content: string; structured?: PrepBrief | Record<string, unknown> }): Promise<void>;

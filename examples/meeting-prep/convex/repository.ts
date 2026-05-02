@@ -140,13 +140,13 @@ export const getRuntimeSnapshot = query({
 
 export const getMeeting = query({
   args: { meetingId: v.string() },
-  handler: async (ctx, args) => await ctx.db.query("meetings").withIndex("by_id", (q: any) => q.eq("id", args.meetingId)).unique(),
+  handler: async (ctx, args) => await ctx.db.query("meetings").withIndex("by_meeting_key", (q: any) => q.eq("id", args.meetingId)).unique(),
 });
 
 export const getMeetingDetail = query({
   args: { meetingId: v.string() },
   handler: async (ctx, args) => {
-    const meeting = await ctx.db.query("meetings").withIndex("by_id", (q: any) => q.eq("id", args.meetingId)).unique();
+    const meeting = await ctx.db.query("meetings").withIndex("by_meeting_key", (q: any) => q.eq("id", args.meetingId)).unique();
     if (!meeting) {
       return null;
     }
@@ -163,7 +163,7 @@ export const updatePrepRun = mutation({
     update: v.any(),
   },
   handler: async (ctx, args) => {
-    const prepRun = await ctx.db.query("prepRuns").withIndex("by_id", (q: any) => q.eq("id", args.prepRunId)).unique();
+    const prepRun = await ctx.db.query("prepRuns").withIndex("by_prep_run_key", (q: any) => q.eq("id", args.prepRunId)).unique();
     if (!prepRun) {
       throw new Error(`prep run not found: ${args.prepRunId}`);
     }

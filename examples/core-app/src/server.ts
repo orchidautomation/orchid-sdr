@@ -10,8 +10,12 @@ import {
   shouldUseRemoteRivetRuntime,
 } from "./services/runtime-bootstrap.js";
 import { createTrellisMcpServer } from "./mcp/server-factory.js";
-import { mountDefaultSdrDashboardRoutes, mountDefaultSdrMcpHttpRoute, mountDefaultSdrRuntimeRoutes } from "../../../packages/default-sdr/src/http-routes.js";
-import { hashDashboardPassword } from "../../../packages/default-sdr/src/dashboard-bootstrap.js";
+import {
+  hashDashboardPassword,
+  mountDefaultSdrDashboardRoutes,
+  mountDefaultSdrMcpHttpRoute,
+  mountDefaultSdrRuntimeRoutes,
+} from "@trellis/default-sdr";
 import { DashboardStateService } from "./services/dashboard-state.js";
 import { handleIntakeWebhook } from "./orchestration/webhook-handlers.js";
 

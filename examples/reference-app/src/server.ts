@@ -16,15 +16,13 @@ import {
 import { runSandboxTurn } from "./orchestration/sandbox-broker.js";
 import { getAutomationPauseReason } from "./orchestration/workflow-control.js";
 import {
-  getDashboardPassword as resolveDashboardPassword,
-} from "../../../packages/default-sdr/src/dashboard-bootstrap.js";
-import {
   buildDefaultSdrActorBackedWorkflowDependencies,
   buildDefaultSdrActorBackedWebhookHandlers,
   createDefaultSdrHandoffWebhookHandler,
+  getDashboardPassword as resolveDashboardPassword,
   mountDefaultSdrActorBackedOperatorSurface,
-} from "../../../packages/default-sdr/src/runtime-dispatch.js";
-import { mountDefaultSdrWebhookRoutes } from "../../../packages/default-sdr/src/webhook-bootstrap.js";
+  mountDefaultSdrWebhookRoutes,
+} from "@trellis/default-sdr";
 import type { WorkflowDependencies } from "./orchestration/types.js";
 
 export function createApp() {

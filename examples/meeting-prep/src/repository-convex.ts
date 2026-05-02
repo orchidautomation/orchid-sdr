@@ -106,7 +106,7 @@ export class ConvexMeetingPrepRepository implements MeetingPrepRepository {
     return meeting ? mapMeeting(meeting) : null;
   }
 
-  async updatePrepRun(prepRunId: string, update: { status?: PrepRunRecord["status"]; stage?: string; summary?: string | null; error?: string | null }) {
+  async updatePrepRun(prepRunId: string, update: { status?: PrepRunRecord["status"]; stage?: string; summary?: string; error?: string }) {
     await (this.client as any).mutation("repository:updatePrepRun", { prepRunId, update });
   }
 

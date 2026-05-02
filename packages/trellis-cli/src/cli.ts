@@ -1,7 +1,7 @@
 import { cpSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import process from "node:process";
 
 import { ConvexHttpClient } from "convex/browser";
@@ -9,10 +9,6 @@ import { createClient } from "rivetkit/client";
 import { loadProcessEnvFiles } from "../../framework/src/env-loader.js";
 import { convexMutations, convexQueries } from "../../default-sdr/src/convex-repository.js";
 
-import config from "../../../examples/reference-app/trellis.config.js";
-import coreConfig from "../../../examples/core-app/trellis.config.js";
-import meetingPrepConfig from "../../../examples/meeting-prep/trellis.config.js";
-import { registry } from "../../../examples/reference-app/src/registry.js";
 import {
   aiSdrCompositionProfileIds,
   buildModuleInstallPlan,
@@ -20,6 +16,7 @@ import {
   evaluateModuleComposition,
   findModuleForAddCommand,
   type AiSdrCompositionProfileId,
+  type AiSdrConfig,
   type AiSdrModuleDefinition,
 } from "../../framework/src/index.js";
 import {
@@ -71,19 +68,18 @@ const DOMAIN_KITS = {
     id: "sdr",
     displayName: "AI SDR",
     root: referenceAppRoot,
-    baseConfig: config,
     copyEntries: ["convex", "knowledge", "scripts", "skills", "src", "tests"],
   },
   "meeting-prep": {
     id: "meeting-prep",
     displayName: "Meeting prep",
     root: meetingPrepRoot,
-    baseConfig: meetingPrepConfig,
     copyEntries: ["convex", "knowledge", "skills", "src", "tests"],
   },
 } as const;
 
 type DomainKitId = keyof typeof DOMAIN_KITS;
+const config = await loadActiveConfig();
 
 await main();
 
@@ -98,13 +94,13 @@ async function main() {
         listModules();
         break;
       case "add":
-        printAddPlan(arg);
+        await printAddPlan(arg);
         break;
       case "check":
         printCompositionCheck();
         break;
       case "connect":
-        handleConnectCommand(arg);
+        await handleConnectCommand(arg);
         break;
       case "deploy":
         handleDeployCommand(arg);
@@ -311,11 +307,16 @@ async function handleDiscoveryCommand(
   const source = String(flags.source ?? "linkedin_public_post") as "linkedin_public_post" | "x_public_post";
   const campaignId = String(flags.campaign ?? "cmp_default");
 
+  const registry = await loadDiscoveryRegistry();
   const client = createClient<typeof registry>({
     endpoint,
     disableMetadataLookup: true,
   });
-  const actor = client.discoveryCoordinator.getOrCreate([campaignId, source]) as any;
+  const discoveryActor = (client as any).discoveryCoordinator;
+  if (!discoveryActor) {
+    throw new Error("Discovery commands require the SDR kit or reference app runtime. This scaffold does not expose discovery actors.");
+  }
+  const actor = discoveryActor.getOrCreate([campaignId, source]) as any;
 
   switch (subcommand) {
     case "seed": {
@@ -364,12 +365,12 @@ async function handleDiscoveryCommand(
 }
 
 function listModules() {
-  const installed = new Set((config.modules ?? []).map((module) => module.id));
+  const installed = new Set((config.modules ?? []).map((module: AiSdrModuleDefinition) => module.id));
   if (jsonOutput) {
     emitJson({
       ok: true,
       command: "modules",
-      modules: defaultTrellisModules().map((module) => ({
+      modules: defaultTrellisModules().map((module: AiSdrModuleDefinition) => ({
         id: module.id,
         displayName: module.displayName,
         packageName: module.packageName ?? null,
@@ -389,14 +390,14 @@ function listModules() {
 }
 
 function printCompositionCheck() {
-  const evaluations = resolveConfiguredCompositionProfiles().map((profile) =>
+  const evaluations = resolveConfiguredCompositionProfiles().map((profile: AiSdrCompositionProfileId) =>
     evaluateModuleComposition(config.modules ?? [], { profile }),
   );
   if (jsonOutput) {
     emitJson({
       ok: evaluations.every((evaluation) => evaluation.ok),
       command: "check",
-      profiles: evaluations.map((evaluation) => ({
+      profiles: evaluations.map((evaluation: ReturnType<typeof evaluateModuleComposition>) => ({
         profileId: evaluation.profile.id,
         displayName: evaluation.profile.displayName,
         ok: evaluation.ok,
@@ -417,13 +418,42 @@ function printCompositionCheck() {
 
 function resolveConfiguredCompositionProfiles() {
   const supportedProfiles = new Set(aiSdrCompositionProfileIds);
-  const configured = (config.compositionTargets ?? []).filter((profile): profile is AiSdrCompositionProfileId =>
+  const configured = (config.compositionTargets ?? []).filter((profile: string): profile is AiSdrCompositionProfileId =>
     supportedProfiles.has(profile as AiSdrCompositionProfileId),
   );
   return configured.length > 0 ? configured : (["minimum", "productionParity"] as const);
 }
 
-function printAddPlan(moduleId: string | undefined) {
+async function importConfigFrom(filePath: string): Promise<AiSdrConfig> {
+  const module = await import(pathToFileURL(filePath).href);
+  return module.default as AiSdrConfig;
+}
+
+async function loadActiveConfig(): Promise<AiSdrConfig> {
+  const localConfigPath = tryResolveScaffoldConfigPath(process.cwd());
+  if (localConfigPath) {
+    return await importConfigFrom(localConfigPath);
+  }
+
+  const fallbackPath = path.join(repoRoot, "examples/reference-app/trellis.config.ts");
+  return await importConfigFrom(fallbackPath);
+}
+
+async function loadBundledBaseConfig(kitIds: DomainKitId[]): Promise<AiSdrConfig> {
+  const root = kitIds[0] ? DOMAIN_KITS[kitIds[0]].root : coreAppRoot;
+  return await importConfigFrom(path.join(root, "trellis.config.ts"));
+}
+
+async function loadDiscoveryRegistry() {
+  const localRegistryPath = path.join(process.cwd(), "src/registry.ts");
+  const registryPath = pathExistsSync(localRegistryPath)
+    ? localRegistryPath
+    : path.join(repoRoot, "examples/reference-app/src/registry.ts");
+  const module = await import(pathToFileURL(registryPath).href);
+  return module.registry;
+}
+
+async function printAddPlan(moduleId: string | undefined) {
   if (!moduleId) {
     console.error("Missing module or capability. Example: npm run trellis -- add search firecrawl");
     process.exitCode = 1;
@@ -439,7 +469,7 @@ function printAddPlan(moduleId: string | undefined) {
     }
 
     if (cliFlags.apply === true || cliFlags.write === true) {
-      applyKitToScaffold(kitId as DomainKitId);
+      await applyKitToScaffold(kitId as DomainKitId);
       return;
     }
 
@@ -460,14 +490,14 @@ function printAddPlan(moduleId: string | undefined) {
   }
 
   if (cliFlags.apply === true || cliFlags.write === true) {
-    applyModuleToScaffold(module);
+    await applyModuleToScaffold(module);
     return;
   }
 
   printPlan(module);
 }
 
-function handleConnectCommand(moduleId: string | undefined) {
+async function handleConnectCommand(moduleId: string | undefined) {
   if (!moduleId) {
     const guides = [
       "npm run trellis -- connect source apify",
@@ -514,7 +544,7 @@ Use --apply if you also want to add the module to a scaffolded workspace first.`
   }
 
   const applyResult = cliFlags.apply === true || cliFlags.write === true
-    ? applyModuleToScaffold(module)
+    ? await applyModuleToScaffold(module)
     : null;
   if (applyResult) {
     if (!jsonOutput) {
@@ -524,7 +554,7 @@ Use --apply if you also want to add the module to a scaffolded workspace first.`
 
   if (jsonOutput) {
     const plan = buildModuleInstallPlan(module, {
-      installedModuleIds: (config.modules ?? []).map((item) => item.id),
+      installedModuleIds: (config.modules ?? []).map((item: AiSdrModuleDefinition) => item.id),
     });
     emitJson({
       ok: true,
@@ -709,7 +739,7 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
   const profile = initInput.profile;
   const appName = initInput.appName;
   const packageName = sanitizePackageName(appName);
-  const baseConfig = resolveScaffoldBaseConfig(initInput.kitIds);
+  const baseConfig = await loadBundledBaseConfig(initInput.kitIds);
   const spec = buildScaffoldSpec(baseConfig, {
     name: packageName,
     description: `${appName} generated from the Trellis ${initInput.kitIds.length > 0 ? `${initInput.kitIds.join(", ")} kit` : "core"} scaffold.`,
@@ -912,7 +942,7 @@ function resolveModuleChoiceFlags(flags: Record<string, string | boolean>) {
 
 function printPlan(module: AiSdrModuleDefinition) {
   const plan = buildModuleInstallPlan(module, {
-    installedModuleIds: (config.modules ?? []).map((item) => item.id),
+    installedModuleIds: (config.modules ?? []).map((item: AiSdrModuleDefinition) => item.id),
   });
 
   console.log(`Module: ${plan.displayName} (${plan.moduleId})`);
@@ -932,7 +962,7 @@ function printPlan(module: AiSdrModuleDefinition) {
 
 function printConnectionGuide(module: AiSdrModuleDefinition) {
   const plan = buildModuleInstallPlan(module, {
-    installedModuleIds: (config.modules ?? []).map((item) => item.id),
+    installedModuleIds: (config.modules ?? []).map((item: AiSdrModuleDefinition) => item.id),
   });
 
   console.log(`Connection guide: ${plan.displayName} (${plan.moduleId})`);
@@ -1047,7 +1077,7 @@ async function handleClaudeCodeMcp(flags: Record<string, string | boolean>) {
   console.log("  3. Reload Claude Code MCP servers");
 }
 
-function applyModuleToScaffold(module: AiSdrModuleDefinition) {
+async function applyModuleToScaffold(module: AiSdrModuleDefinition) {
   const scaffoldConfigPath = resolveScaffoldConfigPath(process.cwd());
   const scaffoldConfigSource = readFileSyncSafe(scaffoldConfigPath);
   const metadata = parseScaffoldConfigMetadata(scaffoldConfigSource);
@@ -1060,7 +1090,8 @@ function applyModuleToScaffold(module: AiSdrModuleDefinition) {
   const selectedModuleIds = new Set(metadata.selectedModuleIds);
   selectedModuleIds.add(module.id);
 
-  const spec = buildScaffoldSpec(resolveScaffoldBaseConfig(metadata.selectedKitIds as DomainKitId[]), {
+  const currentConfig = await importConfigFrom(scaffoldConfigPath);
+  const spec = buildScaffoldSpec(currentConfig, {
     name: metadata.scaffoldName,
     description: metadata.scaffoldDescription,
     profile: metadata.selectedProfileId,
@@ -1320,15 +1351,7 @@ npm run trellis -- mcp claude-code --local --write
 `;
 }
 
-function resolveScaffoldBaseConfig(kitIds: DomainKitId[]) {
-  if (kitIds.length === 0) {
-    return coreConfig;
-  }
-
-  return DOMAIN_KITS[kitIds[0] ?? "sdr"].baseConfig;
-}
-
-function applyKitToScaffold(kitId: DomainKitId) {
+async function applyKitToScaffold(kitId: DomainKitId) {
   const scaffoldConfigPath = resolveScaffoldConfigPath(process.cwd());
   const scaffoldConfigSource = readFileSyncSafe(scaffoldConfigPath);
   const metadata = parseScaffoldConfigMetadata(scaffoldConfigSource);
@@ -1346,7 +1369,8 @@ function applyKitToScaffold(kitId: DomainKitId) {
     });
   }
 
-  const spec = buildScaffoldSpec(kit.baseConfig, {
+  const baseConfig = await loadBundledBaseConfig([kitId]);
+  const spec = buildScaffoldSpec(baseConfig, {
     name: metadata.scaffoldName,
     description: metadata.scaffoldDescription,
     profile: metadata.selectedProfileId,
@@ -1379,6 +1403,22 @@ function resolveScaffoldConfigPath(cwd: string) {
   throw new Error(`Multiple config files found: ${candidates.join(", ")}. Expected exactly one scaffold <app>.config.ts file in the project root.`);
 }
 
+function tryResolveScaffoldConfigPath(cwd: string) {
+  try {
+    return resolveScaffoldConfigPath(cwd);
+  } catch {
+    return null;
+  }
+}
+
+function pathExistsSync(candidate: string) {
+  try {
+    return readdirSync(path.dirname(candidate)) && Boolean(readFileSync(candidate, "utf8"));
+  } catch {
+    return false;
+  }
+}
+
 function buildScaffoldPackage(
   rootPackage: {
     version: string;
@@ -1393,6 +1433,7 @@ function buildScaffoldPackage(
   spec: ReturnType<typeof buildScaffoldSpec>,
 ) {
   const workspaceDependencies: Record<string, string> = {
+    "@trellis/default-sdr": "workspace:*",
     "@trellis/framework": "workspace:*",
   };
 

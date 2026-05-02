@@ -20,7 +20,7 @@ export default defineSchema({
     attioRecordId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_id", ["id"]).index("by_external", ["source", "externalId"]).index("by_updated", ["updatedAt"]),
+  }).index("by_meeting_key", ["id"]).index("by_external", ["source", "externalId"]).index("by_updated", ["updatedAt"]),
   attendees: defineTable({
     id: v.string(),
     meetingId: v.string(),
@@ -30,7 +30,7 @@ export default defineSchema({
     role: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_id", ["id"]).index("by_meeting", ["meetingId"]),
+  }).index("by_attendee_key", ["id"]).index("by_meeting", ["meetingId"]),
   prepRuns: defineTable({
     id: v.string(),
     meetingId: v.string(),
@@ -40,7 +40,7 @@ export default defineSchema({
     error: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_id", ["id"]).index("by_meeting", ["meetingId"]).index("by_updated", ["updatedAt"]),
+  }).index("by_prep_run_key", ["id"]).index("by_meeting", ["meetingId"]).index("by_updated", ["updatedAt"]),
   prepBriefs: defineTable({
     meetingId: v.string(),
     kind: v.string(),
