@@ -8,7 +8,6 @@ const selectedModuleIds = [
   "vercel-ai-gateway",
   "trellis-mcp",
   "firecrawl",
-  "attio",
 ];
 
 const modules = defaultTrellisModules().filter((module) => selectedModuleIds.includes(module.id));
@@ -75,12 +74,6 @@ export default defineAiSdr({
       capabilityId: "runtime",
       providerId: "vercel-sandbox",
       contractId: "runtime.sandbox.v1",
-      default: true,
-    },
-    {
-      capabilityId: "crm",
-      providerId: "attio",
-      contractId: "crm.prospectSync.v1",
       default: true,
     },
     {

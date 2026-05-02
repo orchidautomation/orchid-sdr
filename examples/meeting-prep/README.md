@@ -9,5 +9,8 @@ Default kit shape:
 - booking webhook intake
 - meeting and attendee state
 - prep brief generation
-- CRM sync hooks
 - web search and extraction for thin account context
+
+Optional later:
+
+- CRM sync via `trellis add crm attio --apply`
