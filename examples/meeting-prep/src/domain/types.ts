@@ -13,13 +13,25 @@ export const meetingBookingPayloadSchema = z.object({
     endsAt: z.string().min(1).optional(),
     organizerEmail: z.string().email().optional(),
     accountName: z.string().optional(),
+    objective: z.string().optional(),
     notes: z.string().optional(),
+    sourceUrl: z.string().url().optional(),
+    company: z.object({
+      name: z.string().optional(),
+      domain: z.string().optional(),
+      website: z.string().url().optional(),
+      industry: z.string().optional(),
+      description: z.string().optional(),
+      linkedinUrl: z.string().url().optional(),
+    }).optional(),
     attendees: z.array(
       z.object({
         fullName: z.string().min(1),
         email: z.string().email().optional(),
         company: z.string().optional(),
         role: z.string().optional(),
+        linkedinUrl: z.string().url().optional(),
+        notes: z.string().optional(),
       }),
     ).default([]),
   }),
@@ -47,7 +59,14 @@ export interface MeetingRecord {
   endsAt: string | null;
   organizerEmail: string | null;
   accountName: string | null;
+  objective: string | null;
   notes: string | null;
+  sourceUrl: string | null;
+  companyDomain: string | null;
+  companyWebsite: string | null;
+  companyIndustry: string | null;
+  companyDescription: string | null;
+  companyLinkedinUrl: string | null;
   attioRecordId: string | null;
   createdAt: number;
   updatedAt: number;
@@ -60,6 +79,8 @@ export interface AttendeeRecord {
   email: string | null;
   company: string | null;
   role: string | null;
+  linkedinUrl: string | null;
+  notes: string | null;
   createdAt: number;
   updatedAt: number;
 }

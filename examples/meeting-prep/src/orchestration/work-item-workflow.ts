@@ -18,22 +18,26 @@ export async function executeMeetingPrepWorkflow(context: AppContext, meetingId:
   });
 
   const attendeeContext = detail.attendees
-    .map((attendee) => [attendee.fullName, attendee.role, attendee.company].filter(Boolean).join(" - "))
+    .map((attendee) => [attendee.fullName, attendee.role, attendee.company, attendee.notes].filter(Boolean).join(" - "))
     .join("\n");
+  const companyContext = buildCompanyContext(detail);
 
   const knowledgeContext = await context.knowledge.composeKnowledgeContext(
-    [detail.meeting.title, detail.meeting.accountName ?? "", detail.meeting.notes ?? "", attendeeContext].join("\n"),
+    [
+      detail.meeting.title,
+      detail.meeting.accountName ?? "",
+      detail.meeting.companyDomain ?? "",
+      detail.meeting.companyWebsite ?? "",
+      detail.meeting.companyIndustry ?? "",
+      detail.meeting.companyDescription ?? "",
+      detail.meeting.objective ?? "",
+      detail.meeting.notes ?? "",
+      attendeeContext,
+    ].join("\n"),
     4,
   );
 
-  const heuristicBrief: PrepBrief = {
-    summary: `${detail.meeting.title} starts at ${detail.meeting.startsAt}.`,
-    accountContext: detail.meeting.accountName ? [`Account: ${detail.meeting.accountName}`] : [],
-    attendeeHighlights: detail.attendees.map((attendee) => `${attendee.fullName}${attendee.role ? ` (${attendee.role})` : ""}`),
-    questionsToAsk: ["What outcome does the customer want from this meeting?"],
-    risks: detail.attendees.length === 0 ? ["No attendees were provided in the booking payload."] : [],
-    confidence: detail.attendees.length > 0 ? 0.7 : 0.45,
-  };
+  const heuristicBrief = buildHeuristicBrief(detail, companyContext);
 
   let brief = heuristicBrief;
 
@@ -52,6 +56,9 @@ export async function executeMeetingPrepWorkflow(context: AppContext, meetingId:
         "Create a prep brief with summary, accountContext, attendeeHighlights, questionsToAsk, risks, and confidence.",
         "Use web search only when it improves the operator's understanding of the company, attendees, or likely meeting context.",
         "Do not invent pipeline history or internal account state.",
+        "",
+        "Payload-derived company context:",
+        companyContext.length ? companyContext.map((item) => `- ${item}`).join("\n") : "- none",
         "",
         "Knowledge context:",
         knowledgeContext || "No matching knowledge snippets found.",
@@ -91,6 +98,71 @@ export async function executeMeetingPrepWorkflow(context: AppContext, meetingId:
   });
 
   return brief;
+}
+
+function buildHeuristicBrief(detail: Awaited<ReturnType<AppContext["repository"]["getMeetingDetail"]>>, companyContext: string[]): PrepBrief {
+  if (!detail) {
+    throw new Error("meeting detail is required");
+  }
+  const attendeeHighlights = detail.attendees.map((attendee) => {
+    const parts = [
+      attendee.fullName,
+      attendee.role ? `(${attendee.role})` : "",
+      attendee.company && attendee.company !== detail.meeting.accountName ? `at ${attendee.company}` : "",
+      attendee.notes ? `- ${attendee.notes}` : "",
+    ].filter(Boolean);
+    return parts.join(" ").replace(/\s+-\s+/, " - ");
+  });
+
+  const questionsToAsk = uniqueStrings([
+    detail.meeting.objective ? `How should we define success for ${detail.meeting.objective.toLowerCase()}?` : "What outcome does the customer want from this meeting?",
+    detail.attendees.some((attendee) => /ops|operations|revenue/i.test(attendee.role ?? ""))
+      ? "What operational bottlenecks are the team trying to remove right now?"
+      : undefined,
+    detail.meeting.companyIndustry
+      ? `What constraints are specific to ${detail.meeting.companyIndustry.toLowerCase()} that we should account for?`
+      : undefined,
+  ]);
+
+  const risks = uniqueStrings([
+    detail.attendees.length === 0 ? "No attendees were provided in the booking payload." : undefined,
+    !detail.meeting.companyWebsite && !detail.meeting.companyDomain ? "No company website or domain was provided, so external account verification will depend on search." : undefined,
+    detail.attendees.some((attendee) => !attendee.role) ? "At least one attendee is missing a role, which weakens stakeholder-specific prep." : undefined,
+    !detail.meeting.objective ? "No explicit meeting objective was provided in the booking payload." : undefined,
+  ]);
+
+  const summaryParts = [
+    detail.meeting.title,
+    `starts at ${detail.meeting.startsAt}`,
+    detail.meeting.objective ? `with the stated objective: ${detail.meeting.objective}` : null,
+    detail.meeting.accountName ? `for ${detail.meeting.accountName}` : null,
+  ].filter(Boolean);
+
+  return {
+    summary: `${summaryParts.join(" ")}.`,
+    accountContext: companyContext,
+    attendeeHighlights,
+    questionsToAsk,
+    risks,
+    confidence: risks.length === 0 ? 0.82 : detail.attendees.length > 0 ? 0.68 : 0.45,
+  };
+}
+
+function buildCompanyContext(detail: NonNullable<Awaited<ReturnType<AppContext["repository"]["getMeetingDetail"]>>>) {
+  return uniqueStrings([
+    detail.meeting.accountName ? `Account: ${detail.meeting.accountName}` : undefined,
+    detail.meeting.companyDescription ? `Company: ${detail.meeting.companyDescription}` : undefined,
+    detail.meeting.companyIndustry ? `Industry: ${detail.meeting.companyIndustry}` : undefined,
+    detail.meeting.companyDomain ? `Domain: ${detail.meeting.companyDomain}` : undefined,
+    detail.meeting.companyWebsite ? `Website: ${detail.meeting.companyWebsite}` : undefined,
+    detail.meeting.sourceUrl ? `Booking source: ${detail.meeting.sourceUrl}` : undefined,
+    detail.meeting.objective ? `Meeting objective: ${detail.meeting.objective}` : undefined,
+    detail.meeting.notes ? `Operator notes: ${detail.meeting.notes}` : undefined,
+  ]);
+}
+
+function uniqueStrings(values: Array<string | undefined>) {
+  return [...new Set(values.filter((value): value is string => Boolean(value && value.trim())))];
 }
 
 function safeParseBrief(value: string) {
