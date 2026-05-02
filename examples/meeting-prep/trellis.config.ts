@@ -7,6 +7,7 @@ const selectedModuleIds = [
   "vercel-sandbox",
   "vercel-ai-gateway",
   "trellis-mcp",
+  "firecrawl",
   "attio",
 ];
 
@@ -29,12 +30,18 @@ export default defineAiSdr({
     product: "knowledge/product.md",
     prepRubric: "knowledge/prep-rubric.md",
     briefStyle: "knowledge/brief-style.md",
+    researchPolicy: "knowledge/research-policy.md",
   },
   skills: [
     {
       id: "meeting-prep-brief",
       path: "skills/meeting-prep-brief",
       description: "Produce a pre-meeting brief from booking details, attendees, and known company context.",
+    },
+    {
+      id: "meeting-prep-account-research",
+      path: "skills/meeting-prep-account-research",
+      description: "Use web search to verify account, attendee, and recent company context before generating the prep brief.",
     },
   ],
   modules,
@@ -74,6 +81,18 @@ export default defineAiSdr({
       capabilityId: "crm",
       providerId: "attio",
       contractId: "crm.prospectSync.v1",
+      default: true,
+    },
+    {
+      capabilityId: "search",
+      providerId: "firecrawl",
+      contractId: "research.search.v1",
+      default: true,
+    },
+    {
+      capabilityId: "extract",
+      providerId: "firecrawl",
+      contractId: "research.extract.v1",
       default: true,
     },
     {

@@ -44,11 +44,14 @@ export async function executeMeetingPrepWorkflow(context: AppContext, meetingId:
       stage: "respond_or_handoff",
       systemPrompt: [
         "You are a Trellis meeting prep agent.",
-        "Use the meeting-prep-brief skill and the local knowledge files.",
+        "Use the meeting-prep-brief skill, the meeting-prep-account-research skill, and the local knowledge files.",
+        "If the booking payload is thin, use available web research tools to verify company and attendee context before drafting.",
         "Return only JSON matching the requested shape.",
       ].join("\n"),
       prompt: [
         "Create a prep brief with summary, accountContext, attendeeHighlights, questionsToAsk, risks, and confidence.",
+        "Use web search only when it improves the operator's understanding of the company, attendees, or likely meeting context.",
+        "Do not invent pipeline history or internal account state.",
         "",
         "Knowledge context:",
         knowledgeContext || "No matching knowledge snippets found.",
