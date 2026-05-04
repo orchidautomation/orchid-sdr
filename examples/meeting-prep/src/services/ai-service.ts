@@ -5,7 +5,7 @@ import { prepBriefSchema, type MeetingBookingPayload, type PrepBrief } from "../
 import { getConfig } from "../config.js";
 import { getFrameworkRuntimeConfig } from "./framework-stack.js";
 
-const DEFAULT_GATEWAY_MODEL = "moonshotai/kimi-k2.6";
+const DEFAULT_GATEWAY_MODEL = "openai/gpt-5.4-mini";
 
 export class AiStructuredService {
   private readonly config = getConfig();
@@ -31,9 +31,11 @@ export class AiStructuredService {
         ),
         schema: prepBriefSchema,
         prompt: [
-          "You are preparing a concise meeting prep brief from a structured webhook payload.",
-          "Use the provided knowledge context as the policy and product context.",
-          "Be factual. Do not invent missing details. Put uncertainty into risks or open questions phrased inside questionsToAsk.",
+          "You are a Trellis meeting prep agent.",
+          "Create a high-signal operator brief from a structured booking payload plus knowledge context.",
+          "Use public-company, attendee, and meeting details already present in the payload and knowledge context.",
+          "If something is unclear, reflect that as a risk or a better question to ask instead of guessing.",
+          "Return only JSON matching the requested shape.",
           "",
           "Knowledge context:",
           input.knowledgeContext || "No matching knowledge snippets found.",

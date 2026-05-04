@@ -42,40 +42,50 @@ export async function executeMeetingPrepWorkflow(context: AppContext, meetingId:
   let brief = heuristicBrief;
 
   try {
-    const sandboxResult = await runSandboxTurn(context, {
-      turnId: createTurnId("meeting"),
-      targetId: meetingId,
-      stage: "respond_or_handoff",
-      systemPrompt: [
-        "You are a Trellis meeting prep agent.",
-        "Use the meeting-prep-brief skill, the meeting-prep-account-research skill, and the local knowledge files.",
-        "If the booking payload is thin, use available web research tools to verify company and attendee context before drafting.",
-        "Return only JSON matching the requested shape.",
-      ].join("\n"),
-      prompt: [
-        "Create a prep brief with summary, accountContext, attendeeHighlights, questionsToAsk, risks, and confidence.",
-        "Use web search only when it improves the operator's understanding of the company, attendees, or likely meeting context.",
-        "Do not invent pipeline history or internal account state.",
-        "",
-        "Payload-derived company context:",
-        companyContext.length ? companyContext.map((item) => `- ${item}`).join("\n") : "- none",
-        "",
-        "Knowledge context:",
-        knowledgeContext || "No matching knowledge snippets found.",
-        "",
-        "Meeting:",
-        JSON.stringify(detail.meeting, null, 2),
-        "",
-        "Attendees:",
-        JSON.stringify(detail.attendees, null, 2),
-      ].join("\n"),
-      metadata: {
-        meetingId,
-      },
-    });
-    const parsed = safeParseBrief(sandboxResult.outputText);
-    if (parsed) {
-      brief = parsed;
+    if (hasSandboxCredentials(context)) {
+      const sandboxResult = await runSandboxTurn(context, {
+        turnId: createTurnId("meeting"),
+        targetId: meetingId,
+        stage: "respond_or_handoff",
+        systemPrompt: [
+          "You are a Trellis meeting prep agent.",
+          "Use the meeting-prep-brief skill, the meeting-prep-account-research skill, and the local knowledge files.",
+          "If the booking payload is thin, use available web research tools to verify company and attendee context before drafting.",
+          "Return only JSON matching the requested shape.",
+        ].join("\n"),
+        prompt: [
+          "Create a prep brief with summary, accountContext, attendeeHighlights, questionsToAsk, risks, and confidence.",
+          "Use web search only when it improves the operator's understanding of the company, attendees, or likely meeting context.",
+          "Do not invent pipeline history or internal account state.",
+          "",
+          "Payload-derived company context:",
+          companyContext.length ? companyContext.map((item) => `- ${item}`).join("\n") : "- none",
+          "",
+          "Knowledge context:",
+          knowledgeContext || "No matching knowledge snippets found.",
+          "",
+          "Meeting:",
+          JSON.stringify(detail.meeting, null, 2),
+          "",
+          "Attendees:",
+          JSON.stringify(detail.attendees, null, 2),
+        ].join("\n"),
+        metadata: {
+          meetingId,
+        },
+      });
+      const parsed = safeParseBrief(sandboxResult.outputText);
+      if (parsed) {
+        brief = parsed;
+      }
+    } else {
+      brief = await context.ai.buildArtifact({
+        payload: detailToPayload(detail),
+        knowledgeContext: [
+          companyContext.length ? `Payload-derived company context:\n${companyContext.map((item) => `- ${item}`).join("\n")}` : "",
+          knowledgeContext,
+        ].filter(Boolean).join("\n\n"),
+      });
     }
   } catch {
     // keep heuristic brief
@@ -163,6 +173,48 @@ function buildCompanyContext(detail: NonNullable<Awaited<ReturnType<AppContext["
 
 function uniqueStrings(values: Array<string | undefined>) {
   return [...new Set(values.filter((value): value is string => Boolean(value && value.trim())))];
+}
+
+function hasSandboxCredentials(context: AppContext) {
+  return Boolean(
+    (context.config.VERCEL_TOKEN || context.config.VERCEL_OIDC_TOKEN)
+    && context.config.VERCEL_PROJECT_ID
+    && context.config.VERCEL_TEAM_ID,
+  );
+}
+
+function detailToPayload(detail: NonNullable<Awaited<ReturnType<AppContext["repository"]["getMeetingDetail"]>>>) {
+  return {
+    source: detail.meeting.source,
+    externalId: detail.meeting.externalId ?? undefined,
+    meeting: {
+      id: detail.meeting.id,
+      title: detail.meeting.title,
+      startsAt: detail.meeting.startsAt,
+      endsAt: detail.meeting.endsAt ?? undefined,
+      organizerEmail: detail.meeting.organizerEmail ?? undefined,
+      accountName: detail.meeting.accountName ?? undefined,
+      objective: detail.meeting.objective ?? undefined,
+      notes: detail.meeting.notes ?? undefined,
+      sourceUrl: detail.meeting.sourceUrl ?? undefined,
+      company: {
+        name: detail.meeting.accountName ?? undefined,
+        domain: detail.meeting.companyDomain ?? undefined,
+        website: detail.meeting.companyWebsite ?? undefined,
+        industry: detail.meeting.companyIndustry ?? undefined,
+        description: detail.meeting.companyDescription ?? undefined,
+        linkedinUrl: detail.meeting.companyLinkedinUrl ?? undefined,
+      },
+      attendees: detail.attendees.map((attendee) => ({
+        fullName: attendee.fullName,
+        email: attendee.email ?? undefined,
+        company: attendee.company ?? undefined,
+        role: attendee.role ?? undefined,
+        linkedinUrl: attendee.linkedinUrl ?? undefined,
+        notes: attendee.notes ?? undefined,
+      })),
+    },
+  };
 }
 
 function safeParseBrief(value: string) {

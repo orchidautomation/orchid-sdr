@@ -17,11 +17,11 @@ export default defineAiSdr({
   description: "Meeting prep example that turns booking webhooks into attendee-aware preparation briefs.",
   compositionTargets: ["minimum"],
   modelRouting: {
-    defaultModel: "moonshotai/kimi-k2.6",
+    defaultModel: "openai/gpt-5.4-mini",
     sandbox: {
-      defaultModel: "moonshotai/kimi-k2.6",
+      defaultModel: "openai/gpt-5.4-mini",
       stages: {
-        respond_or_handoff: "moonshotai/kimi-k2.6",
+        respond_or_handoff: "openai/gpt-5.4-mini",
       },
     },
   },
