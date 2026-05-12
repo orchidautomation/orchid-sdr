@@ -717,6 +717,150 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
+  it("normalizes mixed-source webhook batches through the v3 signal route", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+    const fakeD1 = createFakeD1();
+    const fakeQueue = createFakeQueue();
+    const fakeWorkflow = {
+      create: vi.fn(async (options: Record<string, unknown>) => ({
+        id: options.id,
+      })),
+    };
+    const env = {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_EVENTS: fakeQueue,
+      PROSPECT_WORKFLOW: fakeWorkflow,
+    };
+
+    const webhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        provider: "batch-import",
+        externalId: "run_batch_1",
+        campaignId: "cmp_batch",
+        workspaceId: "wrk_batch",
+        signals: [
+          {
+            source: "x_public_post",
+            url: "https://x.com/example/status/1",
+            name: "Jordan",
+            title: "RevOps Lead",
+            company: "Northstar",
+            text: "We adopted Clay last month.",
+          },
+          {
+            source: "podcast_mention",
+            url: "https://example.fm/episodes/123",
+            author: "Avery",
+            role: "Founder",
+            companyName: "Northstar",
+            description: "Talking about GTM systems and agent workflows.",
+          },
+        ],
+      }),
+    }), env);
+    const body = await webhook.json() as {
+      prospects: unknown[];
+      drafts: unknown[];
+      approvals: unknown[];
+    };
+
+    expect(webhook.status).toBe(202);
+    expect(body).toMatchObject({
+      ok: true,
+      accepted: true,
+      mode: "processed_batch",
+      signalsReceived: 2,
+      signals: [
+        expect.objectContaining({
+          workspaceId: "wrk_batch",
+          campaignId: "cmp_batch",
+          provider: "batch-import",
+          source: "x_public_post",
+          payload: expect.objectContaining({
+            authorName: "Jordan",
+            authorTitle: "RevOps Lead",
+            authorCompany: "Northstar",
+            sourceRef: "https://x.com/example/status/1",
+            content: "We adopted Clay last month.",
+          }),
+        }),
+        expect.objectContaining({
+          provider: "batch-import",
+          source: "podcast_mention",
+          payload: expect.objectContaining({
+            authorName: "Avery",
+            authorTitle: "Founder",
+            authorCompany: "Northstar",
+            content: expect.stringContaining("GTM systems"),
+          }),
+        }),
+      ],
+      prospects: expect.arrayContaining([
+        expect.objectContaining({ workspaceId: "wrk_batch" }),
+      ]),
+      persistence: {
+        enabled: true,
+        results: [expect.objectContaining({ enabled: true }), expect.objectContaining({ enabled: true })],
+      },
+      queue: {
+        enabled: true,
+        messages: 2,
+      },
+      workflowDispatch: {
+        enabled: true,
+        ok: true,
+        results: [expect.objectContaining({ workflow: "prospect" }), expect.objectContaining({ workflow: "prospect" })],
+      },
+      webhook: {
+        verified: false,
+        idempotencyKey: null,
+      },
+    });
+    expect(body.prospects).toHaveLength(2);
+    expect(body.drafts).toHaveLength(2);
+    expect(body.approvals).toHaveLength(4);
+    expect(fakeWorkflow.create).toHaveBeenCalledTimes(2);
+    expect(fakeQueue.messages).toEqual([
+      expect.objectContaining({
+        type: "trellis.signal.processed",
+        workspaceId: "wrk_batch",
+      }),
+      expect.objectContaining({
+        type: "trellis.signal.processed",
+        workspaceId: "wrk_batch",
+      }),
+    ]);
+
+    const mcp = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), env);
+    await expect(mcp.json()).resolves.toMatchObject({
+      snapshot: {
+        counts: {
+          signals: 2,
+          prospects: 2,
+          drafts: 2,
+          approvals: 4,
+          workflowRuns: 2,
+        },
+      },
+    });
+  });
+
   it("scopes persisted audit and trace event ids per signal", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       email: agentmail(),

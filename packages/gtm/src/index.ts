@@ -1166,38 +1166,88 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               detail: "Signal webhook secret was configured but not provided.",
             }, 401);
           }
-          const signal = await readSignalFromRequest(request);
+          const signals = await readSignalsFromRequest(request);
           const packContext = await readPackContext(env);
-          const harness = await createRuntimeHarness(env, agent.config, {
-            signal,
-            packs: packContext,
-          });
-          const run = await runTrellisAgent(agent, {
-            signal,
-            context: {
+          const results: Array<{
+            run: TrellisRuntimeResult;
+            persistence: Awaited<ReturnType<typeof persistRuntimeResult>>;
+            queue: Awaited<ReturnType<typeof enqueueRuntimeEvent>>;
+            workflowDispatch: Awaited<ReturnType<typeof dispatchWorkflow>>;
+          }> = [];
+          for (const signal of signals) {
+            const harness = await createRuntimeHarness(env, agent.config, {
+              signal,
               packs: packContext,
-            },
-            harness,
-          });
-          const persistence = await persistRuntimeResult(env, run);
-          const queue = await enqueueRuntimeEvent(env, run);
-          const workflowDispatch = await dispatchWorkflow(env, run);
+            });
+            const run = await runTrellisAgent(agent, {
+              signal,
+              context: {
+                packs: packContext,
+              },
+              harness,
+            });
+            const persistence = await persistRuntimeResult(env, run);
+            const queue = await enqueueRuntimeEvent(env, run);
+            const workflowDispatch = await dispatchWorkflow(env, run);
+            results.push({
+              run,
+              persistence,
+              queue,
+              workflowDispatch,
+            });
+          }
+          if (results.length === 1) {
+            const result = results[0]!;
+            const run = result.run;
+            return jsonResponse({
+              ok: true,
+              accepted: true,
+              mode: "processed",
+              traceId: traceIdForSignal(run.signal),
+              signal: run.signal,
+              prospects: run.prospects,
+              drafts: run.drafts,
+              approvals: run.approvals,
+              auditEvents: run.auditEvents,
+              persistence: result.persistence,
+              queue: result.queue,
+              workflowDispatch: result.workflowDispatch,
+              webhook: {
+                verified: verification.enabled,
+                idempotencyKey: run.signal.idempotencyKey ?? null,
+              },
+              packs: packContext,
+              noSendsMode: agent.config.safety?.noSends ?? true,
+            }, 202);
+          }
           return jsonResponse({
             ok: true,
             accepted: true,
-            mode: "processed",
-            traceId: traceIdForSignal(run.signal),
-            signal: run.signal,
-            prospects: run.prospects,
-            drafts: run.drafts,
-            approvals: run.approvals,
-            auditEvents: run.auditEvents,
-            persistence,
-            queue,
-            workflowDispatch,
+            mode: "processed_batch",
+            signalsReceived: results.length,
+            signals: results.map((result) => result.run.signal),
+            traceIds: results.map((result) => traceIdForSignal(result.run.signal)),
+            prospects: results.flatMap((result) => result.run.prospects),
+            drafts: results.flatMap((result) => result.run.drafts),
+            approvals: results.flatMap((result) => result.run.approvals),
+            auditEvents: results.flatMap((result) => result.run.auditEvents),
+            persistence: {
+              enabled: results.every((result) => result.persistence.enabled),
+              results: results.map((result) => result.persistence),
+            },
+            queue: {
+              enabled: results.some((result) => result.queue.enabled),
+              messages: results.reduce((total, result) => total + (readNumber(result.queue.messages) ?? 0), 0),
+              results: results.map((result) => result.queue),
+            },
+            workflowDispatch: {
+              enabled: results.some((result) => result.workflowDispatch.enabled),
+              ok: results.every((result) => result.workflowDispatch.ok !== false),
+              results: results.map((result) => result.workflowDispatch),
+            },
             webhook: {
               verified: verification.enabled,
-              idempotencyKey: run.signal.idempotencyKey ?? null,
+              idempotencyKey: null,
             },
             packs: packContext,
             noSendsMode: agent.config.safety?.noSends ?? true,
@@ -2080,33 +2130,183 @@ function createFlueHarnessRuntime(
   };
 }
 
-async function readSignalFromRequest(request: Request): Promise<Partial<TrellisSignal>> {
+async function readSignalsFromRequest(request: Request): Promise<Array<Partial<TrellisSignal>>> {
   const payload = await readJsonBody(request);
   const record = isRecord(payload) ? payload : {};
-  const now = Date.now();
-  const idempotencyKey = readString(request.headers.get("idempotency-key"))
+  const signalRecord = isRecord(record.signal) ? record.signal : undefined;
+  const rawBatch = Array.isArray(record.signals)
+    ? record.signals.filter(isRecord)
+    : undefined;
+  const rawSignals = rawBatch?.length
+    ? rawBatch
+    : signalRecord
+      ? [signalRecord]
+      : [record];
+  const rootIdempotencyKey = readString(request.headers.get("idempotency-key"))
     ?? readString(request.headers.get("x-trellis-idempotency-key"))
-    ?? readString(record.idempotencyKey);
-  const explicitId = readString(record.id) ?? readString(record.signalId);
+    ?? readFirstString(record, signalRecord ?? {}, ["idempotencyKey", "idempotency_key"]);
+
+  return rawSignals.map((rawSignal, index) =>
+    normalizeSignalWebhookRecord({
+      request,
+      root: record,
+      rawSignal,
+      index,
+      total: rawSignals.length,
+      rootIdempotencyKey,
+      nested: Boolean(signalRecord || rawBatch),
+    }),
+  );
+}
+
+function normalizeSignalWebhookRecord(input: {
+  request: Request;
+  root: Record<string, unknown>;
+  rawSignal: Record<string, unknown>;
+  index: number;
+  total: number;
+  rootIdempotencyKey?: string;
+  nested: boolean;
+}): Partial<TrellisSignal> {
+  const { request, root, rawSignal, index, total, rootIdempotencyKey, nested } = input;
+  const provider = readFirstString(rawSignal, root, ["provider"]) ?? "webhook";
+  const source = readFirstString(rawSignal, root, ["source"]) ?? "webhook.signals";
+  const sourceRef = readSignalSourceRef(source, rawSignal, index);
+  const explicitId = readFirstString(rawSignal, root, ["id", "signalId", "signal_id"]);
+  const batchIdempotencyKey = rootIdempotencyKey && total > 1
+    ? `${rootIdempotencyKey}:${sourceRef}`
+    : rootIdempotencyKey;
+  const idempotencyKey = readFirstString(rawSignal, root, ["idempotencyKey", "idempotency_key"])
+    ?? batchIdempotencyKey;
   const signalId = explicitId
     ?? (idempotencyKey ? `sig_${normalizeIdPart(idempotencyKey)}` : undefined)
-    ?? `sig_${now}`;
+    ?? `sig_${normalizeIdPart(`${provider}_${source}_${sourceRef}`)}`;
   const traceId = readString(request.headers.get("traceparent"))
     ?? readString(request.headers.get("x-trellis-trace-id"))
-    ?? readString(record.traceId)
-    ?? readString(record.trace_id)
+    ?? readFirstString(rawSignal, root, ["traceId", "trace_id"])
     ?? `trace_${normalizeIdPart(signalId)}`;
+  const workspaceId = readFirstString(rawSignal, root, ["workspaceId", "workspace_id", "workspace"]) ?? "wrk_default";
+  const campaignId = readFirstString(rawSignal, root, ["campaignId", "campaign_id", "campaign"]);
+  const payload = normalizedSignalPayload({
+    root,
+    rawSignal,
+    provider,
+    source,
+    sourceRef,
+    nested,
+    index,
+    total,
+  });
   return {
     id: signalId,
     traceId,
-    threadId: readString(record.threadId) ?? `thr_${signalId}`,
-    workspaceId: readString(record.workspaceId) ?? readString(record.workspace) ?? "wrk_default",
-    campaignId: readString(record.campaignId) ?? readString(record.campaign),
+    threadId: readFirstString(rawSignal, root, ["threadId", "thread_id", "thread"]) ?? `thr_${normalizeIdPart(signalId)}`,
+    workspaceId,
+    campaignId,
     idempotencyKey,
-    provider: readString(record.provider) ?? "webhook",
-    source: readString(record.source) ?? "webhook.signals",
-    payload: record,
+    provider,
+    source,
+    payload,
   };
+}
+
+function normalizedSignalPayload(input: {
+  root: Record<string, unknown>;
+  rawSignal: Record<string, unknown>;
+  provider: string;
+  source: string;
+  sourceRef: string;
+  nested: boolean;
+  index: number;
+  total: number;
+}) {
+  const { root, rawSignal, provider, source, sourceRef, nested, index, total } = input;
+  const metadata = isRecord(root.metadata) ? root.metadata : {};
+  const signalMetadata = isRecord(rawSignal.metadata) ? rawSignal.metadata : {};
+  const url = readFirstString(rawSignal, root, ["url", "postUrl", "sourceUrl", "link", "linkedinUrl"]);
+  const content = readFirstString(rawSignal, root, ["content", "text", "body", "description", "excerpt", "summary"]);
+  const topic = readFirstString(rawSignal, root, ["topic", "title", "query", "keyword"]) ?? source;
+  return {
+    ...(nested ? {} : root),
+    ...rawSignal,
+    provider,
+    source,
+    sourceRef,
+    url,
+    authorName: readFirstString(rawSignal, root, ["authorName", "name", "author", "fullName"]) ?? "Unknown",
+    authorTitle: readFirstString(rawSignal, root, ["authorTitle", "title", "headline", "role"]),
+    authorCompany: readFirstString(rawSignal, root, ["authorCompany", "company", "companyName"]),
+    companyDomain: readFirstString(rawSignal, root, ["companyDomain", "domain", "website"]),
+    topic,
+    content: content ?? "",
+    capturedAt: readSignalCapturedAt(rawSignal, root),
+    metadata: {
+      ...metadata,
+      ...signalMetadata,
+      root: nested ? omitSignalCollections(root) : undefined,
+      raw: rawSignal,
+      batchIndex: total > 1 ? index : undefined,
+      batchSize: total > 1 ? total : undefined,
+    },
+  };
+}
+
+function readSignalSourceRef(source: string, rawSignal: Record<string, unknown>, index: number) {
+  return readFirstString(rawSignal, {}, [
+    "sourceRef",
+    "source_ref",
+    "externalId",
+    "external_id",
+    "id",
+    "postId",
+    "tweetId",
+    "restId",
+    "entityId",
+    "urn",
+    "shareUrn",
+    "url",
+    "postUrl",
+    "sourceUrl",
+    "link",
+    "linkedinUrl",
+  ]) ?? `${normalizeIdPart(source)}_${index + 1}_${stableHashPart(JSON.stringify(rawSignal))}`;
+}
+
+function readSignalCapturedAt(primary: Record<string, unknown>, secondary: Record<string, unknown>) {
+  const candidate = primary.capturedAt
+    ?? primary.captured_at
+    ?? primary.timestamp
+    ?? primary.publishedAt
+    ?? secondary.capturedAt
+    ?? secondary.captured_at
+    ?? secondary.timestamp
+    ?? secondary.publishedAt;
+  const numeric = readNumber(candidate);
+  if (numeric !== undefined) {
+    return numeric > 10_000_000_000 ? numeric : numeric * 1000;
+  }
+  const asString = readString(candidate);
+  if (asString) {
+    const parsed = Date.parse(asString);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  return Date.now();
+}
+
+function omitSignalCollections(record: Record<string, unknown>) {
+  const { signal: _signal, signals: _signals, ...rest } = record;
+  return rest;
+}
+
+function stableHashPart(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
 }
 
 function verifySignalWebhook(request: Request, env: Record<string, unknown> | undefined) {
