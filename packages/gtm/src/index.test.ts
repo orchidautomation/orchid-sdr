@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createTrellisTestApp, runTrellisSmoke, schema, trellis } from "./index.js";
 import { agentmail, attio, firecrawl } from "@trellis/providers";
@@ -158,6 +158,12 @@ describe("@trellis/gtm v3 API", () => {
         action: "email.send",
         actor: "operator@example.com",
         reason: "Fixture approval.",
+      }),
+    }), env);
+    const providerActionExecuteBlocked = await runtime.worker.fetch(new Request("https://example.com/provider-actions/provider_action_approval_draft_sig_live_email_send/execute", {
+      method: "POST",
+      body: JSON.stringify({
+        actor: "agentmail-worker",
       }),
     }), env);
     const providerActionFail = await runtime.worker.fetch(new Request("https://example.com/provider-actions/provider_action_approval_draft_sig_live_email_send/fail", {
@@ -356,6 +362,15 @@ describe("@trellis/gtm v3 API", () => {
         traceId: "trace_sig_live_approval_draft_sig_live_email_send",
       },
     });
+    expect(providerActionExecuteBlocked.status).toBe(409);
+    await expect(providerActionExecuteBlocked.json()).resolves.toMatchObject({
+      ok: false,
+      error: "no_send_mode_enabled",
+      providerAction: {
+        id: "provider_action_approval_draft_sig_live_email_send",
+        status: "blocked_no_send",
+      },
+    });
     await expect(providerActionFail.json()).resolves.toMatchObject({
       ok: true,
       providerAction: {
@@ -371,10 +386,155 @@ describe("@trellis/gtm v3 API", () => {
       },
     });
   });
+
+  it("executes queued provider actions through the v3 executor path", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound({ noSends: false }),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    const fakeQueue = createFakeQueue();
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({
+        id: "msg_agentmail_123",
+        thread_id: "thread_agentmail_123",
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const env = {
+        TRELLIS_DB: fakeD1,
+        TRELLIS_EVENTS: fakeQueue,
+        AGENTMAIL_API_KEY: "am_test",
+        AGENTMAIL_BASE_URL: "https://agentmail.test",
+      };
+
+      await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+        method: "POST",
+        body: JSON.stringify({
+          id: "sig_execute",
+          workspaceId: "wrk_execute",
+          threadId: "thr_execute",
+          provider: "test",
+          source: "unit.test",
+        }),
+      }), env);
+      const approval = await runtime.worker.fetch(new Request("https://example.com/approvals/approval_draft_sig_execute_email_send/approve", {
+        method: "POST",
+        body: JSON.stringify({
+          signalId: "sig_execute",
+          draftId: "draft_sig_execute",
+          action: "email.send",
+          actor: "operator@example.com",
+        }),
+      }), env);
+      const execution = await runtime.worker.fetch(new Request("https://example.com/provider-actions/provider_action_approval_draft_sig_execute_email_send/execute", {
+        method: "POST",
+        body: JSON.stringify({
+          actor: "agentmail-worker",
+          input: {
+            inboxId: "inbox_123",
+            to: "buyer@example.com",
+            subject: "Quick question",
+            bodyText: "Fixture outbound draft. Not sent.",
+          },
+        }),
+      }), env);
+      const snapshot = await runtime.worker.fetch(new Request("https://example.com/provider-actions"), env);
+
+      await expect(approval.json()).resolves.toMatchObject({
+        providerAction: {
+          id: "provider_action_approval_draft_sig_execute_email_send",
+          provider: "agentmail",
+          operation: "email.send",
+          status: "queued",
+        },
+      });
+      expect(execution.status).toBe(200);
+      await expect(execution.json()).resolves.toMatchObject({
+        ok: true,
+        providerAction: {
+          id: "provider_action_approval_draft_sig_execute_email_send",
+          status: "completed",
+        },
+        execution: {
+          ok: true,
+          provider: "agentmail",
+          operation: "email.send",
+          externalId: "msg_agentmail_123",
+          externalThreadId: "thread_agentmail_123",
+        },
+        queue: {
+          enabled: true,
+          messages: 1,
+        },
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string | URL | Request, RequestInit];
+      expect(String(url)).toBe("https://agentmail.test/v0/inboxes/inbox_123/messages/send");
+      expect(init).toMatchObject({
+        method: "POST",
+        headers: expect.objectContaining({
+          authorization: "Bearer am_test",
+        }),
+      });
+      expect(JSON.parse(String(init?.body))).toEqual({
+        to: ["buyer@example.com"],
+        subject: "Quick question",
+        text: "Fixture outbound draft. Not sent.",
+      });
+      expect(fakeD1.statements.some((statement) =>
+        statement.sql.includes("UPDATE trellis_provider_actions SET status = ?")
+          && statement.bindings[0] === "completed",
+      )).toBe(true);
+      expect(fakeQueue.messages).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: "trellis.provider.action.queued",
+          providerAction: expect.objectContaining({
+            status: "queued",
+          }),
+        }),
+        expect.objectContaining({
+          type: "trellis.provider.action.completed",
+          providerActionId: "provider_action_approval_draft_sig_execute_email_send",
+        }),
+      ]));
+      await expect(snapshot.json()).resolves.toMatchObject({
+        snapshot: {
+          counts: {
+            providerActions: 1,
+            auditEvents: 7,
+          },
+        },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 function createFakeD1() {
   const statements: Array<{ sql: string; bindings: unknown[] }> = [];
+  const signals = new Map<string, Record<string, unknown>>();
+  const drafts = new Map<string, Record<string, unknown>>();
+  const providerActions = new Map<string, Record<string, unknown>>();
   return {
     statements,
     prepare(sql: string) {
@@ -382,23 +542,77 @@ function createFakeD1() {
         bind(...bindings: unknown[]) {
           return {
             run() {
+              const normalized = sql.replace(/\s+/g, " ").trim();
               statements.push({
-                sql: sql.replace(/\s+/g, " ").trim(),
+                sql: normalized,
                 bindings,
               });
+              if (normalized.includes("INSERT OR REPLACE INTO trellis_signals")) {
+                signals.set(String(bindings[0]), {
+                  id: bindings[0],
+                  workspaceId: bindings[1],
+                  threadId: bindings[2],
+                  campaignId: bindings[3],
+                  provider: bindings[4],
+                  source: bindings[5],
+                  payloadJson: bindings[6],
+                  createdAt: bindings[7],
+                });
+              }
+              if (normalized.includes("INSERT OR REPLACE INTO trellis_drafts")) {
+                drafts.set(String(bindings[0]), {
+                  id: bindings[0],
+                  signalId: bindings[1],
+                  channel: bindings[2],
+                  status: bindings[3],
+                  approvalRequiredJson: bindings[4],
+                  body: bindings[5],
+                  updatedAt: bindings[6],
+                });
+              }
+              if (normalized.includes("INSERT OR REPLACE INTO trellis_provider_actions")) {
+                providerActions.set(String(bindings[0]), {
+                  id: bindings[0],
+                  approvalId: bindings[1],
+                  signalId: bindings[2],
+                  draftId: bindings[3],
+                  provider: bindings[4],
+                  operation: bindings[5],
+                  status: bindings[6],
+                  traceId: bindings[7],
+                  createdAt: bindings[8],
+                  updatedAt: bindings[9],
+                });
+              }
+              if (normalized.includes("UPDATE trellis_provider_actions SET status = ?")) {
+                const row = providerActions.get(String(bindings[2]));
+                if (row) {
+                  row.status = bindings[0];
+                  row.updatedAt = bindings[1];
+                }
+              }
               return { success: true };
             },
             first() {
               const normalized = sql.replace(/\s+/g, " ").trim();
               const match = normalized.match(/^SELECT COUNT\(\*\) AS count FROM (\w+)$/i);
-              const tableName = match?.[1];
-              if (!tableName) {
-                return null;
+              if (match?.[1]) {
+                const tableName = match[1];
+                const count = statements.filter((statement) =>
+                  statement.sql.includes(`INSERT OR REPLACE INTO ${tableName}`),
+                ).length;
+                return { count };
               }
-              const count = statements.filter((statement) =>
-                statement.sql.includes(`INSERT OR REPLACE INTO ${tableName}`),
-              ).length;
-              return { count };
+              if (normalized.includes("FROM trellis_provider_actions WHERE id = ?")) {
+                return providerActions.get(String(bindings[0])) ?? null;
+              }
+              if (normalized.includes("FROM trellis_drafts WHERE id = ?")) {
+                return drafts.get(String(bindings[0])) ?? null;
+              }
+              if (normalized.includes("FROM trellis_signals WHERE id = ?")) {
+                return signals.get(String(bindings[0])) ?? null;
+              }
+              return null;
             },
           };
         },

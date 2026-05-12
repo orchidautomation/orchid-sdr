@@ -91,6 +91,16 @@ export interface TrellisProviderAction {
   traceId: string;
 }
 
+export interface TrellisProviderActionExecutionResult {
+  ok: boolean;
+  provider: string;
+  operation: string;
+  actionId: string;
+  externalId?: string | null;
+  externalThreadId?: string | null;
+  raw?: unknown;
+}
+
 export interface TrellisProspect {
   id: string;
   signalId: string;
@@ -209,6 +219,40 @@ interface TrellisProviderActionTransition {
   status: TrellisProviderActionTransitionStatus;
   actor?: string;
   reason?: string;
+}
+
+interface TrellisProviderActionExecutionRequest {
+  providerActionId: string;
+  actor?: string;
+  reason?: string;
+  input?: Record<string, unknown>;
+}
+
+interface TrellisProviderActionRecord extends TrellisProviderAction {
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+interface TrellisDraftRecord {
+  id: string;
+  signalId: string;
+  channel: string;
+  status: string;
+  body: string;
+}
+
+interface TrellisSignalRecord {
+  id: string;
+  workspaceId: string;
+  threadId: string;
+  payload: Record<string, unknown>;
+}
+
+interface TrellisProviderExecutionContext {
+  action: TrellisProviderActionRecord;
+  draft: TrellisDraftRecord | null;
+  signal: TrellisSignalRecord | null;
+  input: Record<string, unknown>;
 }
 
 export const schema = {
@@ -573,6 +617,16 @@ function matchProviderActionTransitionRoute(pathname: string) {
   };
 }
 
+function matchProviderActionExecutionRoute(pathname: string) {
+  const match = pathname.match(/^\/provider-actions\/([^/]+)\/execute$/);
+  if (!match?.[1]) {
+    return undefined;
+  }
+  return {
+    providerActionId: decodeURIComponent(match[1]),
+  };
+}
+
 function inferApprovalAction(approvalId: string) {
   if (approvalId.endsWith("_email_send")) {
     return "email.send";
@@ -718,6 +772,19 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           });
         }
 
+        const providerActionExecution = matchProviderActionExecutionRoute(url.pathname);
+        if (providerActionExecution && request.method === "POST") {
+          const body = await readJsonBody(request);
+          const record = isRecord(body) ? body : {};
+          const execution = await executeProviderAction(env, {
+            providerActionId: providerActionExecution.providerActionId,
+            actor: readString(record.actor),
+            reason: readString(record.reason),
+            input: isRecord(record.input) ? record.input : record,
+          }, agent.config);
+          return jsonResponse(execution.body, execution.status);
+        }
+
         const providerActionTransition = matchProviderActionTransitionRoute(url.pathname);
         if (providerActionTransition && request.method === "POST") {
           const body = await readJsonBody(request);
@@ -753,6 +820,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               "trellis.approval.approve",
               "trellis.approval.reject",
               "trellis.providerAction.inspect",
+              "trellis.providerAction.execute",
               "trellis.providerAction.complete",
               "trellis.providerAction.fail",
               "trellis.audit.search",
@@ -785,6 +853,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             "/approvals/:id/approve",
             "/approvals/:id/reject",
             "/provider-actions",
+            "/provider-actions/:id/execute",
             "/provider-actions/:id/complete",
             "/provider-actions/:id/fail",
             "/mcp/trellis",
@@ -1289,6 +1358,312 @@ async function enqueueProviderActionTransition(
     enabled: true,
     messages: 1,
   };
+}
+
+async function executeProviderAction(
+  env: Record<string, unknown> | undefined,
+  execution: TrellisProviderActionExecutionRequest,
+  config: TrellisAgentConfig,
+) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      status: 501,
+      body: {
+        ok: false,
+        error: "provider_action_state_unavailable",
+        detail: "TRELLIS_DB is required before provider actions can execute.",
+      },
+    };
+  }
+
+  await ensureD1Schema(db);
+  const action = await readProviderActionRecord(db, execution.providerActionId);
+  if (!action) {
+    return {
+      status: 404,
+      body: {
+        ok: false,
+        error: "provider_action_not_found",
+        providerActionId: execution.providerActionId,
+      },
+    };
+  }
+
+  if (config.safety?.noSends !== false) {
+    return {
+      status: 409,
+      body: {
+        ok: false,
+        error: "no_send_mode_enabled",
+        detail: "Trellis refused to execute a provider action while no-send mode is enabled.",
+        providerAction: action,
+      },
+    };
+  }
+
+  if (action.status !== "queued") {
+    return {
+      status: 409,
+      body: {
+        ok: false,
+        error: "provider_action_not_queued",
+        detail: `Provider action ${action.id} is ${action.status}, not queued.`,
+        providerAction: action,
+      },
+    };
+  }
+
+  const context = await readProviderActionContext(db, action, execution.input ?? {});
+  try {
+    const result = await dispatchProviderAction(env, context);
+    const transition = await recordProviderActionTransition(env, {
+      providerActionId: action.id,
+      signalId: action.signalId,
+      status: "completed",
+      actor: execution.actor ?? "trellis-provider-executor",
+      reason: execution.reason ?? `Executed ${action.operation} through ${action.provider}.`,
+    });
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        providerAction: {
+          ...action,
+          status: "completed",
+        },
+        execution: result,
+        ...transition,
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const transition = await recordProviderActionTransition(env, {
+      providerActionId: action.id,
+      signalId: action.signalId,
+      status: "failed",
+      actor: execution.actor ?? "trellis-provider-executor",
+      reason: message,
+    });
+    return {
+      status: 502,
+      body: {
+        ok: false,
+        error: "provider_action_execution_failed",
+        detail: message,
+        providerAction: {
+          ...action,
+          status: "failed",
+        },
+        ...transition,
+      },
+    };
+  }
+}
+
+async function readProviderActionRecord(db: TrellisD1Database, providerActionId: string) {
+  return await db.prepare(`
+    SELECT
+      id,
+      approval_id AS approvalId,
+      signal_id AS signalId,
+      draft_id AS draftId,
+      provider,
+      operation,
+      status,
+      trace_id AS traceId,
+      created_at AS createdAt,
+      updated_at AS updatedAt
+    FROM trellis_provider_actions
+    WHERE id = ?
+  `).bind(providerActionId).first<TrellisProviderActionRecord>();
+}
+
+async function readProviderActionContext(
+  db: TrellisD1Database,
+  action: TrellisProviderActionRecord,
+  input: Record<string, unknown>,
+): Promise<TrellisProviderExecutionContext> {
+  const draft = action.draftId
+    ? await db.prepare(`
+        SELECT
+          id,
+          signal_id AS signalId,
+          channel,
+          status,
+          body
+        FROM trellis_drafts
+        WHERE id = ?
+      `).bind(action.draftId).first<TrellisDraftRecord>()
+    : null;
+  const signal = await db.prepare(`
+    SELECT
+      id,
+      workspace_id AS workspaceId,
+      thread_id AS threadId,
+      payload_json AS payloadJson
+    FROM trellis_signals
+    WHERE id = ?
+  `).bind(action.signalId).first<Record<string, unknown>>();
+
+  return {
+    action,
+    draft,
+    signal: signal
+      ? {
+          id: String(signal.id),
+          workspaceId: String(signal.workspaceId),
+          threadId: String(signal.threadId),
+          payload: parseRecordJson(signal.payloadJson),
+        }
+      : null,
+    input,
+  };
+}
+
+async function dispatchProviderAction(
+  env: Record<string, unknown> | undefined,
+  context: TrellisProviderExecutionContext,
+): Promise<TrellisProviderActionExecutionResult> {
+  const boundExecutor = await dispatchWithBoundExecutor(env, context);
+  if (boundExecutor) {
+    return boundExecutor;
+  }
+
+  if (context.action.provider === "agentmail" && context.action.operation === "email.send") {
+    return executeAgentMailSend(env, context);
+  }
+
+  throw new Error(`No executor is configured for ${context.action.provider}:${context.action.operation}`);
+}
+
+async function dispatchWithBoundExecutor(
+  env: Record<string, unknown> | undefined,
+  context: TrellisProviderExecutionContext,
+): Promise<TrellisProviderActionExecutionResult | null> {
+  const executor = env?.TRELLIS_PROVIDER_EXECUTOR as {
+    execute?(context: TrellisProviderExecutionContext): Promise<TrellisProviderActionExecutionResult> | TrellisProviderActionExecutionResult;
+    fetch?(request: Request): Promise<Response> | Response;
+  } | undefined;
+  if (!executor) {
+    return null;
+  }
+  if (typeof executor.execute === "function") {
+    return await executor.execute(context);
+  }
+  if (typeof executor.fetch === "function") {
+    const response = await executor.fetch(new Request("https://trellis.local/provider-actions/execute", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(context),
+    }));
+    if (!response.ok) {
+      throw new Error(`Provider executor binding failed with ${response.status}: ${await response.text()}`);
+    }
+    const body = await response.json();
+    if (!isRecord(body)) {
+      throw new Error("Provider executor binding returned a non-object response.");
+    }
+    return {
+      ok: body.ok !== false,
+      provider: readString(body.provider) ?? context.action.provider,
+      operation: readString(body.operation) ?? context.action.operation,
+      actionId: readString(body.actionId) ?? context.action.id,
+      externalId: readString(body.externalId) ?? null,
+      externalThreadId: readString(body.externalThreadId) ?? null,
+      raw: body.raw ?? body,
+    };
+  }
+  return null;
+}
+
+async function executeAgentMailSend(
+  env: Record<string, unknown> | undefined,
+  context: TrellisProviderExecutionContext,
+): Promise<TrellisProviderActionExecutionResult> {
+  const apiKey = readString(env?.AGENTMAIL_API_KEY);
+  if (!apiKey) {
+    throw new Error("AGENTMAIL_API_KEY is not configured.");
+  }
+
+  const signalPayload = context.signal?.payload ?? {};
+  const input = context.input;
+  const inboxId = readFirstString(input, signalPayload, ["inboxId", "providerInboxId", "senderProviderInboxId"]);
+  const to = readFirstString(input, signalPayload, ["to", "recipient", "recipientEmail", "email"]);
+  const subject = readFirstString(input, signalPayload, ["subject"]) ?? "Trellis outreach";
+  const bodyText = readFirstString(input, signalPayload, ["bodyText", "text", "body"]) ?? context.draft?.body;
+  const bodyHtml = readFirstString(input, signalPayload, ["bodyHtml", "html"]);
+
+  if (!inboxId) {
+    throw new Error("AgentMail send requires inboxId or providerInboxId.");
+  }
+  if (!to) {
+    throw new Error("AgentMail send requires a recipient email.");
+  }
+  if (!bodyText) {
+    throw new Error("AgentMail send requires bodyText or a draft body.");
+  }
+
+  const baseUrl = readString(env?.AGENTMAIL_BASE_URL) ?? "https://api.agentmail.to";
+  const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/v0/inboxes/${encodeURIComponent(inboxId)}/messages/send`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      to: [to],
+      subject,
+      text: bodyText,
+      html: bodyHtml,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`AgentMail send failed with ${response.status}: ${await response.text()}`);
+  }
+
+  const raw = await response.json().catch(() => ({}));
+  const record = isRecord(raw) ? raw : {};
+  return {
+    ok: true,
+    provider: "agentmail",
+    operation: "email.send",
+    actionId: context.action.id,
+    externalId: readString(record.id) ?? readString(record.message_id) ?? null,
+    externalThreadId: readString(record.thread_id) ?? readString(record.threadId) ?? null,
+    raw,
+  };
+}
+
+function readFirstString(
+  primary: Record<string, unknown>,
+  secondary: Record<string, unknown>,
+  keys: string[],
+) {
+  for (const key of keys) {
+    const primaryValue = readString(primary[key]);
+    if (primaryValue) {
+      return primaryValue;
+    }
+    const secondaryValue = readString(secondary[key]);
+    if (secondaryValue) {
+      return secondaryValue;
+    }
+  }
+  return undefined;
+}
+
+function parseRecordJson(value: unknown) {
+  if (typeof value !== "string") {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {

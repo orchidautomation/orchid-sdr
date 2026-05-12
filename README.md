@@ -33,6 +33,7 @@ The first deploy should require only Cloudflare auth. CRM, email, research, and 
 - prospect, thread, approval, and audit schemas
 - provider setup conventions
 - no-send and approval gates
+- provider action execution with no-send/status guards
 - smoke tests
 - MCP and dashboard inspection surfaces
 - Cloudflare deploy wiring

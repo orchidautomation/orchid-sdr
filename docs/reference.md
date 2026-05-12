@@ -24,6 +24,7 @@ The generated Cloudflare app should expose:
 - `POST /webhooks/signals`
 - `POST /approvals/:id/approve`
 - `POST /approvals/:id/reject`
+- `POST /provider-actions/:id/execute`
 - `POST /provider-actions/:id/complete`
 - `POST /provider-actions/:id/fail`
 - `POST /mcp/trellis`
@@ -43,7 +44,9 @@ The v3 baseline persists:
 
 Those records are enough to prove the GTM control loop is observable and safe before any provider writes happen.
 
-Approval decisions update D1, append an audit event, and enqueue a runtime event. Approved side effects create provider action intents. If no-send mode is still enabled, those intents are recorded as `blocked_no_send` instead of calling the provider. Provider action executors can later mark intents `completed` or `failed`, which appends audit and queue events.
+Approval decisions update D1, append an audit event, and enqueue a runtime event. Approved side effects create provider action intents. If no-send mode is still enabled, those intents are recorded as `blocked_no_send` instead of calling the provider.
+
+Queued provider actions can be executed through `POST /provider-actions/:id/execute`. The executor refuses to run while no-send mode is enabled, refuses actions that are not `queued`, dispatches through a bound `TRELLIS_PROVIDER_EXECUTOR` when present, and includes a built-in AgentMail `email.send` executor. Execution success or failure updates D1, appends audit, and emits queue events.
 
 Signal webhooks support optional shared-secret verification through `TRELLIS_WEBHOOK_SECRET` or `SIGNAL_WEBHOOK_SECRET`. If a secret is configured, callers must send either `Authorization: Bearer <secret>`, `x-trellis-webhook-secret`, or `x-webhook-secret`.
 
