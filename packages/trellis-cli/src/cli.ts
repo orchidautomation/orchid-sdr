@@ -2281,16 +2281,16 @@ async function createTrellisFlueContext(
   input: TrellisFlueContextFactoryInput,
   request?: Request,
 ) {
+  const env = (input.env ?? {}) as TrellisEnv;
   registerApiProvider(getCloudflareAIBindingApiProvider());
-  if (input.env?.AI) {
+  if (env.AI) {
     registerProvider("cloudflare", {
       api: "cloudflare-ai-binding",
-      binding: input.env.AI,
+      binding: env.AI,
       gateway: { id: readAiGatewayId(env) },
     } as never);
   }
 
-  const env = (input.env ?? {}) as TrellisEnv;
   const sandbox = await getVirtualSandbox();
   await preloadTrellisPacks(sandbox, input);
 

@@ -87,6 +87,8 @@ describe("trellis init v3 scaffold", () => {
       expect(flueSource).toContain("trellis_flue_sessions");
       expect(flueSource).toContain("readPackFiles(input.packs, \"knowledge\")");
       expect(flueSource).toContain("readPackFiles(input.packs, \"skills\")");
+      expect(flueSource.indexOf("const env = (input.env ?? {}) as TrellisEnv;"))
+        .toBeLessThan(flueSource.indexOf("registerProvider(\"cloudflare\""));
 
       expect(wranglerConfig).toContain("\"ai\"");
       expect(wranglerConfig).toContain("\"browser\"");
