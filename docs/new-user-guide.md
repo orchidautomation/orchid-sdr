@@ -55,25 +55,40 @@ The default smoke path stays safe: `GET /smoke` and `trellis smoke` never write 
 ```ts
 import { trellis, schema } from "@trellis/gtm";
 import { attio, agentmail, firecrawl } from "@trellis/providers";
+
+// This file says how Trellis fields become Attio fields.
+// Example: qualification.decision -> your Attio `icp_status` attribute.
 import attioMap from "./crm/attio.map";
 
 export default trellis.agent("gtm-sdr", {
+  // Connect the GTM tools. Trellis owns the reliability wrapper around them.
   crm: attio({ map: attioMap }),
   email: agentmail(),
   research: firecrawl(),
+
+  // These markdown files are the agent's brain: ICP, playbooks, roles, skills.
+  // Trellis packs them into Cloudflare R2 and mounts them into the hidden Flue sandbox.
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
+
+  // Nothing writes to the outside world until an operator approves it.
   safety: trellis.safeOutbound({
     noSends: true,
     requireApproval: ["email.send", "crm.update"],
   }),
 }, async (app) => {
+  // Accept one normalized GTM signal from a webhook, Apify, AgentMail, etc.
   const signal = await app.signal();
+
+  // Run a markdown-backed skill through the Flue harness.
+  // Trellis validates the result against this schema before anything continues.
   const qualification = await app.skill("icp-qualification", {
     context: await app.context(signal),
     schema: schema.qualification(),
   });
 
+  // Start the durable Cloudflare Workflow.
+  // This creates prospect state, blocked drafts, approvals, audit events, and queue work.
   return app.workflow("prospect").start({ signal, qualification });
 });
 ```
