@@ -29,6 +29,10 @@ export interface TrellisAttioMap {
   people?: TrellisFieldMap;
 }
 
+export interface TrellisStateMap {
+  prospect?: TrellisFieldMap;
+}
+
 export interface TrellisSafetyPolicy {
   noSends: boolean;
   requireApproval: string[];
@@ -44,6 +48,7 @@ export interface TrellisAgentConfig {
   observability?: TrellisProviderDefinition;
   handoff?: TrellisProviderDefinition;
   model?: string;
+  state?: TrellisStateMap;
   knowledge: string | string[];
   skills: string | string[];
   safety?: TrellisSafetyPolicy;
@@ -1518,7 +1523,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             },
             harness,
           });
-          const persistence = await persistRuntimeResult(env, run);
+          const persistence = await persistRuntimeResult(env, run, agent.config);
           const queue = await enqueueRuntimeEvent(env, run);
           const workflowDispatch = await dispatchWorkflow(env, run);
           return jsonResponse({
@@ -2411,7 +2416,7 @@ async function processRuntimeSignals(
       },
       harness,
     });
-    const persistence = await persistRuntimeResult(env, run);
+    const persistence = await persistRuntimeResult(env, run, agent.config);
     const queue = await enqueueRuntimeEvent(env, run);
     const workflowDispatch = await dispatchWorkflow(env, run);
     results.push({
@@ -3240,7 +3245,11 @@ async function upsertProviderRun(
   ]);
 }
 
-async function persistRuntimeResult(env: Record<string, unknown> | undefined, run: TrellisRuntimeResult) {
+async function persistRuntimeResult(
+  env: Record<string, unknown> | undefined,
+  run: TrellisRuntimeResult,
+  config?: TrellisAgentConfig,
+) {
   const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
   if (!db?.prepare) {
     return {
@@ -3281,6 +3290,24 @@ async function persistRuntimeResult(env: Record<string, unknown> | undefined, ru
       prospect.status,
       new Date().toISOString(),
     ]);
+    const mappedState = applyStateFieldMap(config?.state?.prospect, buildStateMapSource(run, prospect));
+    if (Object.keys(mappedState).length > 0) {
+      const updatedAt = new Date().toISOString();
+      await runD1(db, `
+        INSERT OR REPLACE INTO trellis_state_records
+          (id, entity, record_id, signal_id, workspace_id, thread_id, fields_json, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        `state_${normalizeIdPart(prospect.id)}_prospect`,
+        "prospect",
+        prospect.id,
+        prospect.signalId,
+        prospect.workspaceId,
+        prospect.threadId,
+        JSON.stringify(mappedState),
+        updatedAt,
+      ]);
+    }
   }
 
   for (const draft of run.drafts) {
@@ -3341,8 +3368,43 @@ async function persistRuntimeResult(env: Record<string, unknown> | undefined, ru
 
   return {
     enabled: true,
-    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_approvals", "trellis_provider_runs", "trellis_provider_actions", "trellis_workflow_runs", "trellis_operator_controls", "trellis_smoke_runs", "trellis_audit_events", "trellis_trace_events"],
+    tables: ["trellis_signals", "trellis_prospects", "trellis_state_records", "trellis_drafts", "trellis_approvals", "trellis_provider_runs", "trellis_provider_actions", "trellis_workflow_runs", "trellis_operator_controls", "trellis_smoke_runs", "trellis_audit_events", "trellis_trace_events"],
   };
+}
+
+function buildStateMapSource(run: TrellisRuntimeResult, prospect: TrellisProspect) {
+  const input = workflowInputParams(run);
+  const signal = {
+    id: run.signal.id,
+    traceId: traceIdForSignal(run.signal),
+    workspaceId: run.signal.workspaceId,
+    threadId: run.signal.threadId,
+    campaignId: run.signal.campaignId ?? null,
+    provider: run.signal.provider ?? null,
+    source: run.signal.source ?? null,
+    payload: run.signal.payload ?? {},
+  };
+  return {
+    ...(run.signal.payload ?? {}),
+    ...input,
+    input,
+    signal,
+    payload: run.signal.payload ?? {},
+    workflow: run.startedWorkflows[0] ?? null,
+    prospect,
+    result: run.result,
+  };
+}
+
+function applyStateFieldMap(map: TrellisFieldMap | undefined, source: Record<string, unknown>) {
+  const values: Record<string, unknown> = {};
+  for (const [stateField, sourcePath] of Object.entries(map ?? {})) {
+    const value = readMappedValue(source, sourcePath);
+    if (value !== undefined && value !== null && value !== "") {
+      values[stateField] = value;
+    }
+  }
+  return values;
 }
 
 async function recordSmokeRun(
@@ -3429,6 +3491,22 @@ async function ensureD1Schema(db: TrellisD1Database) {
       status TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
+  `);
+  await runD1(db, `
+    CREATE TABLE IF NOT EXISTS trellis_state_records (
+      id TEXT PRIMARY KEY,
+      entity TEXT NOT NULL,
+      record_id TEXT NOT NULL,
+      signal_id TEXT NOT NULL,
+      workspace_id TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      fields_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await runD1(db, `
+    CREATE INDEX IF NOT EXISTS idx_trellis_state_records_entity_record
+      ON trellis_state_records (entity, record_id)
   `);
   await runD1(db, `
     CREATE TABLE IF NOT EXISTS trellis_drafts (
@@ -6183,6 +6261,7 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
     counts: {
       signals: await countD1Rows(db, "trellis_signals"),
       prospects: await countD1Rows(db, "trellis_prospects"),
+      stateRecords: await countD1Rows(db, "trellis_state_records"),
       drafts: await countD1Rows(db, "trellis_drafts"),
       approvals: await countD1Rows(db, "trellis_approvals"),
       providerRuns: await countD1Rows(db, "trellis_provider_runs"),
@@ -6241,6 +6320,33 @@ async function readRecentRuntimeRows(db: TrellisD1Database) {
       ORDER BY updated_at DESC
       LIMIT ?
     `, [5]),
+    stateRecords: (await readD1Rows<{
+      id: string;
+      entity: string;
+      recordId: string;
+      signalId: string;
+      workspaceId: string;
+      threadId: string;
+      fieldsJson?: string;
+      updatedAt?: string;
+    }>(db, `
+      SELECT
+        id,
+        entity,
+        record_id AS recordId,
+        signal_id AS signalId,
+        workspace_id AS workspaceId,
+        thread_id AS threadId,
+        fields_json AS fieldsJson,
+        updated_at AS updatedAt
+      FROM trellis_state_records
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `, [5])).map((row) => ({
+      ...row,
+      fields: parseJsonValue(row.fieldsJson),
+      fieldsJson: undefined,
+    })),
     drafts: (await readD1Rows<{
       id: string;
       signalId: string;
@@ -6586,6 +6692,7 @@ function renderDashboard(
   const counts = snapshot.counts ?? {
     signals: 0,
     prospects: 0,
+    stateRecords: 0,
     drafts: 0,
     approvals: 0,
     providerRuns: 0,
@@ -6614,6 +6721,7 @@ function renderDashboard(
       <dl>
         <dt>Signals</dt><dd>${counts.signals}</dd>
         <dt>Prospects</dt><dd>${counts.prospects}</dd>
+        <dt>State Records</dt><dd>${counts.stateRecords}</dd>
         <dt>Drafts</dt><dd>${counts.drafts}</dd>
         <dt>Approvals</dt><dd>${counts.approvals}</dd>
         <dt>Provider Runs</dt><dd>${counts.providerRuns}</dd>

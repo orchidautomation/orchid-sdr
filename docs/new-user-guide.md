@@ -59,6 +59,10 @@ import { attio, agentmail, firecrawl } from "@trellis/providers";
 // Example: qualification.decision -> Attio `icp_status`.
 import attioMap from "./crm/attio.map";
 
+// Map agent outputs to the durable Trellis database.
+// Example: qualification.summary -> prospect.summary.
+import stateMap from "./state/prospect.map";
+
 export default trellis.agent("gtm-sdr", {
   // Bring your GTM stack: CRM, email, and research.
   // Trellis handles the webhooks, retries, queues, logs, and approvals around them.
@@ -68,6 +72,10 @@ export default trellis.agent("gtm-sdr", {
 
   // Pick the LLM once. You can override this per environment with TRELLIS_MODEL.
   model: "@cf/moonshotai/kimi-k2.6",
+
+  // Choose what Trellis remembers in its database.
+  // Trellis manages the tables; this map defines your business fields.
+  state: stateMap,
 
   // Give the agent your company context in markdown:
   // ICP, playbooks, product docs, roles, and repeatable skills.
@@ -113,7 +121,7 @@ There are really three schemas:
 
 - **Skill output schema**: `schema.qualification()` validates what the agent extracts before workflows or provider writes happen.
 - **CRM field map**: `src/crm/attio.map.ts` maps extracted Trellis values to Attio attributes.
-- **Business state map**: this is the missing product concept. Trellis should add a generated `src/state/prospect.map.ts` that maps agent outputs into durable business fields, while Trellis keeps the low-level D1 table schema private and reliable.
+- **Business state map**: `src/state/prospect.map.ts` maps agent outputs into durable business fields, while Trellis keeps the low-level D1 table schema private and reliable.
 
 The state map should feel like the CRM map:
 

@@ -49,6 +49,7 @@ describe("trellis init v3 scaffold", () => {
       const workerSource = readFileSync(path.join(targetDir, "src", "index.ts"), "utf8");
       const flueSource = readFileSync(path.join(targetDir, "src", "trellis-flue.ts"), "utf8");
       const attioMapSource = readFileSync(path.join(targetDir, "src", "crm", "attio.map.ts"), "utf8");
+      const stateMapSource = readFileSync(path.join(targetDir, "src", "state", "prospect.map.ts"), "utf8");
       const wranglerConfig = readFileSync(path.join(targetDir, "wrangler.jsonc"), "utf8");
       const envExample = readFileSync(path.join(targetDir, ".env.example"), "utf8");
       const readme = readFileSync(path.join(targetDir, "README.md"), "utf8");
@@ -61,6 +62,7 @@ describe("trellis init v3 scaffold", () => {
       expect(initResult.filesWritten).toContain("src/agent.ts");
       expect(initResult.filesWritten).toContain("src/trellis-flue.ts");
       expect(initResult.filesWritten).toContain("src/crm/attio.map.ts");
+      expect(initResult.filesWritten).toContain("src/state/prospect.map.ts");
       expect(dependencySpecs).not.toContain("workspace:*");
       expect(generatedPackage.dependencies["@trellis/gtm"]).toMatch(/^file:\/\//);
       expect(generatedPackage.dependencies["@trellis/providers"]).toMatch(/^file:\/\//);
@@ -78,7 +80,9 @@ describe("trellis init v3 scaffold", () => {
 
       expect(agentSource).toContain("trellis.agent(\"sdr\"");
       expect(agentSource).toContain("import attioMap from \"./crm/attio.map\"");
+      expect(agentSource).toContain("import stateMap from \"./state/prospect.map\"");
       expect(agentSource).toContain("crm: attio({ map: attioMap })");
+      expect(agentSource).toContain("state: stateMap");
       expect(agentSource).toContain("model: \"@cf/moonshotai/kimi-k2.6\"");
       expect(agentSource).toContain("trellis.safeOutbound()");
       expect(agentSource).toContain("app.skill(\"icp-qualification\"");
@@ -103,6 +107,9 @@ describe("trellis init v3 scaffold", () => {
       expect(attioMapSource).toContain("companies:");
       expect(attioMapSource).toContain("people:");
       expect(attioMapSource).toContain("latest_signal");
+      expect(stateMapSource).toContain("satisfies TrellisStateMap");
+      expect(stateMapSource).toContain("prospect:");
+      expect(stateMapSource).toContain("qualification.summary");
 
       expect(wranglerConfig).toContain("\"ai\"");
       expect(wranglerConfig).toContain("\"browser\"");

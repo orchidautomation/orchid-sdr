@@ -2043,6 +2043,7 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
   await ensureEmptyDirectory(targetDir);
   await mkdir(path.join(targetDir, "src"), { recursive: true });
   await mkdir(path.join(targetDir, "src", "crm"), { recursive: true });
+  await mkdir(path.join(targetDir, "src", "state"), { recursive: true });
   await mkdir(path.join(targetDir, "knowledge"), { recursive: true });
   await mkdir(path.join(targetDir, "skills", "icp-qualification"), { recursive: true });
   await mkdir(path.join(targetDir, "skills", "research-brief"), { recursive: true });
@@ -2061,6 +2062,7 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
   await writeFile(path.join(targetDir, "src", "index.ts"), renderV3WorkerSource());
   await writeFile(path.join(targetDir, "src", "trellis-flue.ts"), renderV3FlueSource());
   await writeFile(path.join(targetDir, "src", "crm", "attio.map.ts"), renderV3AttioMapSource());
+  await writeFile(path.join(targetDir, "src", "state", "prospect.map.ts"), renderV3ProspectStateMapSource());
   await writeFile(path.join(targetDir, "knowledge", "icp.md"), renderV3KnowledgeSeed());
   await writeFile(path.join(targetDir, "skills", "icp-qualification", "SKILL.md"), renderV3QualificationSkill());
   await writeFile(path.join(targetDir, "skills", "research-brief", "SKILL.md"), renderV3ResearchSkill());
@@ -2098,6 +2100,7 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
         "src/index.ts",
         "src/trellis-flue.ts",
         "src/crm/attio.map.ts",
+        "src/state/prospect.map.ts",
         "knowledge/icp.md",
         "skills/icp-qualification/SKILL.md",
         "skills/research-brief/SKILL.md",
@@ -2298,12 +2301,14 @@ function renderV3AgentSource() {
   return `import { trellis, schema } from "@trellis/gtm";
 import { agentmail, attio, firecrawl } from "@trellis/providers";
 import attioMap from "./crm/attio.map";
+import stateMap from "./state/prospect.map";
 
 export default trellis.agent("sdr", {
   crm: attio({ map: attioMap }),
   email: agentmail(),
   research: firecrawl(),
   model: "@cf/moonshotai/kimi-k2.6",
+  state: stateMap,
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
   safety: trellis.safeOutbound(),
@@ -2342,6 +2347,26 @@ export default trellis.agent("sdr", {
 
   return app.workflow("prospect").start({ signal, qualification, research, draft });
 });
+`;
+}
+
+function renderV3ProspectStateMapSource() {
+  return `import type { TrellisStateMap } from "@trellis/gtm";
+
+const stateMap = {
+  prospect: {
+    status: "qualification.decision",
+    company: "signal.payload.company",
+    domain: "signal.payload.domain",
+    summary: "qualification.summary",
+    confidence: "qualification.confidence",
+    nextStep: "qualification.nextStep",
+    researchSummary: "research.summary",
+    draftSubject: "draft.subject",
+  },
+} satisfies TrellisStateMap;
+
+export default stateMap;
 `;
 }
 
@@ -2726,7 +2751,7 @@ npm run trellis -- connect prospeo    # optional email enrichment
 npm run trellis -- docs add ./product-docs
 \`\`\`
 
-Your app code stays Trellis-only in \`src/agent.ts\`. Attio field mapping lives in \`src/crm/attio.map.ts\`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like \`qualification.decision\`, \`qualification.summary\`, or \`signal.payload.signal\`. The generated \`src/trellis-flue.ts\` adapter installs the hidden Flue harness, mounts Trellis R2 markdown packs into Flue's virtual sandbox, uses the Cloudflare AI binding through the default AI Gateway, and stores Flue sessions in \`TRELLIS_DB\`.
+Your app code stays Trellis-only in \`src/agent.ts\`. Attio field mapping lives in \`src/crm/attio.map.ts\`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like \`qualification.decision\`, \`qualification.summary\`, or \`signal.payload.signal\`. Durable prospect state mapping lives in \`src/state/prospect.map.ts\`: choose the business fields Trellis should remember while Trellis keeps D1 tables and migrations private. The generated \`src/trellis-flue.ts\` adapter installs the hidden Flue harness, mounts Trellis R2 markdown packs into Flue's virtual sandbox, uses the Cloudflare AI binding through the default AI Gateway, and stores Flue sessions in \`TRELLIS_DB\`.
 
 Deploy auto-packs the default \`knowledge/**/*.md\` files, or uses \`.trellis/knowledge-pack.json\` when you run \`trellis docs add <path>\`. It also syncs tracked \`SKILL.md\` files into the \`TRELLIS_PACKS\` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
 

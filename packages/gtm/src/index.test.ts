@@ -10,6 +10,12 @@ describe("@trellis/gtm v3 API", () => {
       email: agentmail(),
       research: firecrawl(),
       model: "@cf/moonshotai/kimi-k2.6",
+      state: {
+        prospect: {
+          status: "qualification.decision",
+          summary: "qualification.summary",
+        },
+      },
       knowledge: "knowledge/**/*.md",
       skills: "skills/**/SKILL.md",
       safety: trellis.safeOutbound(),
@@ -46,6 +52,7 @@ describe("@trellis/gtm v3 API", () => {
     expect(agent.config.email?.id).toBe("agentmail");
     expect(agent.config.research?.id).toBe("firecrawl");
     expect(agent.config.model).toBe("@cf/moonshotai/kimi-k2.6");
+    expect(agent.config.state?.prospect?.summary).toBe("qualification.summary");
     expect(app.skillCalls).toHaveLength(1);
     expect(app.startedWorkflows).toHaveLength(1);
     expect(result).toMatchObject({
@@ -170,6 +177,12 @@ describe("@trellis/gtm v3 API", () => {
       email: agentmail(),
       research: firecrawl(),
       model: "@cf/moonshotai/kimi-k2.6",
+      state: {
+        prospect: {
+          status: "qualification.decision",
+          summary: "qualification.summary",
+        },
+      },
       knowledge: "knowledge/**/*.md",
       skills: "skills/**/SKILL.md",
       safety: trellis.safeOutbound(),
@@ -385,6 +398,8 @@ describe("@trellis/gtm v3 API", () => {
     expect(fakeD1.statements.some((statement) => statement.sql.includes("CREATE TABLE IF NOT EXISTS trellis_signals"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_signals"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_prospects"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("CREATE TABLE IF NOT EXISTS trellis_state_records"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_state_records"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_drafts"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_approvals"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("CREATE TABLE IF NOT EXISTS trellis_provider_actions"))).toBe(true);
@@ -448,6 +463,7 @@ describe("@trellis/gtm v3 API", () => {
         counts: {
           signals: 1,
           prospects: 1,
+          stateRecords: 1,
           drafts: 1,
           approvals: 2,
           providerActions: 1,
@@ -479,6 +495,16 @@ describe("@trellis/gtm v3 API", () => {
               status: "dispatched",
               params: expect.objectContaining({
                 workflow: "prospect",
+              }),
+            }),
+          ],
+          stateRecords: [
+            expect.objectContaining({
+              entity: "prospect",
+              recordId: "prospect_sig_live",
+              fields: expect.objectContaining({
+                status: "needs_review",
+                summary: "Fixture qualification result.",
               }),
             }),
           ],
@@ -539,6 +565,7 @@ describe("@trellis/gtm v3 API", () => {
     expect(dashboardHtml).toContain("v3 Cloudflare GTM runtime");
     expect(dashboardHtml).toContain("<dt>Signals</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Prospects</dt><dd>1</dd>");
+    expect(dashboardHtml).toContain("<dt>State Records</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Drafts</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Approvals</dt><dd>2</dd>");
     expect(dashboardHtml).toContain("<dt>Provider Runs</dt><dd>1</dd>");
@@ -3079,6 +3106,7 @@ function createFakeD1() {
   const statements: Array<{ sql: string; bindings: unknown[] }> = [];
   const signals = new Map<string, Record<string, unknown>>();
   const prospects = new Map<string, Record<string, unknown>>();
+  const stateRecords = new Map<string, Record<string, unknown>>();
   const drafts = new Map<string, Record<string, unknown>>();
   const approvals = new Map<string, Record<string, unknown>>();
   const providerRuns = new Map<string, Record<string, unknown>>();
@@ -3120,6 +3148,18 @@ function createFakeD1() {
                   threadId: bindings[3],
                   status: bindings[4],
                   updatedAt: bindings[5],
+                });
+              }
+              if (normalized.includes("INSERT OR REPLACE INTO trellis_state_records")) {
+                stateRecords.set(String(bindings[0]), {
+                  id: bindings[0],
+                  entity: bindings[1],
+                  recordId: bindings[2],
+                  signalId: bindings[3],
+                  workspaceId: bindings[4],
+                  threadId: bindings[5],
+                  fieldsJson: bindings[6],
+                  updatedAt: bindings[7],
                 });
               }
               if (normalized.includes("INSERT OR REPLACE INTO trellis_drafts")) {
@@ -3257,6 +3297,9 @@ function createFakeD1() {
                 if (tableName === "trellis_prospects") {
                   return { count: prospects.size };
                 }
+                if (tableName === "trellis_state_records") {
+                  return { count: stateRecords.size };
+                }
                 if (tableName === "trellis_approvals") {
                   return { count: approvals.size };
                 }
@@ -3309,6 +3352,7 @@ function createFakeD1() {
                 drafts,
                 approvals,
                 providerActions,
+                stateRecords,
                 providerRuns,
                 workflowRuns,
                 auditEvents,
@@ -3335,6 +3379,9 @@ function rowsForSelect(
   }
   if (normalizedSql.includes("FROM trellis_prospects")) {
     return sortRows(tables.prospects);
+  }
+  if (normalizedSql.includes("FROM trellis_state_records")) {
+    return sortRows(tables.stateRecords);
   }
   if (normalizedSql.includes("FROM trellis_drafts")) {
     return sortRows(tables.drafts);
