@@ -15,5 +15,9 @@
   },
   "peerDependencies": {
     "zod": "^3.25.76"
+  },
+  "dependencies": {
+    "valibot": "^1.4.0",
+    "zod-to-json-schema": "^3.25.2"
   }
 }

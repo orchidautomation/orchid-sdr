@@ -2646,6 +2646,7 @@ function normalizeTrellisAiPayload(model: string, payload: unknown) {
   const normalized: Record<string, unknown> = {
     ...record,
     messages,
+    tools: normalizeTrellisTools(record.tools),
     max_tokens: readPositiveNumber(record.max_tokens)
       ?? readPositiveNumber(record.max_completion_tokens)
       ?? 2048,
@@ -2656,6 +2657,42 @@ function normalizeTrellisAiPayload(model: string, payload: unknown) {
     normalized.system = system.join("\\n\\n");
   }
   return normalized;
+}
+
+function normalizeTrellisTools(value: unknown) {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+
+  return value.flatMap((tool) => {
+    const record = asRecord(tool);
+    if (record?.type !== "function") {
+      return record ? [record] : [];
+    }
+
+    const fn = asRecord(record.function);
+    if (!fn) {
+      return [];
+    }
+    const name = typeof fn.name === "string" ? fn.name : undefined;
+    if (!name) {
+      return [];
+    }
+
+    return [{
+      type: "custom",
+      name: normalizeTrellisToolName(name),
+      description: typeof fn.description === "string" ? fn.description : "",
+      input_schema: asRecord(fn.parameters) ?? {
+        type: "object",
+        properties: {},
+      },
+    }];
+  });
+}
+
+function normalizeTrellisToolName(name: string) {
+  return name.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 128) || "tool";
 }
 
 function normalizeMessageContent(value: unknown) {

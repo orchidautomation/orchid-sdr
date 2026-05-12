@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
+import * as v from "valibot";
 
 export type TrellisProviderKind =
   | "source"
@@ -2422,6 +2424,7 @@ function createFlueHarnessRuntime(
       const args = {
         signal: runtime.signal,
         packs: runtime.packs,
+        trellis: buildTrellisOutputContract(name, input.schema, config.state),
         context: input.context,
         ...(input.args ?? {}),
       };
@@ -2429,6 +2432,8 @@ function createFlueHarnessRuntime(
         args,
         role: input.role,
         model: input.model,
+        signal: createTrellisSkillTimeoutSignal(env),
+        ...(input.schema ? { schema: zodSchemaToValibot(input.schema) } : {}),
       });
     },
   };
@@ -2442,6 +2447,168 @@ function normalizeFlueModelName(model: string) {
     return `cloudflare/${model}`;
   }
   return model;
+}
+
+function createTrellisSkillTimeoutSignal(env: Record<string, unknown> | undefined) {
+  const timeoutMs = readNumber(env?.TRELLIS_SKILL_TIMEOUT_MS) ?? 4_000;
+  if (timeoutMs <= 0) {
+    return undefined;
+  }
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+    return AbortSignal.timeout(timeoutMs);
+  }
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), timeoutMs);
+  return controller.signal;
+}
+
+function buildTrellisOutputContract(
+  skillName: string,
+  schema: z.ZodTypeAny | undefined,
+  state: TrellisStateMap | undefined,
+) {
+  const contract: Record<string, unknown> = {
+    instruction: schema
+      ? `Return the ${skillName} result with the typed finish tool. The JSON must match output.schema and will be validated before workflow/state writes.`
+      : `Return the ${skillName} result as concise JSON when the skill produces structured data.`,
+  };
+  if (schema) {
+    contract.output = {
+      schema: zodSchemaToJsonSchema(schema),
+    };
+  }
+  if (state) {
+    contract.database = {
+      engine: "cloudflare-d1",
+      projectionTable: "trellis_state_records",
+      tables: buildStateMapJsonSchemas(state),
+    };
+  }
+  return contract;
+}
+
+function zodSchemaToValibot(schema: z.ZodTypeAny): v.GenericSchema {
+  const typeName = schema._def?.typeName;
+  if (typeName === z.ZodFirstPartyTypeKind.ZodObject) {
+    const shape = typeof schema._def.shape === "function" ? schema._def.shape() : schema._def.shape;
+    return v.object(Object.fromEntries(
+      Object.entries(shape as Record<string, z.ZodTypeAny>).map(([key, value]) => [
+        key,
+        zodSchemaToValibot(value),
+      ]),
+    ));
+  }
+  if (typeName === z.ZodFirstPartyTypeKind.ZodString) {
+    const checks = Array.isArray(schema._def.checks) ? schema._def.checks : [];
+    const min = checks.find((check: { kind?: string; value?: number }) => check.kind === "min")?.value;
+    return typeof min === "number" ? v.pipe(v.string(), v.minLength(min)) : v.string();
+  }
+  if (typeName === z.ZodFirstPartyTypeKind.ZodNumber) {
+    const checks = Array.isArray(schema._def.checks) ? schema._def.checks : [];
+    let current: v.GenericSchema = v.number();
+    const min = checks.find((check: { kind?: string; value?: number }) => check.kind === "min")?.value;
+    const max = checks.find((check: { kind?: string; value?: number }) => check.kind === "max")?.value;
+    if (typeof min === "number") {
+      current = v.pipe(current as v.NumberSchema<undefined>, v.minValue(min));
+    }
+    if (typeof max === "number") {
+      current = v.pipe(current as v.NumberSchema<undefined>, v.maxValue(max));
+    }
+    return current;
+  }
+  if (typeName === z.ZodFirstPartyTypeKind.ZodBoolean) {
+    return v.boolean();
+  }
+  if (typeName === z.ZodFirstPartyTypeKind.ZodEnum) {
+    return v.picklist(schema._def.values as [string, ...string[]]);
+  }
+  if (typeName === z.ZodFirstPartyTypeKind.ZodArray) {
+    return v.array(zodSchemaToValibot(schema._def.type));
+  }
+  if (typeName === z.ZodFirstPartyTypeKind.ZodDefault) {
+    return v.optional(zodSchemaToValibot(schema._def.innerType));
+  }
+  if (typeName === z.ZodFirstPartyTypeKind.ZodOptional) {
+    return v.optional(zodSchemaToValibot(schema._def.innerType));
+  }
+  return v.unknown();
+}
+
+function zodSchemaToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
+  const jsonSchema = zodToJsonSchema(schema, {
+    $refStrategy: "none",
+  });
+  return stripJsonSchemaMeta(asPlainRecord(jsonSchema) ?? {
+    type: "object",
+    properties: {},
+    additionalProperties: false,
+  });
+}
+
+function buildStateMapJsonSchemas(state: TrellisStateMap) {
+  return Object.fromEntries(
+    Object.entries(state.tables).map(([tableName, table]) => [
+      tableName,
+      {
+        primaryKey: table.primaryKey,
+        row: stateTableToJsonSchema(table),
+        indexes: table.indexes ?? [],
+        relationships: table.relationships ?? {},
+      },
+    ]),
+  );
+}
+
+function stateTableToJsonSchema(table: TrellisStateTableDefinition): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  const required = new Set<string>();
+  if (table.primaryKey in table.fields) {
+    required.add(table.primaryKey);
+  }
+
+  for (const [fieldName, definition] of Object.entries(table.fields)) {
+    const source = typeof definition === "string" ? definition : definition.source;
+    const type = typeof definition === "string" ? "string" : definition.type ?? "string";
+    if (typeof definition !== "string" && definition.required) {
+      required.add(fieldName);
+    }
+    properties[fieldName] = {
+      ...stateFieldTypeJsonSchema(type),
+      "x-trellis-source": source,
+    };
+  }
+
+  return {
+    type: "object",
+    properties,
+    required: [...required],
+    additionalProperties: false,
+  };
+}
+
+function stateFieldTypeJsonSchema(type: TrellisStateFieldType): Record<string, unknown> {
+  if (type === "number") {
+    return { type: "number" };
+  }
+  if (type === "boolean") {
+    return { type: "boolean" };
+  }
+  if (type === "json") {
+    return {};
+  }
+  return { type: "string" };
+}
+
+function stripJsonSchemaMeta(schema: Record<string, unknown>): Record<string, unknown> {
+  const copy = { ...schema };
+  delete copy.$schema;
+  return copy;
+}
+
+function asPlainRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
 }
 
 async function processRuntimeSignals(
@@ -3489,6 +3656,7 @@ function buildStateRecords(
       schema: {
         primaryKey: table.primaryKey,
         fields: table.fields,
+        jsonSchema: stateTableToJsonSchema(table),
       },
       indexes: table.indexes ?? [],
       relationships: table.relationships ?? {},
