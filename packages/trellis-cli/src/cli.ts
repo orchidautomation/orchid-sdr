@@ -1971,12 +1971,12 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
     `cd ${targetDir}`,
     "npm install",
     "wrangler login",
-    "trellis docs add ./knowledge",
-    "trellis deploy",
-    "trellis smoke",
-    "trellis connect attio",
-    "trellis connect agentmail",
-    "trellis connect firecrawl",
+    "npm run docs:add",
+    "npm run deploy",
+    "npm run smoke",
+    "npm run trellis -- connect attio",
+    "npm run trellis -- connect agentmail",
+    "npm run trellis -- connect firecrawl",
   ];
 
   if (jsonOutput) {
@@ -2023,7 +2023,9 @@ function buildV3ScaffoldPackage(packageName: string) {
     type: "module",
     scripts: {
       dev: "wrangler dev",
+      trellis: "trellis",
       doctor: "trellis doctor",
+      "docs:add": "trellis docs add ./knowledge",
       deploy: "trellis deploy",
       smoke: "trellis smoke",
       verify: "trellis verify cloudflare",
@@ -2565,20 +2567,20 @@ Trellis v3 GTM agent scaffold.
 \`\`\`bash
 npm install
 wrangler login
-trellis docs add ./knowledge
-trellis deploy
-trellis smoke
+npm run docs:add
+npm run deploy
+npm run smoke
 \`\`\`
 
 The first deploy is Cloudflare-first and does not require Attio, AgentMail, or Firecrawl credentials. Those are connected after the app boots:
 
 \`\`\`bash
-trellis connect attio
-trellis connect agentmail
-trellis connect firecrawl
-trellis connect apify      # optional discovery source
-trellis connect prospeo    # optional email enrichment
-trellis docs add ./product-docs
+npm run trellis -- connect attio
+npm run trellis -- connect agentmail
+npm run trellis -- connect firecrawl
+npm run trellis -- connect apify      # optional discovery source
+npm run trellis -- connect prospeo    # optional email enrichment
+npm run trellis -- docs add ./product-docs
 \`\`\`
 
 Your app code stays Trellis-only in \`src/agent.ts\`. The generated \`src/trellis-flue.ts\` adapter installs the hidden Flue harness, mounts Trellis R2 markdown packs into Flue's virtual sandbox, uses the Cloudflare AI binding through the default AI Gateway, and stores Flue sessions in \`TRELLIS_DB\`.

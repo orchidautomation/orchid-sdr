@@ -62,7 +62,9 @@ describe("trellis init v3 scaffold", () => {
       expect(generatedPackage.dependencies["@trellis/gtm"]).toMatch(/^file:\/\//);
       expect(generatedPackage.dependencies["@trellis/providers"]).toMatch(/^file:\/\//);
       expect(generatedPackage.devDependencies["@trellis/cli"]).toMatch(/^file:\/\//);
+      expect(generatedPackage.scripts.trellis).toBe("trellis");
       expect(generatedPackage.scripts.doctor).toBe("trellis doctor");
+      expect(generatedPackage.scripts["docs:add"]).toBe("trellis docs add ./knowledge");
       expect(generatedPackage.scripts.deploy).toBe("trellis deploy");
       expect(generatedPackage.scripts.smoke).toBe("trellis smoke");
       expect(generatedPackage.scripts.verify).toBe("trellis verify cloudflare");
@@ -109,6 +111,7 @@ describe("trellis init v3 scaffold", () => {
       expect(envExample).toContain("TRELLIS_AI_GATEWAY_ID=default");
       expect(envExample).toContain("TRELLIS_FOLLOW_UP_DELAY=3 days");
       expect(readme).toContain("first deploy is Cloudflare-first");
+      expect(readme).toContain("npm run trellis -- connect attio");
       expect(readme).toContain("Your app code stays Trellis-only in `src/agent.ts`");
 
       expect(existsSync(path.join(targetDir, "trellis.config.ts"))).toBe(false);
