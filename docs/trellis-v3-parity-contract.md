@@ -180,6 +180,7 @@ v3 parity:
 - no-send mode and approval gates are enforced before every side effect
 - approvals can be approved or rejected as durable state transitions
 - approved side effects create provider action intents, and no-send mode records them as `blocked_no_send` instead of calling providers
+- provider action intents can be marked completed or failed by future executors/operators
 - follow-ups use Workflows durable sleep/checkpoints
 
 Legacy to remove after replacement:
@@ -208,6 +209,7 @@ v3 parity:
 - provider readiness checks are generated
 - provider side effects are approval-gated
 - provider action intents carry approval, signal, draft, operation, provider, and trace ids
+- provider action status transitions emit audit and queue events for recovery
 - provider calls carry trace/workflow/prospect ids
 - provider failures are retried or moved to dead letter with operator recovery
 

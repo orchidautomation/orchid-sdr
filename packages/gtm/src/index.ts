@@ -191,6 +191,7 @@ interface TrellisR2Bucket {
 }
 
 type TrellisApprovalDecisionStatus = "approved" | "rejected";
+type TrellisProviderActionTransitionStatus = "completed" | "failed";
 
 interface TrellisApprovalDecision {
   approvalId: string;
@@ -198,6 +199,14 @@ interface TrellisApprovalDecision {
   status: TrellisApprovalDecisionStatus;
   action: string;
   draftId?: string;
+  actor?: string;
+  reason?: string;
+}
+
+interface TrellisProviderActionTransition {
+  providerActionId: string;
+  signalId: string;
+  status: TrellisProviderActionTransitionStatus;
   actor?: string;
   reason?: string;
 }
@@ -553,6 +562,17 @@ function matchApprovalDecisionRoute(pathname: string) {
   };
 }
 
+function matchProviderActionTransitionRoute(pathname: string) {
+  const match = pathname.match(/^\/provider-actions\/([^/]+)\/(complete|fail)$/);
+  if (!match?.[1] || !match[2]) {
+    return undefined;
+  }
+  return {
+    providerActionId: decodeURIComponent(match[1]),
+    status: match[2] === "complete" ? "completed" as const : "failed" as const,
+  };
+}
+
 function inferApprovalAction(approvalId: string) {
   if (approvalId.endsWith("_email_send")) {
     return "email.send";
@@ -698,6 +718,27 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           });
         }
 
+        const providerActionTransition = matchProviderActionTransitionRoute(url.pathname);
+        if (providerActionTransition && request.method === "POST") {
+          const body = await readJsonBody(request);
+          const record = isRecord(body) ? body : {};
+          const transition = await recordProviderActionTransition(env, {
+            providerActionId: providerActionTransition.providerActionId,
+            signalId: readString(record.signalId) ?? `provider-action:${providerActionTransition.providerActionId}`,
+            status: providerActionTransition.status,
+            actor: readString(record.actor),
+            reason: readString(record.reason),
+          });
+          return jsonResponse({
+            ok: true,
+            providerAction: {
+              id: providerActionTransition.providerActionId,
+              status: providerActionTransition.status,
+            },
+            ...transition,
+          });
+        }
+
         if (url.pathname === "/mcp/trellis") {
           return jsonResponse({
             ok: true,
@@ -712,6 +753,8 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               "trellis.approval.approve",
               "trellis.approval.reject",
               "trellis.providerAction.inspect",
+              "trellis.providerAction.complete",
+              "trellis.providerAction.fail",
               "trellis.audit.search",
             ],
           });
@@ -742,6 +785,8 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             "/approvals/:id/approve",
             "/approvals/:id/reject",
             "/provider-actions",
+            "/provider-actions/:id/complete",
+            "/provider-actions/:id/fail",
             "/mcp/trellis",
             "/dashboard",
           ],
@@ -1164,6 +1209,85 @@ async function enqueueApprovalDecision(
   return {
     enabled: true,
     messages,
+  };
+}
+
+async function recordProviderActionTransition(
+  env: Record<string, unknown> | undefined,
+  transition: TrellisProviderActionTransition,
+) {
+  return {
+    persistence: await persistProviderActionTransition(env, transition),
+    queue: await enqueueProviderActionTransition(env, transition),
+  };
+}
+
+async function persistProviderActionTransition(
+  env: Record<string, unknown> | undefined,
+  transition: TrellisProviderActionTransition,
+) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      enabled: false,
+      tables: [],
+    };
+  }
+
+  const now = new Date().toISOString();
+  await ensureD1Schema(db);
+  await runD1(db, `
+    UPDATE trellis_provider_actions
+    SET status = ?, updated_at = ?
+    WHERE id = ?
+  `, [
+    transition.status,
+    now,
+    transition.providerActionId,
+  ]);
+  await runD1(db, `
+    INSERT OR REPLACE INTO trellis_audit_events
+      (id, signal_id, workflow, type, message, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `, [
+    `evt_provider_action_${transition.status}_${transition.providerActionId}`,
+    transition.signalId,
+    "provider-action",
+    `provider_action.${transition.status}`,
+    `${transition.status === "completed" ? "Completed" : "Failed"} provider action ${transition.providerActionId}.`,
+    now,
+  ]);
+
+  return {
+    enabled: true,
+    tables: ["trellis_provider_actions", "trellis_audit_events"],
+  };
+}
+
+async function enqueueProviderActionTransition(
+  env: Record<string, unknown> | undefined,
+  transition: TrellisProviderActionTransition,
+) {
+  const queue = env?.TRELLIS_EVENTS as TrellisQueue | undefined;
+  if (!queue?.send) {
+    return {
+      enabled: false,
+    };
+  }
+
+  await queue.send({
+    type: transition.status === "completed"
+      ? "trellis.provider.action.completed"
+      : "trellis.provider.action.failed",
+    providerActionId: transition.providerActionId,
+    signalId: transition.signalId,
+    status: transition.status,
+    actor: transition.actor,
+    reason: transition.reason,
+  });
+  return {
+    enabled: true,
+    messages: 1,
   };
 }
 

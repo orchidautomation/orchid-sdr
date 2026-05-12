@@ -160,6 +160,14 @@ describe("@trellis/gtm v3 API", () => {
         reason: "Fixture approval.",
       }),
     }), env);
+    const providerActionFail = await runtime.worker.fetch(new Request("https://example.com/provider-actions/provider_action_approval_draft_sig_live_email_send/fail", {
+      method: "POST",
+      body: JSON.stringify({
+        signalId: "sig_live",
+        actor: "agentmail-worker",
+        reason: "No-send mode blocked the fixture action.",
+      }),
+    }), env);
     const mcp = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), env);
     const providerActions = await runtime.worker.fetch(new Request("https://example.com/provider-actions"), env);
     const dashboard = await runtime.worker.fetch(new Request("https://example.com/dashboard"), env);
@@ -257,6 +265,7 @@ describe("@trellis/gtm v3 API", () => {
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_provider_actions"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_audit_events"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("UPDATE trellis_approvals SET status = ?"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("UPDATE trellis_provider_actions SET status = ?"))).toBe(true);
     expect(fakeQueue.messages).toEqual([
       expect.objectContaining({
         type: "trellis.signal.processed",
@@ -279,6 +288,11 @@ describe("@trellis/gtm v3 API", () => {
           traceId: "trace_sig_live_approval_draft_sig_live_email_send",
         }),
       }),
+      expect.objectContaining({
+        type: "trellis.provider.action.failed",
+        providerActionId: "provider_action_approval_draft_sig_live_email_send",
+        status: "failed",
+      }),
     ]);
     await expect(mcp.json()).resolves.toMatchObject({
       ok: true,
@@ -290,7 +304,7 @@ describe("@trellis/gtm v3 API", () => {
           drafts: 1,
           approvals: 2,
           providerActions: 1,
-          auditEvents: 6,
+          auditEvents: 7,
         },
         packs: {
           enabled: true,
@@ -340,6 +354,20 @@ describe("@trellis/gtm v3 API", () => {
         operation: "email.send",
         status: "blocked_no_send",
         traceId: "trace_sig_live_approval_draft_sig_live_email_send",
+      },
+    });
+    await expect(providerActionFail.json()).resolves.toMatchObject({
+      ok: true,
+      providerAction: {
+        id: "provider_action_approval_draft_sig_live_email_send",
+        status: "failed",
+      },
+      persistence: {
+        enabled: true,
+      },
+      queue: {
+        enabled: true,
+        messages: 1,
       },
     });
   });
