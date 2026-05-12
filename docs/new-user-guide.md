@@ -48,6 +48,8 @@ trellis connect firecrawl
 
 The proof point is that a user can see one signal become a qualified prospect, a blocked outbound draft, two pending approvals, audit events, and a workflow start without touching Convex, Rivet, Vercel Sandbox, or custom orchestration code.
 
+The default smoke path stays safe: `GET /smoke` and `trellis smoke` never write to providers. Once Attio is connected, `POST /smoke/attio` or `trellis verify cloudflare --live --url <worker-url> --attio-smoke --provider-smoke-token <token>` performs the explicit CRM integration smoke: it writes a deterministic smoke company/person through `src/crm/attio.map.ts` and returns HTTP 200 only if Attio accepts the mapped write.
+
 ## The 20-ish Line Pitch
 
 ```ts

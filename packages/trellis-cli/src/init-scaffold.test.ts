@@ -116,6 +116,7 @@ describe("trellis init v3 scaffold", () => {
       expect(envExample).toContain("CLOUDFLARE_ACCOUNT_ID=");
       expect(envExample).toContain("CLOUDFLARE_API_TOKEN=");
       expect(envExample).toContain("ATTIO_API_KEY=");
+      expect(envExample).toContain("TRELLIS_PROVIDER_SMOKE_TOKEN=");
       expect(envExample).toContain("AGENTMAIL_API_KEY=");
       expect(envExample).toContain("FIRECRAWL_API_KEY=");
       expect(envExample).toContain("APIFY_TOKEN=");
@@ -125,6 +126,7 @@ describe("trellis init v3 scaffold", () => {
       expect(readme).toContain("first deploy is Cloudflare-first");
       expect(readme).toContain("npm run cf:login");
       expect(readme).toContain("Deploy auto-packs the default `knowledge/**/*.md` files");
+      expect(readme).toContain("POST /smoke/attio");
       expect(readme).toContain("npm run trellis -- connect attio");
       expect(readme).toContain("Your app code stays Trellis-only in `src/agent.ts`");
 

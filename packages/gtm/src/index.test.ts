@@ -723,6 +723,121 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
+  it("runs explicit Attio provider smoke writes behind a token gate", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio({
+        map: {
+          companies: {
+            name: "company",
+            domains: "domain",
+            icp_status: "qualification.decision",
+          },
+          people: {
+            name: "fullName",
+            email_addresses: "email",
+            qualification_summary: "qualification.summary",
+          },
+        },
+      }),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => app.workflow("prospect").start({ signal: await app.signal() })));
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.includes("/objects/companies/records")) {
+        return new Response(JSON.stringify({
+          data: {
+            id: { record_id: "company_smoke" },
+            web_url: "https://app.attio.com/company_smoke",
+          },
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({
+        data: {
+          id: { record_id: "person_smoke" },
+          web_url: "https://app.attio.com/person_smoke",
+        },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const env = {
+      ATTIO_API_KEY: "attio_test",
+      ATTIO_BASE_URL: "https://attio.test",
+      TRELLIS_PROVIDER_SMOKE_TOKEN: "smoke-secret",
+      TRELLIS_FETCH: fetchMock,
+    };
+
+    const blocked = await runtime.worker.fetch(new Request("https://example.com/smoke/attio", {
+      method: "POST",
+    }), env);
+    const smoke = await runtime.worker.fetch(new Request("https://example.com/smoke/attio", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer smoke-secret",
+      },
+    }), env);
+
+    expect(blocked.status).toBe(401);
+    expect(smoke.status).toBe(200);
+    await expect(smoke.json()).resolves.toMatchObject({
+      ok: true,
+      mode: "provider-integration",
+      provider: "attio",
+      externalWrites: true,
+      mappedFields: {
+        companies: expect.arrayContaining(["name", "domains", "icp_status"]),
+        people: expect.arrayContaining(["name", "email_addresses", "qualification_summary"]),
+      },
+      execution: {
+        ok: true,
+        externalId: "person_smoke",
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [, companyInit] = fetchMock.mock.calls[0] as unknown as [string | URL | Request, RequestInit];
+    const [, personInit] = fetchMock.mock.calls[1] as unknown as [string | URL | Request, RequestInit];
+    expect(JSON.parse(String(companyInit?.body))).toEqual({
+      data: {
+        values: {
+          name: "Trellis Smoke Test",
+          domains: ["trellis-smoke.example.com"],
+          icp_status: "needs_review",
+        },
+      },
+    });
+    expect(JSON.parse(String(personInit?.body))).toEqual({
+      data: {
+        values: {
+          name: [
+            {
+              first_name: "Trellis",
+              last_name: "Smoke",
+              full_name: "Trellis Smoke",
+            },
+          ],
+          email_addresses: ["trellis-smoke@example.com"],
+          job_title: "Provider Smoke",
+          linkedin: "https://linkedin.com/company/trellis-smoke",
+          qualification_summary: "Attio provider smoke qualification.",
+          company: [
+            {
+              target_object: "companies",
+              target_record_id: "company_smoke",
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it("normalizes mixed-source webhook batches through the v3 signal route", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),

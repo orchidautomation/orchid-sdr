@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import process from "node:process";
 
-import { runTrellisSmoke } from "../../gtm/src/index.js";
+import { runTrellisAttioSmoke, runTrellisSmoke } from "../../gtm/src/index.js";
 import { buildClaudeCodeMcpConfig, mergeClaudeCodeMcpConfig } from "./mcp-config.js";
 
 let envLoadedForCwd = new Set<string>();
@@ -302,6 +302,7 @@ function printHelp() {
   npm run trellis -- docs add <path>
   npm run trellis -- doctor
   npm run trellis -- smoke
+  npm run trellis -- smoke attio
   npm run trellis -- deploy
   npm run trellis -- init <target-dir> [--name my-app]
   npm run trellis -- <command> --json
@@ -319,6 +320,7 @@ Examples:
   npm run trellis -- deploy --json
   npm run trellis -- verify cloudflare --json
   npm run trellis -- verify cloudflare --live --url https://your-worker.workers.dev --exercise-agent
+  npm run trellis -- verify cloudflare --live --url https://your-worker.workers.dev --attio-smoke --provider-smoke-token $TRELLIS_PROVIDER_SMOKE_TOKEN
 
 Simple labels stay short in the CLI: attio, agentmail, firecrawl, apify, prospeo, langfuse, braintrust.
 
@@ -637,6 +639,8 @@ async function verifyRemoteCloudflareRoutes(input: {
   endpoint: string;
   exerciseAgent: boolean;
   webhookToken?: string;
+  attioSmoke: boolean;
+  providerSmokeToken?: string;
 }): Promise<VerifyCheck[]> {
   const checks: VerifyCheck[] = [];
   const health = await fetchVerifyJson(verifyRouteUrl(input.endpoint, "/healthz"));
@@ -669,6 +673,27 @@ async function verifyRemoteCloudflareRoutes(input: {
     : "fail", smoke.status
     ? `/smoke returned ${smoke.status}`
     : `could not fetch /smoke: ${smoke.error ?? "unknown error"}`, summarizeRemoteEvidence(smoke)));
+
+  if (input.attioSmoke) {
+    const headers: Record<string, string> = {};
+    if (input.providerSmokeToken) {
+      headers.authorization = `Bearer ${input.providerSmokeToken}`;
+    }
+    const attioSmoke = await fetchVerifyJson(verifyRouteUrl(input.endpoint, "/smoke/attio"), {
+      method: "POST",
+      headers,
+    });
+    const attioSmokeBody = asCliRecord(attioSmoke.body);
+    checks.push(verifyCheck("remote.attioSmoke", attioSmoke.status === 200
+      && attioSmokeBody?.ok === true
+      && attioSmokeBody.externalWrites === true
+      ? "pass"
+      : "fail", attioSmoke.status
+      ? `/smoke/attio returned ${attioSmoke.status}`
+      : `could not fetch /smoke/attio: ${attioSmoke.error ?? "unknown error"}`, summarizeRemoteEvidence(attioSmoke)));
+  } else {
+    checks.push(verifyCheck("remote.attioSmoke", "skip", "Attio provider smoke skipped; pass --attio-smoke to perform a real CRM write"));
+  }
 
   if (!input.exerciseAgent) {
     checks.push(verifyCheck("remote.webhook.agent", "skip", "live Flue/Cloudflare agent exercise skipped; pass --exercise-agent to post a safe signal webhook"));
@@ -1264,6 +1289,38 @@ function objectKeyForPackFile(scope: "knowledge" | "skills", source: string | un
 
 async function handleSmokeCommand(scope: string | undefined) {
   const resolvedScope = scope ?? "fixture-signal";
+  if (resolvedScope === "attio") {
+    const result = await runTrellisAttioSmoke({ env: process.env });
+    if (!result.ok) {
+      process.exitCode = 1;
+    }
+    if (jsonOutput) {
+      emitJson({
+        ...result,
+        command: "smoke",
+        scope: resolvedScope,
+      });
+      return;
+    }
+
+    console.log(`Trellis Attio provider smoke:
+
+Mode:
+  - ${result.mode}
+  - external writes: ${result.externalWrites ? "enabled" : "blocked"}
+
+Checks:`);
+    for (const check of result.checks) {
+      console.log(`  - ${check.status}: ${check.id} - ${check.detail}`);
+    }
+    if (result.error) {
+      console.log(`
+Error:
+  - ${result.error}`);
+    }
+    return;
+  }
+
   const result = await runTrellisSmoke();
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
   if (!result.ok) {
@@ -1339,6 +1396,9 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
   const live = flags.live === true || Boolean(endpoint);
   const exerciseAgent = flags["exercise-agent"] === true || flags.signal === true;
   const webhookToken = readFlagString(flags, ["webhook-token", "token"]) ?? process.env.TRELLIS_WEBHOOK_SECRET ?? process.env.SIGNAL_WEBHOOK_SECRET;
+  const attioSmoke = flags["attio-smoke"] === true || flags["provider-smoke"] === true;
+  const providerSmokeToken = readFlagString(flags, ["provider-smoke-token", "smoke-token"])
+    ?? process.env.TRELLIS_PROVIDER_SMOKE_TOKEN;
   const checks: VerifyCheck[] = [
     ...verifyGeneratedSourceChecks(Boolean(wranglerConfigPath)),
     verifyCheck("cloudflare.config", wranglerConfigPath ? "pass" : "warn", wranglerConfigPath
@@ -1387,11 +1447,14 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
       endpoint,
       exerciseAgent,
       webhookToken,
+      attioSmoke,
+      providerSmokeToken,
     }));
   } else {
     checks.push(verifyCheck("remote.healthz", "skip", "deployed route checks skipped; pass --url https://<worker>"));
     checks.push(verifyCheck("remote.mcp", "skip", "deployed route checks skipped; pass --url https://<worker>"));
     checks.push(verifyCheck("remote.smoke", "skip", "deployed route checks skipped; pass --url https://<worker>"));
+    checks.push(verifyCheck("remote.attioSmoke", "skip", "Attio provider smoke skipped; pass --url and --attio-smoke"));
     checks.push(verifyCheck("remote.webhook.agent", "skip", "live Flue/Cloudflare agent exercise skipped; pass --url and --exercise-agent"));
   }
 
@@ -1404,6 +1467,7 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
     live,
     endpoint,
     exerciseAgent,
+    attioSmoke,
     checks,
     smoke: {
       ok: smoke.ok,
@@ -2197,6 +2261,9 @@ CLOUDFLARE_API_TOKEN=
 # Connect these after the app boots.
 ATTIO_API_KEY=
 ATTIO_DEFAULT_LIST_ID=
+TRELLIS_PROVIDER_SMOKE_TOKEN=
+TRELLIS_ATTIO_SMOKE_DOMAIN=
+TRELLIS_ATTIO_SMOKE_EMAIL=
 AGENTMAIL_API_KEY=
 AGENTMAIL_WEBHOOK_SECRET=
 FIRECRAWL_API_KEY=
@@ -2662,6 +2729,8 @@ npm run trellis -- docs add ./product-docs
 Your app code stays Trellis-only in \`src/agent.ts\`. Attio field mapping lives in \`src/crm/attio.map.ts\`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like \`qualification.decision\`, \`qualification.summary\`, or \`signal.payload.signal\`. The generated \`src/trellis-flue.ts\` adapter installs the hidden Flue harness, mounts Trellis R2 markdown packs into Flue's virtual sandbox, uses the Cloudflare AI binding through the default AI Gateway, and stores Flue sessions in \`TRELLIS_DB\`.
 
 Deploy auto-packs the default \`knowledge/**/*.md\` files, or uses \`.trellis/knowledge-pack.json\` when you run \`trellis docs add <path>\`. It also syncs tracked \`SKILL.md\` files into the \`TRELLIS_PACKS\` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
+
+\`GET /smoke\` is safe and never writes to providers. \`POST /smoke/attio\` is an explicit provider smoke: it requires \`ATTIO_API_KEY\` plus \`TRELLIS_PROVIDER_SMOKE_TOKEN\`, writes a deterministic smoke company/person through the Attio field map, and returns HTTP 200 only when Attio accepts the mapped write.
 `;
 }
 

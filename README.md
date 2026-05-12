@@ -28,7 +28,7 @@ The first deploy should require only Cloudflare auth. CRM, email, research, opti
 
 `trellis deploy` also owns the first Cloudflare provisioning pass for the generated app: it resolves or creates the D1 database and writes the `database_id`, creates or verifies the R2 buckets, creates or verifies the events queue and dead-letter queue, then runs the pack sync and Wrangler deploy.
 
-`trellis verify cloudflare` checks the generated app shape, local smoke path, pack sync plan, and Cloudflare resource posture. With `--live --url <worker-url>` it also verifies Wrangler auth and deployed `/healthz`, `/mcp/trellis`, and `/smoke`; add `--exercise-agent` to post a safe signal through the live Flue/Cloudflare harness.
+`trellis verify cloudflare` checks the generated app shape, local smoke path, pack sync plan, and Cloudflare resource posture. With `--live --url <worker-url>` it also verifies Wrangler auth and deployed `/healthz`, `/mcp/trellis`, and `/smoke`; add `--exercise-agent` to post a safe signal through the live Flue/Cloudflare harness. Add `--attio-smoke --provider-smoke-token <token>` to run the explicit Attio provider smoke at `POST /smoke/attio`; that route requires `ATTIO_API_KEY` and writes a deterministic smoke company/person through the configured field map.
 
 ## What Trellis Owns
 

@@ -180,6 +180,20 @@ export interface TrellisSmokeResult {
   result: unknown;
 }
 
+export interface TrellisProviderSmokeResult {
+  ok: boolean;
+  mode: "provider-integration";
+  provider: "attio";
+  externalWrites: true;
+  checks: TrellisSmokeCheck[];
+  execution?: TrellisProviderActionExecutionResult;
+  mappedFields?: {
+    companies: string[];
+    people: string[];
+  };
+  error?: string;
+}
+
 export interface TrellisSmokeHistory {
   enabled: boolean;
   table?: string;
@@ -772,6 +786,178 @@ export async function runTrellisSmoke(input?: {
   };
 }
 
+export async function runTrellisAttioSmoke(input?: {
+  agent?: TrellisAgentDefinition<TrellisGtmApp>;
+  env?: Record<string, unknown>;
+}): Promise<TrellisProviderSmokeResult> {
+  const agent = input?.agent ?? createDefaultSmokeAgent();
+  const env = input?.env;
+  const apiKeyConfigured = Boolean(readString(env?.ATTIO_API_KEY));
+  const checks: TrellisSmokeCheck[] = [
+    smokeCheck(
+      "attio.credentials",
+      apiKeyConfigured,
+      "ATTIO_API_KEY is configured for a real Attio provider smoke write",
+    ),
+  ];
+  if (!apiKeyConfigured) {
+    return {
+      ok: false,
+      mode: "provider-integration",
+      provider: "attio",
+      externalWrites: true,
+      checks,
+      error: "ATTIO_API_KEY is not configured.",
+    };
+  }
+
+  const context = createAttioSmokeContext(env);
+  const map = readAttioMap(agent.config.crm) ?? defaultAttioSmokeMap();
+  const mapSource = buildAttioMapSource(context);
+  const mappedCompanyValues = normalizeAttioCompanyMappedValues(applyAttioFieldMap(map?.companies, mapSource));
+  const mappedPersonValues = normalizeAttioPersonMappedValues(applyAttioFieldMap(map?.people, mapSource));
+  const mappedFields = {
+    companies: Object.keys(mappedCompanyValues),
+    people: Object.keys(mappedPersonValues),
+  };
+  checks.push(smokeCheck(
+    "attio.fieldMap",
+    mappedFields.companies.length > 0 || mappedFields.people.length > 0,
+    "resolved Attio field map values from Trellis signal and workflow context",
+  ));
+
+  try {
+    const execution = await executeAttioCrmUpdate(env, context, map);
+    const raw = isRecord(execution.raw) ? execution.raw : {};
+    const companyRef = isRecord(raw.company) ? raw.company : {};
+    const personRef = isRecord(raw.person) ? raw.person : {};
+    checks.push(smokeCheck(
+      "attio.company.write",
+      Boolean(readString(companyRef.recordId)),
+      "Attio accepted the company upsert",
+    ));
+    checks.push(smokeCheck(
+      "attio.person.write",
+      Boolean(readString(personRef.recordId)),
+      "Attio accepted the person upsert",
+    ));
+    return {
+      ok: checks.every((check) => check.status === "pass") && execution.ok === true,
+      mode: "provider-integration",
+      provider: "attio",
+      externalWrites: true,
+      checks,
+      execution,
+      mappedFields,
+    };
+  } catch (error) {
+    checks.push(smokeCheck(
+      "attio.write",
+      false,
+      error instanceof Error ? error.message : String(error),
+    ));
+    return {
+      ok: false,
+      mode: "provider-integration",
+      provider: "attio",
+      externalWrites: true,
+      checks,
+      mappedFields,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function createAttioSmokeContext(env: Record<string, unknown> | undefined): TrellisProviderExecutionContext {
+  const now = new Date().toISOString();
+  const domain = normalizeDomain(readString(env?.TRELLIS_ATTIO_SMOKE_DOMAIN) ?? "trellis-smoke.example.com")
+    ?? "trellis-smoke.example.com";
+  const email = readString(env?.TRELLIS_ATTIO_SMOKE_EMAIL) ?? "trellis-smoke@example.com";
+  const traceId = `trace_attio_smoke_${normalizeIdPart(now)}`;
+  const payload = {
+    company: "Trellis Smoke Test",
+    domain,
+    fullName: "Trellis Smoke",
+    email,
+    title: "Provider Smoke",
+    linkedinUrl: "https://linkedin.com/company/trellis-smoke",
+    signal: "Trellis Attio provider smoke write.",
+  };
+  const signal = {
+    id: "sig_attio_smoke",
+    traceId,
+    workspaceId: "wrk_smoke",
+    threadId: "thr_attio_smoke",
+    campaignId: "cmp_smoke",
+    payload,
+  };
+  const draft = {
+    id: "draft_attio_smoke",
+    signalId: signal.id,
+    channel: "email",
+    status: "blocked_pending_approval",
+    body: "Provider smoke fixture. Do not send.",
+  };
+  return {
+    action: {
+      id: "provider_action_attio_smoke_crm_update",
+      approvalId: "approval_attio_smoke_crm_update",
+      signalId: signal.id,
+      draftId: draft.id,
+      provider: "attio",
+      operation: "crm.update",
+      status: "queued",
+      traceId,
+      createdAt: now,
+      updatedAt: now,
+    },
+    draft,
+    signal,
+    prospect: {
+      id: "prospect_attio_smoke",
+      signalId: signal.id,
+      workspaceId: signal.workspaceId,
+      threadId: signal.threadId,
+      status: "needs_review",
+      updatedAt: now,
+    },
+    workflowRun: {
+      id: "trellis_attio_smoke_prospect",
+      signalId: signal.id,
+      workflow: "prospect",
+      status: "smoke",
+      params: {
+        signal,
+        qualification: {
+          decision: "needs_review",
+          summary: "Attio provider smoke qualification.",
+          confidence: 0.99,
+        },
+        research: {
+          summary: "Attio smoke verified mapped fields before writing.",
+        },
+        draft,
+      },
+      updatedAt: now,
+    },
+    input: payload,
+  };
+}
+
+function defaultAttioSmokeMap(): TrellisAttioMap {
+  return {
+    companies: {
+      name: "company",
+      domains: "domain",
+    },
+    people: {
+      name: "fullName",
+      email_addresses: "email",
+      job_title: "title",
+    },
+  };
+}
+
 export async function runTrellisAgent(
   agent: TrellisAgentDefinition<TrellisGtmApp>,
   input?: {
@@ -1179,6 +1365,26 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           });
         }
 
+        if (url.pathname === "/smoke/attio") {
+          if (request.method !== "POST") {
+            return jsonResponse({
+              ok: false,
+              error: "method_not_allowed",
+              detail: "Attio provider smoke performs an external write and must be called with POST.",
+            }, 405);
+          }
+          const authorization = verifyProviderSmokeRequest(request, env);
+          if (!authorization.ok) {
+            return jsonResponse({
+              ok: false,
+              error: authorization.error,
+              detail: authorization.detail,
+            }, authorization.status);
+          }
+          const smoke = await runTrellisAttioSmoke({ agent, env });
+          return jsonResponse(smoke, smoke.ok ? 200 : providerSmokeFailureStatus(smoke));
+        }
+
         if (url.pathname === "/webhooks/signals" && request.method === "POST") {
           const verification = verifySignalWebhook(request, env);
           if (!verification.ok) {
@@ -1486,6 +1692,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           routes: [
             "/healthz",
             "/smoke",
+            "/smoke/attio",
             "/webhooks/signals",
             "/webhooks/apify",
             "/webhooks/agentmail",
@@ -2759,6 +2966,46 @@ async function verifyAgentMailWebhookRequest(
     enabled: true,
     ok: providedSecret === configuredSecret,
   };
+}
+
+function verifyProviderSmokeRequest(request: Request, env: Record<string, unknown> | undefined) {
+  const configuredSecret = readString(env?.TRELLIS_PROVIDER_SMOKE_TOKEN)
+    ?? readString(env?.TRELLIS_MCP_TOKEN)
+    ?? readString(env?.TRELLIS_SANDBOX_TOKEN);
+  if (!configuredSecret) {
+    return {
+      ok: false,
+      status: 403,
+      error: "provider_smoke_token_required",
+      detail: "Configure TRELLIS_PROVIDER_SMOKE_TOKEN before enabling provider smoke writes.",
+    };
+  }
+
+  const authorization = readString(request.headers.get("authorization"));
+  const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : undefined;
+  const providedSecret = bearer
+    ?? readString(request.headers.get("x-trellis-provider-smoke-token"))
+    ?? readString(request.headers.get("x-trellis-smoke-token"));
+  return providedSecret === configuredSecret
+    ? {
+        ok: true,
+        status: 200,
+        error: null,
+        detail: null,
+      }
+    : {
+        ok: false,
+        status: 401,
+        error: "unauthorized_provider_smoke",
+        detail: "Provider smoke writes require a matching bearer token or x-trellis-provider-smoke-token header.",
+      };
+}
+
+function providerSmokeFailureStatus(smoke: TrellisProviderSmokeResult) {
+  if (smoke.error?.includes("ATTIO_API_KEY")) {
+    return 424;
+  }
+  return 502;
 }
 
 async function readJsonBody(request: Request): Promise<unknown> {
@@ -5289,8 +5536,8 @@ async function executeAttioCrmUpdate(
   const companyRecordId = readFirstString(input, signalPayload, ["attioCompanyRecordId", "companyRecordId"]);
   const personRecordId = readFirstString(input, signalPayload, ["attioPersonRecordId", "personRecordId"]);
   const mapSource = buildAttioMapSource(context);
-  const mappedCompanyValues = applyAttioFieldMap(map?.companies, mapSource);
-  const mappedPersonValues = applyAttioFieldMap(map?.people, mapSource);
+  const mappedCompanyValues = normalizeAttioCompanyMappedValues(applyAttioFieldMap(map?.companies, mapSource));
+  const mappedPersonValues = normalizeAttioPersonMappedValues(applyAttioFieldMap(map?.people, mapSource));
   const hasCompanyUpdate = Boolean(companyName || companyDomain);
   const hasPersonUpdate = Boolean(personRecordId || fullName || email || linkedinUrl || twitterUrl);
   const hasMappedCompanyUpdate = Object.keys(mappedCompanyValues).length > 0;
@@ -5429,6 +5676,33 @@ function applyAttioFieldMap(map: TrellisFieldMap | undefined, source: Record<str
     }
   }
   return values;
+}
+
+function normalizeAttioCompanyMappedValues(values: Record<string, unknown>) {
+  const normalized = { ...values };
+  if (typeof normalized.domains === "string") {
+    const domain = normalizeDomain(normalized.domains);
+    normalized.domains = domain ? [domain] : [normalized.domains];
+  }
+  return normalized;
+}
+
+function normalizeAttioPersonMappedValues(values: Record<string, unknown>) {
+  const normalized = { ...values };
+  if (typeof normalized.name === "string") {
+    const { firstName, lastName } = splitFullName(normalized.name);
+    normalized.name = [
+      {
+        first_name: firstName,
+        last_name: lastName,
+        full_name: normalized.name,
+      },
+    ];
+  }
+  if (typeof normalized.email_addresses === "string") {
+    normalized.email_addresses = [normalized.email_addresses];
+  }
+  return normalized;
 }
 
 function readMappedValue(source: Record<string, unknown>, sourcePath: string) {
