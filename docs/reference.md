@@ -22,6 +22,7 @@ The generated Cloudflare app should expose:
 - `GET /healthz`
 - `GET /smoke`
 - `POST /webhooks/signals`
+- `POST /webhooks/agentmail`
 - `POST /approvals/:id/approve`
 - `POST /approvals/:id/reject`
 - `POST /provider-actions/:id/execute`
@@ -53,6 +54,8 @@ The generated Worker also exposes a Cloudflare Queues consumer through the same 
 The Flue harness boundary receives a Trellis-generated tool catalog by default. The catalog starts with `trellis.health` and, when Firecrawl is the configured research provider, executable `research.search` and `research.extract` tools. `TRELLIS_MCP_TOOLS` can still override that catalog for advanced hosts.
 
 Signal webhooks support optional shared-secret verification through `TRELLIS_WEBHOOK_SECRET` or `SIGNAL_WEBHOOK_SECRET`. If a secret is configured, callers must send either `Authorization: Bearer <secret>`, `x-trellis-webhook-secret`, or `x-webhook-secret`.
+
+AgentMail reply webhooks can be posted to `POST /webhooks/agentmail`. `message.received` events are normalized into Trellis signals with `provider: "agentmail"` and `source: "reply.webhook"`, then processed through the same pack, harness, D1, queue, draft, approval, and audit path as generic signals. If `AGENTMAIL_WEBHOOK_SECRET` is configured, Trellis accepts either a bound `TRELLIS_AGENTMAIL_WEBHOOK_VERIFIER(rawBody, headers, secret)` verifier or a shared-secret `Authorization: Bearer <secret>` / `x-agentmail-webhook-secret` header.
 
 Signal webhooks also accept `Idempotency-Key`, `x-trellis-idempotency-key`, or `idempotencyKey` in the JSON body. If the payload does not provide a signal id, Trellis derives a stable id from that key.
 

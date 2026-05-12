@@ -886,6 +886,79 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           }, 202);
         }
 
+        if (url.pathname === "/webhooks/agentmail" && request.method === "POST") {
+          const rawBody = await request.text();
+          const verification = await verifyAgentMailWebhookRequest(rawBody, request, env);
+          if (!verification.ok) {
+            return jsonResponse({
+              ok: false,
+              error: "unauthorized_agentmail_webhook",
+              detail: "AgentMail webhook secret was configured but not provided or did not verify.",
+            }, 401);
+          }
+          const parsed = parseJsonText(rawBody);
+          const record = isRecord(parsed) ? parsed : {};
+          const agentMail = readAgentMailWebhook(record);
+          if (agentMail.type !== "message.received") {
+            return jsonResponse({
+              ok: true,
+              ignored: true,
+              reason: `unsupported event type ${agentMail.type || "unknown"}`,
+              webhook: {
+                verified: verification.enabled,
+                type: "agentmail",
+              },
+            });
+          }
+          if (!agentMail.providerThreadId || !agentMail.bodyText) {
+            return jsonResponse({
+              ok: true,
+              ignored: true,
+              reason: "threadId or bodyText missing",
+              webhook: {
+                verified: verification.enabled,
+                type: "agentmail",
+              },
+            });
+          }
+
+          const signal = agentMailWebhookToSignal(agentMail, record);
+          const packContext = await readPackContext(env);
+          const harness = createRuntimeHarness(env, agent.config, {
+            signal,
+            packs: packContext,
+          });
+          const run = await runTrellisAgent(agent, {
+            signal,
+            context: {
+              packs: packContext,
+              inboundReply: agentMail,
+            },
+            harness,
+          });
+          const persistence = await persistRuntimeResult(env, run);
+          const queue = await enqueueRuntimeEvent(env, run);
+          return jsonResponse({
+            ok: true,
+            accepted: true,
+            mode: "processed",
+            signal: run.signal,
+            prospects: run.prospects,
+            drafts: run.drafts,
+            approvals: run.approvals,
+            auditEvents: run.auditEvents,
+            persistence,
+            queue,
+            webhook: {
+              verified: verification.enabled,
+              type: "agentmail",
+              eventType: agentMail.type,
+            },
+            packs: packContext,
+            noSendsMode: agent.config.safety?.noSends ?? true,
+          }, 202);
+        }
+
         const approvalDecision = matchApprovalDecisionRoute(url.pathname);
         if (approvalDecision && request.method === "POST") {
           const body = await readJsonBody(request);
@@ -996,6 +1069,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             "/healthz",
             "/smoke",
             "/webhooks/signals",
+            "/webhooks/agentmail",
             "/approvals/:id/approve",
             "/approvals/:id/reject",
             "/provider-actions",
@@ -1253,12 +1327,107 @@ function verifySignalWebhook(request: Request, env: Record<string, unknown> | un
   };
 }
 
+async function verifyAgentMailWebhookRequest(
+  rawBody: string,
+  request: Request,
+  env: Record<string, unknown> | undefined,
+) {
+  const configuredSecret = readString(env?.AGENTMAIL_WEBHOOK_SECRET);
+  if (!configuredSecret) {
+    return {
+      enabled: false,
+      ok: true,
+    };
+  }
+
+  const verifier = env?.TRELLIS_AGENTMAIL_WEBHOOK_VERIFIER;
+  if (typeof verifier === "function") {
+    const ok = await Promise.resolve((verifier as (
+      rawBody: string,
+      headers: Record<string, string>,
+      secret: string,
+    ) => boolean | Promise<boolean>)(rawBody, Object.fromEntries(request.headers.entries()), configuredSecret));
+    return {
+      enabled: true,
+      ok,
+    };
+  }
+
+  const authorization = readString(request.headers.get("authorization"));
+  const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : undefined;
+  const providedSecret = bearer
+    ?? readString(request.headers.get("x-agentmail-webhook-secret"))
+    ?? readString(request.headers.get("x-trellis-webhook-secret"));
+  return {
+    enabled: true,
+    ok: providedSecret === configuredSecret,
+  };
+}
+
 async function readJsonBody(request: Request): Promise<unknown> {
   try {
     return await request.json();
   } catch {
     return {};
   }
+}
+
+function parseJsonText(value: string) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+}
+
+function readAgentMailWebhook(record: Record<string, unknown>) {
+  const message = isRecord(record.message) ? record.message : {};
+  const thread = isRecord(record.thread) ? record.thread : {};
+  const payload = isRecord(record.payload) ? record.payload : {};
+  const type = readFirstString(record, payload, ["event_type", "eventType", "type"]) ?? "";
+  const providerInboxId = readFirstString(message, thread, ["inbox_id", "inboxId"])
+    ?? readFirstString(payload, record, ["inbox_id", "inboxId"]);
+  const providerThreadId = readFirstString(message, thread, ["thread_id", "threadId"])
+    ?? readFirstString(payload, record, ["thread_id", "threadId"]);
+  const providerMessageId = readFirstString(message, record, ["message_id", "messageId", "id"])
+    ?? readFirstString(payload, record, ["message_id", "messageId"]);
+  const subject = readFirstString(message, thread, ["subject"])
+    ?? readFirstString(payload, record, ["subject"]);
+  const bodyText = readFirstString(message, record, ["text", "extracted_text", "preview", "bodyText", "body_text"])
+    ?? readFirstString(payload, record, ["text", "bodyText", "body_text"]);
+  return {
+    type,
+    providerInboxId,
+    providerThreadId,
+    providerMessageId,
+    subject,
+    bodyText,
+  };
+}
+
+function agentMailWebhookToSignal(
+  agentMail: ReturnType<typeof readAgentMailWebhook>,
+  raw: Record<string, unknown>,
+): Partial<TrellisSignal> {
+  const idPart = agentMail.providerMessageId ?? agentMail.providerThreadId ?? String(Date.now());
+  return {
+    id: `sig_agentmail_${normalizeIdPart(idPart)}`,
+    threadId: `agentmail_${normalizeIdPart(agentMail.providerThreadId ?? idPart)}`,
+    workspaceId: readString(raw.workspaceId) ?? readString(raw.workspace_id) ?? "wrk_default",
+    provider: "agentmail",
+    source: "reply.webhook",
+    payload: {
+      ...raw,
+      provider: "agentmail",
+      source: "reply.webhook",
+      eventType: agentMail.type,
+      providerInboxId: agentMail.providerInboxId,
+      providerThreadId: agentMail.providerThreadId,
+      providerMessageId: agentMail.providerMessageId,
+      subject: agentMail.subject,
+      bodyText: agentMail.bodyText,
+    },
+  };
 }
 
 async function persistRuntimeResult(env: Record<string, unknown> | undefined, run: TrellisRuntimeResult) {

@@ -406,6 +406,97 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
+  it("accepts AgentMail reply webhooks as first-class v3 signals", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    const fakeQueue = createFakeQueue();
+    const env = {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_EVENTS: fakeQueue,
+      AGENTMAIL_WEBHOOK_SECRET: "agentmail-secret",
+    };
+    const body = JSON.stringify({
+      event_type: "message.received",
+      message: {
+        inbox_id: "inbox_reply",
+        thread_id: "am_thread_1",
+        message_id: "am_msg_in_1",
+        subject: "Re: Hello",
+        text: "This sounds useful. Can you send details?",
+      },
+    });
+
+    const unauthorized = await runtime.worker.fetch(new Request("https://example.com/webhooks/agentmail", {
+      method: "POST",
+      body,
+    }), env);
+    const webhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/agentmail", {
+      method: "POST",
+      headers: {
+        "x-agentmail-webhook-secret": "agentmail-secret",
+      },
+      body,
+    }), env);
+
+    expect(unauthorized.status).toBe(401);
+    await expect(unauthorized.json()).resolves.toMatchObject({
+      ok: false,
+      error: "unauthorized_agentmail_webhook",
+    });
+    expect(webhook.status).toBe(202);
+    await expect(webhook.json()).resolves.toMatchObject({
+      ok: true,
+      accepted: true,
+      signal: {
+        id: "sig_agentmail_am_msg_in_1",
+        threadId: "agentmail_am_thread_1",
+        provider: "agentmail",
+        source: "reply.webhook",
+        payload: {
+          providerInboxId: "inbox_reply",
+          providerThreadId: "am_thread_1",
+          providerMessageId: "am_msg_in_1",
+          bodyText: "This sounds useful. Can you send details?",
+        },
+      },
+      webhook: {
+        verified: true,
+        type: "agentmail",
+        eventType: "message.received",
+      },
+      persistence: {
+        enabled: true,
+      },
+      queue: {
+        enabled: true,
+        messages: 1,
+      },
+    });
+    expect(fakeQueue.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "trellis.signal.processed",
+        signalId: "sig_agentmail_am_msg_in_1",
+        threadId: "agentmail_am_thread_1",
+      }),
+    ]));
+  });
+
   it("executes queued provider actions through the v3 executor path", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
