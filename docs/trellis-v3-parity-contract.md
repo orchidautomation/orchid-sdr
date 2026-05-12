@@ -236,6 +236,7 @@ Existing behavior:
 v3 parity:
 
 - Trellis MCP is generated from v3 state/workflow/provider contracts
+- the hidden Flue harness receives Trellis-generated runtime tools by default, including Firecrawl research tools when configured
 - dashboard reads D1 projections and agent snapshots
 - operator can inspect traces, audit events, approvals, dead letters, and workflow state
 - operator can pause, resume, approve, reject, replay, or kill-switch workflows

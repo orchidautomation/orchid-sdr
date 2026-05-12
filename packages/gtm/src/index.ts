@@ -201,6 +201,15 @@ export interface TrellisHarnessRuntime {
   ): Promise<unknown> | unknown;
 }
 
+export interface TrellisMcpToolDefinition {
+  name: string;
+  description: string;
+  provider?: string;
+  operation?: string;
+  inputSchema?: Record<string, unknown>;
+  execute?(input: Record<string, unknown>): Promise<unknown> | unknown;
+}
+
 interface TrellisD1Database {
   prepare(sql: string): {
     bind(...values: unknown[]): {
@@ -882,6 +891,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
         }
 
         if (url.pathname === "/mcp/trellis") {
+          const toolCatalog = describeTrellisMcpTools(agent.config);
           return jsonResponse({
             ok: true,
             server: "trellis",
@@ -900,6 +910,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               "trellis.providerAction.fail",
               "trellis.audit.search",
             ],
+            toolCatalog,
           });
         }
 
@@ -960,6 +971,95 @@ function summarizeCloudflareBindings(env?: Record<string, unknown>) {
     "BROWSER",
   ];
   return Object.fromEntries(bindingNames.map((name) => [name, Boolean(env?.[name])]));
+}
+
+function describeTrellisMcpTools(config: TrellisAgentConfig) {
+  return createTrellisMcpTools(undefined, config).map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    provider: tool.provider,
+    operation: tool.operation,
+    inputSchema: tool.inputSchema,
+    executable: typeof tool.execute === "function",
+  }));
+}
+
+function createTrellisMcpTools(
+  env: Record<string, unknown> | undefined,
+  config: TrellisAgentConfig,
+): TrellisMcpToolDefinition[] {
+  const tools: TrellisMcpToolDefinition[] = [
+    {
+      name: "trellis.health",
+      description: "Inspect the Trellis runtime, configured providers, safety policy, and Cloudflare bindings.",
+      operation: "trellis.health",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+      execute() {
+        return {
+          ok: true,
+          stack: "trellis-v3-cloudflare",
+          providers: {
+            crm: config.crm?.id ?? null,
+            email: config.email?.id ?? null,
+            research: config.research?.id ?? null,
+          },
+          safety: config.safety ?? trellis.safeOutbound(),
+          bindings: summarizeCloudflareBindings(env),
+        };
+      },
+    },
+  ];
+
+  if (config.research?.id === "firecrawl") {
+    tools.push(
+      {
+        name: "research.search",
+        description: "Search the web or news with Firecrawl and return normalized research snippets.",
+        provider: "firecrawl",
+        operation: "research.search",
+        inputSchema: {
+          type: "object",
+          required: ["query"],
+          properties: {
+            query: { type: "string" },
+            limit: { type: "number", minimum: 1, maximum: 10 },
+            sources: {
+              type: "array",
+              items: { type: "string", enum: ["web", "news"] },
+            },
+            tbs: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeFirecrawlSearch(env, input);
+        },
+      },
+      {
+        name: "research.extract",
+        description: "Extract markdown from a URL with Firecrawl for grounded agent context.",
+        provider: "firecrawl",
+        operation: "research.extract",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string", format: "uri" },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeFirecrawlExtract(env, input);
+        },
+      },
+    );
+  }
+
+  return tools;
 }
 
 function createRuntimeHarness(
@@ -1025,7 +1125,7 @@ function createFlueHarnessRuntime(
     harnessPromise ??= Promise.resolve(flue.init({
       model: config.model ?? readString(env?.TRELLIS_MODEL) ?? "anthropic/claude-sonnet-4-6",
       sandbox: env?.TRELLIS_FLUE_SANDBOX,
-      tools: Array.isArray(env?.TRELLIS_MCP_TOOLS) ? env.TRELLIS_MCP_TOOLS : undefined,
+      tools: Array.isArray(env?.TRELLIS_MCP_TOOLS) ? env.TRELLIS_MCP_TOOLS : createTrellisMcpTools(env, config),
     }));
     return harnessPromise;
   }
@@ -2090,6 +2190,123 @@ function normalizeDomain(value: string | undefined) {
     .toLowerCase();
 }
 
+async function executeFirecrawlSearch(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const apiKey = readString(env?.FIRECRAWL_API_KEY);
+  if (!apiKey) {
+    throw new Error("FIRECRAWL_API_KEY is not configured.");
+  }
+
+  const query = readFirstString(input, {}, ["query", "q"]);
+  if (!query) {
+    throw new Error("Firecrawl search requires a query.");
+  }
+
+  const limit = readNumber(input.limit) ?? 5;
+  const sources = readFirecrawlSources(input.sources);
+  const baseUrl = (readString(env?.FIRECRAWL_BASE_URL) ?? "https://api.firecrawl.dev").replace(/\/+$/, "");
+  const response = await firecrawlRequest(env, apiKey, baseUrl, "/v2/search", {
+    query,
+    limit,
+    sources,
+    country: readString(input.country) ?? "US",
+    ignoreInvalidURLs: true,
+    ...(readString(input.tbs) ? { tbs: readString(input.tbs) } : {}),
+  });
+  const data = isRecord(response.data) ? response.data : {};
+  const webResults = Array.isArray(data.web) ? data.web : [];
+  const newsResults = Array.isArray(data.news) ? data.news : [];
+  const arrayResults = Array.isArray(response.data) ? response.data : [];
+  const results = [
+    ...arrayResults.map((result) => mapFirecrawlSearchResult(result, "web")),
+    ...webResults.map((result) => mapFirecrawlSearchResult(result, "web")),
+    ...newsResults.map((result) => mapFirecrawlSearchResult(result, "news")),
+  ].filter((result) => Boolean(result.url));
+
+  return {
+    provider: "firecrawl",
+    operation: "research.search",
+    query,
+    results,
+    raw: response,
+  };
+}
+
+async function executeFirecrawlExtract(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const apiKey = readString(env?.FIRECRAWL_API_KEY);
+  if (!apiKey) {
+    throw new Error("FIRECRAWL_API_KEY is not configured.");
+  }
+
+  const url = readFirstString(input, {}, ["url"]);
+  if (!url) {
+    throw new Error("Firecrawl extract requires a URL.");
+  }
+
+  const baseUrl = (readString(env?.FIRECRAWL_BASE_URL) ?? "https://api.firecrawl.dev").replace(/\/+$/, "");
+  const response = await firecrawlRequest(env, apiKey, baseUrl, "/v1/scrape", {
+    url,
+    formats: ["markdown"],
+  });
+  const data = isRecord(response.data) ? response.data : {};
+
+  return {
+    provider: "firecrawl",
+    operation: "research.extract",
+    url,
+    markdown: readString(data.markdown) ?? "",
+    raw: response,
+  };
+}
+
+async function firecrawlRequest(
+  env: Record<string, unknown> | undefined,
+  apiKey: string,
+  baseUrl: string,
+  path: string,
+  body: Record<string, unknown>,
+) {
+  const fetcher = typeof env?.TRELLIS_FETCH === "function"
+    ? env.TRELLIS_FETCH as typeof fetch
+    : fetch;
+  const response = await fetcher(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`Firecrawl request failed with ${response.status}: ${await response.text()}`);
+  }
+  const parsed = await response.json().catch(() => ({}));
+  return isRecord(parsed) ? parsed : {};
+}
+
+function readFirecrawlSources(value: unknown): Array<"web" | "news"> {
+  if (!Array.isArray(value)) {
+    return ["web"];
+  }
+  const sources = value.filter((source): source is "web" | "news" => source === "web" || source === "news");
+  return sources.length > 0 ? sources : ["web"];
+}
+
+function mapFirecrawlSearchResult(value: unknown, source: "web" | "news") {
+  const result = isRecord(value) ? value : {};
+  return {
+    title: readString(result.title) ?? "Untitled",
+    url: readString(result.url) ?? "",
+    excerpt: readString(result.description) ?? readString(result.excerpt) ?? readString(result.snippet) ?? "",
+    source,
+  };
+}
+
 function readFirstString(
   primary: Record<string, unknown>,
   secondary: Record<string, unknown>,
@@ -2104,6 +2321,17 @@ function readFirstString(
     if (secondaryValue) {
       return secondaryValue;
     }
+  }
+  return undefined;
+}
+
+function readNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
   }
   return undefined;
 }

@@ -874,6 +874,33 @@ describe("@trellis/gtm v3 API", () => {
       "knowledge/files/icp.md": "# ICP\n\nUse this rule.",
       "skills/files/icp-qualification/SKILL.md": "# ICP Qualification",
     });
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith("/v2/search")) {
+        return new Response(JSON.stringify({
+          data: {
+            news: [
+              {
+                title: "Acme expands GTM team",
+                url: "https://example.com/acme-news",
+                description: "Acme is hiring revenue operators.",
+              },
+            ],
+          },
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({
+        data: {
+          markdown: "# Acme\n\nRevenue operations update.",
+        },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
 
     const webhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
       method: "POST",
@@ -885,6 +912,9 @@ describe("@trellis/gtm v3 API", () => {
     }), {
       TRELLIS_FLUE_CONTEXT: flueContext,
       TRELLIS_PACKS: fakeR2,
+      TRELLIS_FETCH: fetchMock,
+      FIRECRAWL_API_KEY: "fc_test",
+      FIRECRAWL_BASE_URL: "https://firecrawl.test",
     });
 
     await expect(webhook.json()).resolves.toMatchObject({
@@ -899,11 +929,51 @@ describe("@trellis/gtm v3 API", () => {
         expect.objectContaining({ type: "skill.completed" }),
       ]),
     });
-    expect(flueContext.init).toHaveBeenCalledWith({
+    expect(flueContext.init).toHaveBeenCalledWith(expect.objectContaining({
       model: "openrouter/test-model",
       sandbox: undefined,
-      tools: undefined,
+      tools: expect.arrayContaining([
+        expect.objectContaining({ name: "trellis.health" }),
+        expect.objectContaining({ name: "research.search", provider: "firecrawl" }),
+        expect.objectContaining({ name: "research.extract", provider: "firecrawl" }),
+      ]),
+    }));
+    const initOptions = flueContext.init.mock.calls[0]?.[0] as Record<string, unknown>;
+    const tools = initOptions.tools as Array<{
+      name: string;
+      execute?: (input: Record<string, unknown>) => Promise<unknown> | unknown;
+    }>;
+    const searchTool = tools.find((tool) => tool.name === "research.search");
+    const extractTool = tools.find((tool) => tool.name === "research.extract");
+    const searchResult = await searchTool?.execute?.({
+      query: "Acme news",
+      limit: 2,
+      sources: ["news"],
     });
+    const extractResult = await extractTool?.execute?.({
+      url: "https://example.com/acme-news",
+    });
+    expect(searchResult).toMatchObject({
+      provider: "firecrawl",
+      operation: "research.search",
+      query: "Acme news",
+      results: [
+        {
+          title: "Acme expands GTM team",
+          url: "https://example.com/acme-news",
+          source: "news",
+        },
+      ],
+    });
+    expect(extractResult).toMatchObject({
+      provider: "firecrawl",
+      operation: "research.extract",
+      url: "https://example.com/acme-news",
+      markdown: "# Acme\n\nRevenue operations update.",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe("https://firecrawl.test/v2/search");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe("https://firecrawl.test/v1/scrape");
     expect(skillCalls).toHaveLength(1);
     expect(skillCalls[0]).toMatchObject({
       sessionName: "thr_flue",
