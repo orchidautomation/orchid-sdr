@@ -1929,6 +1929,13 @@ async function dispatchProviderAction(
   }
 
   if (
+    context.action.provider === "agentmail"
+    && (context.action.operation === "email.reply" || context.action.operation === "mail.reply")
+  ) {
+    return executeAgentMailReply(env, context);
+  }
+
+  if (
     context.action.provider === "attio"
     && (context.action.operation === "crm.update" || context.action.operation === "crm.syncProspect")
   ) {
@@ -2030,6 +2037,74 @@ async function executeAgentMailSend(
     ok: true,
     provider: "agentmail",
     operation: "email.send",
+    actionId: context.action.id,
+    externalId: readString(record.id) ?? readString(record.message_id) ?? null,
+    externalThreadId: readString(record.thread_id) ?? readString(record.threadId) ?? null,
+    raw,
+  };
+}
+
+async function executeAgentMailReply(
+  env: Record<string, unknown> | undefined,
+  context: TrellisProviderExecutionContext,
+): Promise<TrellisProviderActionExecutionResult> {
+  const apiKey = readString(env?.AGENTMAIL_API_KEY);
+  if (!apiKey) {
+    throw new Error("AGENTMAIL_API_KEY is not configured.");
+  }
+
+  const signalPayload = context.signal?.payload ?? {};
+  const input = context.input;
+  const inboxId = readFirstString(input, signalPayload, ["inboxId", "providerInboxId", "senderProviderInboxId"]);
+  const messageId = readFirstString(input, signalPayload, [
+    "messageId",
+    "providerMessageId",
+    "inboundMessageId",
+    "replyToMessageId",
+    "replyToProviderMessageId",
+  ]);
+  const subject = readFirstString(input, signalPayload, ["subject"]);
+  const bodyText = readFirstString(input, signalPayload, ["bodyText", "text", "body"]) ?? context.draft?.body;
+  const bodyHtml = readFirstString(input, signalPayload, ["bodyHtml", "html"]);
+  const replyAll = readBoolean(input.replyAll) ?? readBoolean(signalPayload.replyAll) ?? true;
+
+  if (!inboxId) {
+    throw new Error("AgentMail reply requires inboxId or providerInboxId.");
+  }
+  if (!messageId) {
+    throw new Error("AgentMail reply requires messageId or providerMessageId.");
+  }
+  if (!bodyText) {
+    throw new Error("AgentMail reply requires bodyText or a draft body.");
+  }
+
+  const baseUrl = readString(env?.AGENTMAIL_BASE_URL) ?? "https://api.agentmail.to";
+  const response = await fetch(
+    `${baseUrl.replace(/\/+$/, "")}/v0/inboxes/${encodeURIComponent(inboxId)}/messages/${encodeURIComponent(messageId)}/${replyAll ? "reply-all" : "reply"}`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        text: bodyText,
+        html: bodyHtml,
+        subject,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`AgentMail reply failed with ${response.status}: ${await response.text()}`);
+  }
+
+  const raw = await response.json().catch(() => ({}));
+  const record = isRecord(raw) ? raw : {};
+  return {
+    ok: true,
+    provider: "agentmail",
+    operation: context.action.operation,
     actionId: context.action.id,
     externalId: readString(record.id) ?? readString(record.message_id) ?? null,
     externalThreadId: readString(record.thread_id) ?? readString(record.threadId) ?? null,
@@ -2392,6 +2467,21 @@ function readNumber(value: unknown) {
   if (typeof value === "string" && value.trim().length > 0) {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function readBoolean(value: unknown) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    if (value.toLowerCase() === "true") {
+      return true;
+    }
+    if (value.toLowerCase() === "false") {
+      return false;
+    }
   }
   return undefined;
 }

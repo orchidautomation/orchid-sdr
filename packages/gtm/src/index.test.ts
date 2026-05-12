@@ -548,6 +548,124 @@ describe("@trellis/gtm v3 API", () => {
     }
   });
 
+  it("executes approved AgentMail replies through the built-in v3 provider executor", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound({ noSends: false }),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    const fakeQueue = createFakeQueue();
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({
+        id: "msg_agentmail_reply_123",
+        thread_id: "thread_agentmail_reply_123",
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const env = {
+        TRELLIS_DB: fakeD1,
+        TRELLIS_EVENTS: fakeQueue,
+        AGENTMAIL_API_KEY: "am_reply",
+        AGENTMAIL_BASE_URL: "https://agentmail.test",
+      };
+
+      await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+        method: "POST",
+        body: JSON.stringify({
+          id: "sig_reply",
+          workspaceId: "wrk_reply",
+          threadId: "thr_reply",
+          provider: "agentmail",
+          source: "reply.webhook",
+        }),
+      }), env);
+      const approval = await runtime.worker.fetch(new Request("https://example.com/approvals/approval_reply_sig_reply_mail_reply/approve", {
+        method: "POST",
+        body: JSON.stringify({
+          signalId: "sig_reply",
+          action: "mail.reply",
+          actor: "operator@example.com",
+        }),
+      }), env);
+      const execution = await runtime.worker.fetch(new Request("https://example.com/provider-actions/provider_action_approval_reply_sig_reply_mail_reply/execute", {
+        method: "POST",
+        body: JSON.stringify({
+          actor: "agentmail-worker",
+          input: {
+            inboxId: "inbox_reply",
+            messageId: "am_inbound_1",
+            subject: "Re: Hello",
+            bodyText: "Thanks for the context. Looping in a human.",
+            replyAll: false,
+          },
+        }),
+      }), env);
+
+      await expect(approval.json()).resolves.toMatchObject({
+        providerAction: {
+          id: "provider_action_approval_reply_sig_reply_mail_reply",
+          provider: "agentmail",
+          operation: "mail.reply",
+          status: "queued",
+        },
+      });
+      expect(execution.status).toBe(200);
+      await expect(execution.json()).resolves.toMatchObject({
+        ok: true,
+        providerAction: {
+          id: "provider_action_approval_reply_sig_reply_mail_reply",
+          status: "completed",
+        },
+        execution: {
+          ok: true,
+          provider: "agentmail",
+          operation: "mail.reply",
+          externalId: "msg_agentmail_reply_123",
+          externalThreadId: "thread_agentmail_reply_123",
+        },
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string | URL | Request, RequestInit];
+      expect(String(url)).toBe("https://agentmail.test/v0/inboxes/inbox_reply/messages/am_inbound_1/reply");
+      expect(init).toMatchObject({
+        method: "POST",
+        headers: expect.objectContaining({
+          authorization: "Bearer am_reply",
+        }),
+      });
+      expect(JSON.parse(String(init?.body))).toEqual({
+        text: "Thanks for the context. Looping in a human.",
+        subject: "Re: Hello",
+      });
+      expect(fakeQueue.messages).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: "trellis.provider.action.completed",
+          providerActionId: "provider_action_approval_reply_sig_reply_mail_reply",
+        }),
+      ]));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("executes approved Attio CRM updates through the built-in v3 provider executor", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
