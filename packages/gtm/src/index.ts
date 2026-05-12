@@ -1168,6 +1168,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           }
           const signals = await readSignalsFromRequest(request);
           const packContext = await readPackContext(env);
+          const providerRun = await recordSignalProviderRunStarted(env, signals);
           const results: Array<{
             run: TrellisRuntimeResult;
             persistence: Awaited<ReturnType<typeof persistRuntimeResult>>;
@@ -1196,6 +1197,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               workflowDispatch,
             });
           }
+          const completedProviderRun = await recordSignalProviderRunCompleted(env, providerRun, results);
           if (results.length === 1) {
             const result = results[0]!;
             const run = result.run;
@@ -1212,6 +1214,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               persistence: result.persistence,
               queue: result.queue,
               workflowDispatch: result.workflowDispatch,
+              providerRun: completedProviderRun,
               webhook: {
                 verified: verification.enabled,
                 idempotencyKey: run.signal.idempotencyKey ?? null,
@@ -1245,6 +1248,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               ok: results.every((result) => result.workflowDispatch.ok !== false),
               results: results.map((result) => result.workflowDispatch),
             },
+            providerRun: completedProviderRun,
             webhook: {
               verified: verification.enabled,
               idempotencyKey: null,
@@ -2435,6 +2439,170 @@ function agentMailWebhookToSignal(
   };
 }
 
+async function recordSignalProviderRunStarted(
+  env: Record<string, unknown> | undefined,
+  signals: Array<Partial<TrellisSignal>>,
+) {
+  const descriptor = describeSignalProviderRun(signals);
+  const now = new Date().toISOString();
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      enabled: false,
+      ...descriptor,
+      status: "running",
+      createdAt: now,
+    };
+  }
+
+  await ensureD1Schema(db);
+  await upsertProviderRun(db, {
+    ...descriptor,
+    status: "running",
+    requestPayload: descriptor.requestPayload,
+    responsePayload: null,
+    error: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return {
+    enabled: true,
+    table: "trellis_provider_runs",
+    ...descriptor,
+    status: "running",
+    createdAt: now,
+  };
+}
+
+async function recordSignalProviderRunCompleted(
+  env: Record<string, unknown> | undefined,
+  started: Awaited<ReturnType<typeof recordSignalProviderRunStarted>>,
+  results: Array<{
+    run: TrellisRuntimeResult;
+    queue: Awaited<ReturnType<typeof enqueueRuntimeEvent>>;
+    workflowDispatch: Awaited<ReturnType<typeof dispatchWorkflow>>;
+  }>,
+) {
+  const workflowFailures = results.filter((result) => result.workflowDispatch.ok === false);
+  const status = workflowFailures.length > 0 ? "completed_with_warnings" : "succeeded";
+  const responsePayload = {
+    itemsSeen: results.length,
+    signalsReceived: results.length,
+    prospectsProcessed: results.reduce((total, result) => total + result.run.prospects.length, 0),
+    draftsCreated: results.reduce((total, result) => total + result.run.drafts.length, 0),
+    approvalsCreated: results.reduce((total, result) => total + result.run.approvals.length, 0),
+    queueMessages: results.reduce((total, result) => total + (readNumber(result.queue.messages) ?? 0), 0),
+    workflowFailures: workflowFailures.map((result) => ({
+      signalId: result.run.signal.id,
+      error: readString(result.workflowDispatch.error) ?? "workflow dispatch failed",
+    })),
+  };
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!started.enabled || !db?.prepare) {
+    return {
+      ...started,
+      status,
+      responsePayload,
+    };
+  }
+
+  await ensureD1Schema(db);
+  const updatedAt = new Date().toISOString();
+  await upsertProviderRun(db, {
+    id: started.id,
+    provider: started.provider,
+    kind: started.kind,
+    externalId: started.externalId,
+    status,
+    requestPayload: started.requestPayload,
+    responsePayload,
+    error: workflowFailures.length > 0 ? "One or more workflow dispatches failed." : null,
+    createdAt: started.createdAt ?? updatedAt,
+    updatedAt,
+  });
+  return {
+    ...started,
+    status,
+    updatedAt,
+    responsePayload,
+  };
+}
+
+function describeSignalProviderRun(signals: Array<Partial<TrellisSignal>>) {
+  const first = signals[0] ?? {};
+  const providers = uniqueStrings(signals.map((signal) => signal.provider));
+  const sources = uniqueStrings(signals.map((signal) => signal.source));
+  const provider = providers.length === 1 ? providers[0]! : providers.length > 1 ? "mixed" : "webhook";
+  const source = sources.length === 1 ? sources[0]! : sources.length > 1 ? "mixed" : "webhook.signals";
+  const externalId = readSignalExternalId(first)
+    ?? readString(first.id)
+    ?? `${provider}_${source}_${stableHashPart(JSON.stringify(signals.map((signal) => signal.id ?? signal.payload)))}`;
+  return {
+    id: `provider_run_${normalizeIdPart(provider)}_${normalizeIdPart(externalId)}`,
+    provider,
+    kind: signals.length > 1 ? "signal.batch" : "signal.webhook",
+    externalId,
+    requestPayload: {
+      source,
+      sources,
+      signalsReceived: signals.length,
+      signalIds: signals.map((signal) => signal.id).filter(Boolean),
+      sourceRefs: signals.map((signal) => readString(signal.payload?.sourceRef)).filter(Boolean),
+    },
+  };
+}
+
+function readSignalExternalId(signal: Partial<TrellisSignal>) {
+  const payload = signal.payload ?? {};
+  const metadata = isRecord(payload.metadata) ? payload.metadata : {};
+  const root = isRecord(metadata.root) ? metadata.root : {};
+  return readFirstString(payload, root, [
+    "externalId",
+    "external_id",
+    "actorRunId",
+    "actor_run_id",
+    "runId",
+    "run_id",
+  ]);
+}
+
+function uniqueStrings(values: Array<unknown>) {
+  return Array.from(new Set(values.map(readString).filter((value): value is string => Boolean(value))));
+}
+
+async function upsertProviderRun(
+  db: TrellisD1Database,
+  input: {
+    id: string;
+    provider: string;
+    kind: string;
+    externalId?: string | null;
+    status: string;
+    requestPayload: Record<string, unknown>;
+    responsePayload: Record<string, unknown> | null;
+    error: string | null;
+    createdAt: string;
+    updatedAt: string;
+  },
+) {
+  await runD1(db, `
+    INSERT OR REPLACE INTO trellis_provider_runs
+      (id, provider, kind, external_id, status, request_json, response_json, error, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    input.id,
+    input.provider,
+    input.kind,
+    input.externalId ?? null,
+    input.status,
+    JSON.stringify(input.requestPayload),
+    JSON.stringify(input.responsePayload ?? {}),
+    input.error,
+    input.createdAt,
+    input.updatedAt,
+  ]);
+}
+
 async function persistRuntimeResult(env: Record<string, unknown> | undefined, run: TrellisRuntimeResult) {
   const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
   if (!db?.prepare) {
@@ -2536,7 +2704,7 @@ async function persistRuntimeResult(env: Record<string, unknown> | undefined, ru
 
   return {
     enabled: true,
-    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_approvals", "trellis_provider_actions", "trellis_workflow_runs", "trellis_operator_controls", "trellis_smoke_runs", "trellis_audit_events", "trellis_trace_events"],
+    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_approvals", "trellis_provider_runs", "trellis_provider_actions", "trellis_workflow_runs", "trellis_operator_controls", "trellis_smoke_runs", "trellis_audit_events", "trellis_trace_events"],
   };
 }
 
@@ -2666,6 +2834,20 @@ async function ensureD1Schema(db: TrellisD1Database) {
       operation TEXT NOT NULL,
       status TEXT NOT NULL,
       trace_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await runD1(db, `
+    CREATE TABLE IF NOT EXISTS trellis_provider_runs (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      external_id TEXT,
+      status TEXT NOT NULL,
+      request_json TEXT NOT NULL,
+      response_json TEXT NOT NULL,
+      error TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
@@ -5133,6 +5315,7 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
       prospects: await countD1Rows(db, "trellis_prospects"),
       drafts: await countD1Rows(db, "trellis_drafts"),
       approvals: await countD1Rows(db, "trellis_approvals"),
+      providerRuns: await countD1Rows(db, "trellis_provider_runs"),
       providerActions: await countD1Rows(db, "trellis_provider_actions"),
       workflowRuns: await countD1Rows(db, "trellis_workflow_runs"),
       operatorControls: await countD1Rows(db, "trellis_operator_controls"),
@@ -5240,6 +5423,39 @@ async function readRecentRuntimeRows(db: TrellisD1Database) {
       ORDER BY updated_at DESC
       LIMIT ?
     `, [10]),
+    providerRuns: (await readD1Rows<{
+      id: string;
+      provider: string;
+      kind: string;
+      externalId?: string | null;
+      status: string;
+      requestJson?: string;
+      responseJson?: string;
+      error?: string | null;
+      createdAt?: string;
+      updatedAt?: string;
+    }>(db, `
+      SELECT
+        id,
+        provider,
+        kind,
+        external_id AS externalId,
+        status,
+        request_json AS requestJson,
+        response_json AS responseJson,
+        error,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM trellis_provider_runs
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `, [10])).map((row) => ({
+      ...row,
+      request: parseJsonValue(row.requestJson),
+      response: parseJsonValue(row.responseJson),
+      requestJson: undefined,
+      responseJson: undefined,
+    })),
     workflowRuns: (await readD1Rows<{
       id: string;
       signalId: string;
@@ -5502,6 +5718,7 @@ function renderDashboard(
     prospects: 0,
     drafts: 0,
     approvals: 0,
+    providerRuns: 0,
     providerActions: 0,
     workflowRuns: 0,
     operatorControls: 0,
@@ -5529,6 +5746,7 @@ function renderDashboard(
         <dt>Prospects</dt><dd>${counts.prospects}</dd>
         <dt>Drafts</dt><dd>${counts.drafts}</dd>
         <dt>Approvals</dt><dd>${counts.approvals}</dd>
+        <dt>Provider Runs</dt><dd>${counts.providerRuns}</dd>
         <dt>Provider Actions</dt><dd>${counts.providerActions}</dd>
         <dt>Workflow Runs</dt><dd>${counts.workflowRuns}</dd>
         <dt>Operator Controls</dt><dd>${counts.operatorControls}</dd>
@@ -5541,6 +5759,10 @@ function renderDashboard(
         <dt>Knowledge Files</dt><dd>${packs.knowledge?.manifest?.files ?? 0}</dd>
         <dt>Skill Files</dt><dd>${packs.skills?.objects ?? 0}</dd>
       </dl>
+      <section>
+        <h2>Recent Provider Runs</h2>
+        ${renderRecentRows(recent?.providerRuns, (row) => `${readString(row.provider) ?? "provider"}:${readString(row.status) ?? "unknown"} ${readString(row.id) ?? ""}`)}
+      </section>
       <section>
         <h2>Recent Workflow Runs</h2>
         ${renderRecentRows(recent?.workflowRuns, (row) => `${readString(row.workflow) ?? "workflow"}:${readString(row.status) ?? "unknown"} ${readString(row.id) ?? ""}`)}

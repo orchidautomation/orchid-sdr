@@ -168,6 +168,7 @@ v3 parity:
 - accepted signal is durable before downstream workflow dispatch
 - webhook runs dispatch `PROSPECT_WORKFLOW` after persistence, and dispatch failures are reported without failing ingestion
 - workflow dispatches and checkpoints are queryable in D1 via `trellis_workflow_runs`
+- inbound source runs are queryable in D1 via `trellis_provider_runs`
 - completed outbound `email.send` actions schedule durable `follow_up` workflow runs with a configurable delay and due checkpoint
 - Queues handle fanout/retries/dead letters
 - failed queue drains reset provider actions to `queued` before retry so Cloudflare retry/DLQ recovery remains actionable

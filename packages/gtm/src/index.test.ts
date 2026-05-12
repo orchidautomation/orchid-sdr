@@ -538,6 +538,7 @@ describe("@trellis/gtm v3 API", () => {
     expect(dashboardHtml).toContain("<dt>Prospects</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Drafts</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Approvals</dt><dd>2</dd>");
+    expect(dashboardHtml).toContain("<dt>Provider Runs</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Provider Actions</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Workflow Runs</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Smoke Runs</dt><dd>0</dd>");
@@ -545,6 +546,8 @@ describe("@trellis/gtm v3 API", () => {
     expect(dashboardHtml).toContain("<dt>Knowledge Files</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Skill Files</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("Recent Workflow Runs");
+    expect(dashboardHtml).toContain("Recent Provider Runs");
+    expect(dashboardHtml).toContain("test:succeeded provider_run_test_sig_live");
     expect(dashboardHtml).toContain("prospect:dispatched trellis_sig_live_prospect");
     expect(dashboardHtml).toContain("Recent Provider Actions");
     expect(dashboardHtml).toContain("agentmail:email.send failed");
@@ -827,6 +830,19 @@ describe("@trellis/gtm v3 API", () => {
         ok: true,
         results: [expect.objectContaining({ workflow: "prospect" }), expect.objectContaining({ workflow: "prospect" })],
       },
+      providerRun: {
+        enabled: true,
+        table: "trellis_provider_runs",
+        provider: "batch-import",
+        kind: "signal.batch",
+        externalId: "run_batch_1",
+        status: "succeeded",
+        responsePayload: expect.objectContaining({
+          signalsReceived: 2,
+          prospectsProcessed: 2,
+          workflowFailures: [],
+        }),
+      },
       webhook: {
         verified: false,
         idempotencyKey: null,
@@ -855,6 +871,7 @@ describe("@trellis/gtm v3 API", () => {
           prospects: 2,
           drafts: 2,
           approvals: 4,
+          providerRuns: 1,
           workflowRuns: 2,
         },
       },
@@ -2727,6 +2744,7 @@ function createFakeD1() {
   const prospects = new Map<string, Record<string, unknown>>();
   const drafts = new Map<string, Record<string, unknown>>();
   const approvals = new Map<string, Record<string, unknown>>();
+  const providerRuns = new Map<string, Record<string, unknown>>();
   const providerActions = new Map<string, Record<string, unknown>>();
   const operatorControls = new Map<string, Record<string, unknown>>();
   const workflowRuns = new Map<string, Record<string, unknown>>();
@@ -2798,6 +2816,20 @@ function createFakeD1() {
                   operation: bindings[5],
                   status: bindings[6],
                   traceId: bindings[7],
+                  createdAt: bindings[8],
+                  updatedAt: bindings[9],
+                });
+              }
+              if (normalized.includes("INSERT OR REPLACE INTO trellis_provider_runs")) {
+                providerRuns.set(String(bindings[0]), {
+                  id: bindings[0],
+                  provider: bindings[1],
+                  kind: bindings[2],
+                  externalId: bindings[3],
+                  status: bindings[4],
+                  requestJson: bindings[5],
+                  responseJson: bindings[6],
+                  error: bindings[7],
                   createdAt: bindings[8],
                   updatedAt: bindings[9],
                 });
@@ -2891,6 +2923,9 @@ function createFakeD1() {
                 if (tableName === "trellis_approvals") {
                   return { count: approvals.size };
                 }
+                if (tableName === "trellis_provider_runs") {
+                  return { count: providerRuns.size };
+                }
                 if (tableName === "trellis_smoke_runs") {
                   return { count: smokeRuns.size };
                 }
@@ -2934,6 +2969,7 @@ function createFakeD1() {
                 drafts,
                 approvals,
                 providerActions,
+                providerRuns,
                 workflowRuns,
                 auditEvents,
                 traceEvents,
@@ -2968,6 +3004,9 @@ function rowsForSelect(
   }
   if (normalizedSql.includes("FROM trellis_provider_actions")) {
     return sortRows(tables.providerActions);
+  }
+  if (normalizedSql.includes("FROM trellis_provider_runs")) {
+    return sortRows(tables.providerRuns);
   }
   if (normalizedSql.includes("FROM trellis_workflow_runs")) {
     return sortRows(tables.workflowRuns);
