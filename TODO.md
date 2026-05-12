@@ -17,12 +17,12 @@ This branch is converting Trellis from a generic composition framework into the 
 4. Turn approval records into executable approve/reject actions.
 5. Add real provider side-effect adapters behind no-send and approval gates.
 6. Verify the generated Cloudflare scaffold against a real account.
-7. Keep legacy Convex/Vercel/Rivet paths behind explicit migration flags.
+7. Keep legacy Convex/Vercel/Rivet paths behind explicit `legacy:*` scripts and migration flags.
 
 ## Verification
 
 ```bash
-npm run build:packages
+npm run build
 npm run typecheck
 npm test
 npm run trellis -- doctor --json

@@ -97,6 +97,8 @@ export default trellis.agent("sdr", {
 
 The repo still contains the older reference app and framework-composition packages. They are useful as behavior/parity source material, not the v3 public architecture.
 
+Root npm scripts now follow that boundary. `npm run build`, `npm run doctor`, `npm run smoke`, and `npm run dev` exercise the v3 Trellis/Cloudflare path. The old AI SDR baseline is still available only through explicit `legacy:*` scripts and `npm run build:all`.
+
 The v3 surface now lives in:
 
 - `packages/gtm`
@@ -112,6 +114,7 @@ Legacy composition commands remain available only for migration work with explic
 ```bash
 npm run typecheck
 npm test
+npm run build
 npm run trellis -- help
 npm run trellis -- doctor --json
 npm run trellis -- smoke --json

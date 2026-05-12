@@ -6,34 +6,101 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import process from "node:process";
 
-import { ConvexHttpClient } from "convex/browser";
-import { createClient } from "rivetkit/client";
-import { loadProcessEnvFiles } from "../../framework/src/env-loader.js";
-import { convexMutations, convexQueries } from "../../default-sdr/src/convex-repository.js";
-
-import {
-  aiSdrCompositionProfileIds,
-  buildModuleInstallPlan,
-  defaultTrellisModules,
-  evaluateModuleComposition,
-  findModuleForAddCommand,
-  type AiSdrCompositionProfileId,
-  type AiSdrConfig,
-  type AiSdrModuleDefinition,
+import type {
+  AiSdrCompositionProfileId,
+  AiSdrConfig,
+  AiSdrModuleDefinition,
 } from "../../framework/src/index.js";
-import {
-  aiSdrInitModuleChoices,
-  buildScaffoldSpec,
-  describeScaffoldSelection,
-  renderScaffoldAppConfigModule,
-  renderScaffoldConfigModule,
-  renderScaffoldEnvExample,
-  renderScaffoldSetupChecklist,
-  resolveInitProfile,
-  resolveInitModuleIds,
-} from "../../framework/src/scaffold.js";
 import { runTrellisSmoke } from "../../gtm/src/index.js";
 import { buildClaudeCodeMcpConfig, mergeClaudeCodeMcpConfig } from "./mcp-config.js";
+
+type LegacyFrameworkModule = typeof import("../../framework/src/index.js");
+type LegacyScaffoldModule = typeof import("../../framework/src/scaffold.js");
+type LegacyScaffoldSpec = ReturnType<LegacyScaffoldModule["buildScaffoldSpec"]>;
+type LegacyInstallPlan = ReturnType<LegacyFrameworkModule["buildModuleInstallPlan"]>;
+
+let legacyFrameworkPromise: Promise<LegacyFrameworkModule> | undefined;
+let legacyScaffoldPromise: Promise<LegacyScaffoldModule> | undefined;
+
+function loadLegacyFramework() {
+  legacyFrameworkPromise ??= import("../../framework/src/index.js");
+  return legacyFrameworkPromise;
+}
+
+function loadLegacyScaffold() {
+  legacyScaffoldPromise ??= import("../../framework/src/scaffold.js");
+  return legacyScaffoldPromise;
+}
+
+let envLoadedForCwd = new Set<string>();
+
+function loadProcessEnvFiles(input?: {
+  cwd?: string;
+  files?: string[];
+}) {
+  const cwd = input?.cwd ?? process.cwd();
+  const files = input?.files ?? defaultEnvFiles();
+  const cacheKey = `${cwd}::${files.join(",")}`;
+
+  if (envLoadedForCwd.has(cacheKey)) {
+    return;
+  }
+
+  for (const file of files) {
+    const resolved = path.resolve(cwd, file);
+    if (!existsSync(resolved)) {
+      continue;
+    }
+
+    if (typeof process.loadEnvFile === "function") {
+      process.loadEnvFile(resolved);
+      continue;
+    }
+
+    loadEnvFileFallback(resolved);
+  }
+
+  envLoadedForCwd.add(cacheKey);
+}
+
+function defaultEnvFiles() {
+  const nodeEnv = process.env.NODE_ENV;
+  return [
+    ".env",
+    ".env.local",
+    ...(nodeEnv ? [`.env.${nodeEnv}`, `.env.${nodeEnv}.local`] : []),
+  ];
+}
+
+function loadEnvFileFallback(filePath: string) {
+  const source = readFileSync(filePath, "utf8");
+  for (const rawLine of source.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+
+    const separatorIndex = line.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const name = line.slice(0, separatorIndex).trim();
+    if (!name || process.env[name] !== undefined) {
+      continue;
+    }
+
+    let value = line.slice(separatorIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"'))
+      || (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    process.env[name] = value;
+  }
+}
 
 loadProcessEnvFiles();
 
@@ -312,6 +379,10 @@ async function handleAdminCommand(subcommand: string | undefined, flags: Record<
 }
 
 async function handleCleanupStaleAdminCommand(flags: Record<string, string | boolean>) {
+  const [{ ConvexHttpClient }, { convexMutations, convexQueries }] = await Promise.all([
+    import("convex/browser"),
+    import("../../default-sdr/src/convex-repository.js"),
+  ]);
   const convexUrl = requireEnv("CONVEX_URL");
   const client = new ConvexHttpClient(convexUrl);
   const limit = Number(flags["limit"] ?? "50");
@@ -387,6 +458,7 @@ async function handleDiscoveryCommand(
   value: string | undefined,
   flags: Record<string, string | boolean>,
 ) {
+  const { createClient } = await import("rivetkit/client");
   const endpoint = String(flags.endpoint ?? process.env.RIVET_CLIENT_ENDPOINT ?? `http://127.0.0.1:${process.env.PORT ?? "3000"}/api/rivet`);
   const source = String(flags.source ?? "linkedin_public_post") as "linkedin_public_post" | "x_public_post";
   const campaignId = String(flags.campaign ?? "cmp_default");
@@ -449,13 +521,14 @@ async function handleDiscoveryCommand(
 }
 
 async function listModules() {
+  const legacy = await loadLegacyFramework();
   const config = await getActiveConfig();
   const installed = new Set((config.modules ?? []).map((module: AiSdrModuleDefinition) => module.id));
   if (jsonOutput) {
     emitJson({
       ok: true,
       command: "modules",
-      modules: defaultTrellisModules().map((module: AiSdrModuleDefinition) => ({
+      modules: legacy.defaultTrellisModules().map((module: AiSdrModuleDefinition) => ({
         id: module.id,
         displayName: module.displayName,
         packageName: module.packageName ?? null,
@@ -467,7 +540,7 @@ async function listModules() {
     });
     return;
   }
-  for (const module of defaultTrellisModules()) {
+  for (const module of legacy.defaultTrellisModules()) {
     const status = installed.has(module.id) ? "installed" : "available";
     const pkg = module.packageName ? ` ${module.packageName}` : "";
     console.log(`${module.id}\t${status}\t${module.displayName}${pkg}`);
@@ -475,15 +548,16 @@ async function listModules() {
 }
 
 async function printCompositionCheck() {
+  const legacy = await loadLegacyFramework();
   const config = await getActiveConfig();
-  const evaluations = resolveConfiguredCompositionProfiles(config).map((profile: AiSdrCompositionProfileId) =>
-    evaluateModuleComposition(config.modules ?? [], { profile }),
+  const evaluations = resolveConfiguredCompositionProfiles(config, legacy.aiSdrCompositionProfileIds).map((profile: AiSdrCompositionProfileId) =>
+    legacy.evaluateModuleComposition(config.modules ?? [], { profile }),
   );
   if (jsonOutput) {
     emitJson({
       ok: evaluations.every((evaluation) => evaluation.ok),
       command: "check",
-      profiles: evaluations.map((evaluation: ReturnType<typeof evaluateModuleComposition>) => ({
+      profiles: evaluations.map((evaluation) => ({
         profileId: evaluation.profile.id,
         displayName: evaluation.profile.displayName,
         ok: evaluation.ok,
@@ -502,8 +576,8 @@ async function printCompositionCheck() {
   }
 }
 
-function resolveConfiguredCompositionProfiles(config: AiSdrConfig) {
-  const supportedProfiles = new Set(aiSdrCompositionProfileIds);
+function resolveConfiguredCompositionProfiles(config: AiSdrConfig, profileIds: readonly string[]) {
+  const supportedProfiles = new Set(profileIds);
   const configured = (config.compositionTargets ?? []).filter((profile: string): profile is AiSdrCompositionProfileId =>
     supportedProfiles.has(profile as AiSdrCompositionProfileId),
   );
@@ -580,7 +654,8 @@ async function printAddPlan(moduleId: string | undefined) {
     return;
   }
 
-  const module = findModuleForAddCommand(defaultTrellisModules(), {
+  const legacy = await loadLegacyFramework();
+  const module = legacy.findModuleForAddCommand(legacy.defaultTrellisModules(), {
     capabilityOrModule: moduleId,
     provider: providerArg,
   });
@@ -635,7 +710,8 @@ Provider credentials can be connected after the first Cloudflare deploy.`);
     );
   }
 
-  const module = findModuleForAddCommand(defaultTrellisModules(), {
+  const legacy = await loadLegacyFramework();
+  const module = legacy.findModuleForAddCommand(legacy.defaultTrellisModules(), {
     capabilityOrModule: moduleId,
     provider: providerArg,
   });
@@ -655,7 +731,7 @@ Provider credentials can be connected after the first Cloudflare deploy.`);
 
   if (jsonOutput) {
     const config = await getActiveConfig();
-    const plan = buildModuleInstallPlan(module, {
+    const plan = legacy.buildModuleInstallPlan(module, {
       installedModuleIds: (config.modules ?? []).map((item: AiSdrModuleDefinition) => item.id),
     });
     emitJson({
@@ -2184,13 +2260,14 @@ Deploy syncs the verified knowledge manifest, markdown files, and tracked \`SKIL
 }
 
 async function scaffoldProject(targetArg: string | undefined, flags: Record<string, string | boolean>) {
-  const initInput = await resolveInitInput(targetArg, flags);
+  const legacyScaffold = await loadLegacyScaffold();
+  const initInput = await resolveInitInput(targetArg, flags, legacyScaffold);
   const targetDir = path.resolve(process.cwd(), initInput.targetDirArg);
   const profile = initInput.profile;
   const appName = initInput.appName;
   const packageName = sanitizePackageName(appName);
   const baseConfig = await loadBundledBaseConfig(initInput.kitIds);
-  const spec = buildScaffoldSpec(baseConfig, {
+  const spec = legacyScaffold.buildScaffoldSpec(baseConfig, {
     name: packageName,
     description: `${appName} generated from the Trellis ${initInput.kitIds.length > 0 ? `${initInput.kitIds.join(", ")} kit` : "core"} scaffold.`,
     profile,
@@ -2238,11 +2315,11 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
     path.join(targetDir, "package.json"),
     JSON.stringify(scaffoldPackage, null, 2) + "\n",
   );
-  await writeFile(path.join(targetDir, spec.configFileName), renderScaffoldConfigModule(spec));
-  await writeFile(path.join(targetDir, "src", "app-config.ts"), renderScaffoldAppConfigModule(spec));
-  await writeFile(path.join(targetDir, ".env.example"), renderScaffoldEnvExample(spec));
+  await writeFile(path.join(targetDir, spec.configFileName), legacyScaffold.renderScaffoldConfigModule(spec));
+  await writeFile(path.join(targetDir, "src", "app-config.ts"), legacyScaffold.renderScaffoldAppConfigModule(spec));
+  await writeFile(path.join(targetDir, ".env.example"), legacyScaffold.renderScaffoldEnvExample(spec));
   await writeFile(path.join(targetDir, "README.md"), renderScaffoldReadme(appName, targetDir, spec));
-  await writeFile(path.join(targetDir, "TRELLIS_SETUP.md"), renderScaffoldSetupChecklist(spec));
+  await writeFile(path.join(targetDir, "TRELLIS_SETUP.md"), legacyScaffold.renderScaffoldSetupChecklist(spec));
 
   const nextSteps = [
     `cd ${targetDir}`,
@@ -2306,7 +2383,11 @@ async function scaffoldProject(targetArg: string | undefined, flags: Record<stri
   console.log("  8. open TRELLIS_SETUP.md");
 }
 
-async function resolveInitInput(targetArg: string | undefined, flags: Record<string, string | boolean>) {
+async function resolveInitInput(
+  targetArg: string | undefined,
+  flags: Record<string, string | boolean>,
+  legacyScaffold: LegacyScaffoldModule,
+) {
   if (flags.interactive === true || flags.wizard === true) {
     throw new Error(
       "Interactive init has been removed. Use a Pluxx-guided Trellis onboarding plugin or run init with explicit flags, for example: npm run trellis -- init ../trellis-app --name trellis-app --with-discovery --with-deep-research --with-enrichment",
@@ -2329,9 +2410,9 @@ async function resolveInitInput(targetArg: string | undefined, flags: Record<str
   const resolvedTargetArg = targetArg;
   const appName = String(flags.name ?? path.basename(path.resolve(process.cwd(), resolvedTargetArg)));
   const kitIds = resolveKitFlags(flags);
-  const moduleIds = resolveInitModuleIds(profile, resolveModuleChoiceFlags(flags));
-  const selection = describeScaffoldSelection({
-    profile: resolveInitProfile(profile),
+  const moduleIds = legacyScaffold.resolveInitModuleIds(profile, resolveModuleChoiceFlags(flags, legacyScaffold.aiSdrInitModuleChoices));
+  const selection = legacyScaffold.describeScaffoldSelection({
+    profile: legacyScaffold.resolveInitProfile(profile),
     selectedModuleIds: moduleIds,
   });
 
@@ -2339,7 +2420,7 @@ async function resolveInitInput(targetArg: string | undefined, flags: Record<str
     console.log(`Scaffold target: ${resolvedTargetArg}`);
     console.log(`App name: ${appName}`);
     printList("Domain kits", kitIds.length > 0 ? kitIds : ["core only"]);
-    printList("Optional lanes", summarizeOptionalModuleChoices(moduleIds));
+    printList("Optional lanes", summarizeOptionalModuleChoices(moduleIds, legacyScaffold.aiSdrInitModuleChoices));
     console.log(`Resulting scaffold: ${selection.displayName}`);
     console.log("");
   }
@@ -2374,11 +2455,14 @@ function resolveKitFlags(flags: Record<string, string | boolean>): DomainKitId[]
   return normalized as DomainKitId[];
 }
 
-function resolveModuleChoiceFlags(flags: Record<string, string | boolean>) {
+function resolveModuleChoiceFlags(
+  flags: Record<string, string | boolean>,
+  choices: LegacyScaffoldModule["aiSdrInitModuleChoices"],
+) {
   const include: string[] = [];
   const exclude: string[] = [];
 
-  for (const choice of aiSdrInitModuleChoices) {
+  for (const choice of choices) {
     if (flags[`with-${choice.id}`] === true) {
       include.push(choice.id);
     }
@@ -2391,8 +2475,9 @@ function resolveModuleChoiceFlags(flags: Record<string, string | boolean>) {
 }
 
 async function printPlan(module: AiSdrModuleDefinition) {
+  const legacy = await loadLegacyFramework();
   const config = await getActiveConfig();
-  const plan = buildModuleInstallPlan(module, {
+  const plan = legacy.buildModuleInstallPlan(module, {
     installedModuleIds: (config.modules ?? []).map((item: AiSdrModuleDefinition) => item.id),
   });
 
@@ -2412,8 +2497,9 @@ async function printPlan(module: AiSdrModuleDefinition) {
 }
 
 async function printConnectionGuide(module: AiSdrModuleDefinition) {
+  const legacy = await loadLegacyFramework();
   const config = await getActiveConfig();
-  const plan = buildModuleInstallPlan(module, {
+  const plan = legacy.buildModuleInstallPlan(module, {
     installedModuleIds: (config.modules ?? []).map((item: AiSdrModuleDefinition) => item.id),
   });
 
@@ -2427,7 +2513,7 @@ async function printConnectionGuide(module: AiSdrModuleDefinition) {
   printList("Next steps", plan.nextSteps);
 }
 
-function summarizeInstallPlan(plan: ReturnType<typeof buildModuleInstallPlan>) {
+function summarizeInstallPlan(plan: LegacyInstallPlan) {
   return {
     moduleId: plan.moduleId,
     displayName: plan.displayName,
@@ -2530,6 +2616,7 @@ async function handleClaudeCodeMcp(flags: Record<string, string | boolean>) {
 }
 
 async function applyModuleToScaffold(module: AiSdrModuleDefinition) {
+  const legacyScaffold = await loadLegacyScaffold();
   const scaffoldConfigPath = resolveScaffoldConfigPath(process.cwd());
   const scaffoldConfigSource = readFileSyncSafe(scaffoldConfigPath);
   const metadata = parseScaffoldConfigMetadata(scaffoldConfigSource);
@@ -2543,7 +2630,7 @@ async function applyModuleToScaffold(module: AiSdrModuleDefinition) {
   selectedModuleIds.add(module.id);
 
   const currentConfig = await importConfigFrom(scaffoldConfigPath);
-  const spec = buildScaffoldSpec(currentConfig, {
+  const spec = legacyScaffold.buildScaffoldSpec(currentConfig, {
     name: metadata.scaffoldName,
     description: metadata.scaffoldDescription,
     profile: metadata.selectedProfileId,
@@ -2551,10 +2638,10 @@ async function applyModuleToScaffold(module: AiSdrModuleDefinition) {
     kitIds: metadata.selectedKitIds,
   });
 
-  writeFileSyncSafe(scaffoldConfigPath, renderScaffoldConfigModule(spec));
-  writeFileSyncSafe(path.join(process.cwd(), "src", "app-config.ts"), renderScaffoldAppConfigModule(spec));
-  writeFileSyncSafe(path.join(process.cwd(), ".env.example"), renderScaffoldEnvExample(spec));
-  writeFileSyncSafe(path.join(process.cwd(), "TRELLIS_SETUP.md"), renderScaffoldSetupChecklist(spec));
+  writeFileSyncSafe(scaffoldConfigPath, legacyScaffold.renderScaffoldConfigModule(spec));
+  writeFileSyncSafe(path.join(process.cwd(), "src", "app-config.ts"), legacyScaffold.renderScaffoldAppConfigModule(spec));
+  writeFileSyncSafe(path.join(process.cwd(), ".env.example"), legacyScaffold.renderScaffoldEnvExample(spec));
+  writeFileSyncSafe(path.join(process.cwd(), "TRELLIS_SETUP.md"), legacyScaffold.renderScaffoldSetupChecklist(spec));
   writeFileSyncSafe(path.join(process.cwd(), "README.md"), renderScaffoldReadme(metadata.scaffoldName, process.cwd(), spec));
 
   const updatedFiles = [
@@ -2621,8 +2708,11 @@ function parseScaffoldConfigMetadata(source: string) {
   };
 }
 
-function summarizeOptionalModuleChoices(selectedModuleIds: string[]) {
-  const selected = aiSdrInitModuleChoices
+function summarizeOptionalModuleChoices(
+  selectedModuleIds: string[],
+  choices: LegacyScaffoldModule["aiSdrInitModuleChoices"],
+) {
+  const selected = choices
     .filter((choice) => selectedModuleIds.includes(choice.moduleId))
     .map((choice) => `${choice.displayName} (${choice.id})`);
 
@@ -2972,7 +3062,7 @@ function sanitizePackageName(value: string) {
 function renderScaffoldReadme(
   appName: string,
   targetDir: string,
-  spec: ReturnType<typeof buildScaffoldSpec>,
+  spec: LegacyScaffoldSpec,
 ) {
   return `# ${appName}
 
@@ -3033,6 +3123,7 @@ npm run trellis -- mcp claude-code --local --write
 }
 
 async function applyKitToScaffold(kitId: DomainKitId) {
+  const legacyScaffold = await loadLegacyScaffold();
   const scaffoldConfigPath = resolveScaffoldConfigPath(process.cwd());
   const scaffoldConfigSource = readFileSyncSafe(scaffoldConfigPath);
   const metadata = parseScaffoldConfigMetadata(scaffoldConfigSource);
@@ -3051,7 +3142,7 @@ async function applyKitToScaffold(kitId: DomainKitId) {
   }
 
   const baseConfig = await loadBundledBaseConfig([kitId]);
-  const spec = buildScaffoldSpec(baseConfig, {
+  const spec = legacyScaffold.buildScaffoldSpec(baseConfig, {
     name: metadata.scaffoldName,
     description: metadata.scaffoldDescription,
     profile: metadata.selectedProfileId,
@@ -3059,10 +3150,10 @@ async function applyKitToScaffold(kitId: DomainKitId) {
     kitIds: [kitId],
   });
 
-  writeFileSyncSafe(scaffoldConfigPath, renderScaffoldConfigModule(spec));
-  writeFileSyncSafe(path.join(process.cwd(), "src", "app-config.ts"), renderScaffoldAppConfigModule(spec));
-  writeFileSyncSafe(path.join(process.cwd(), ".env.example"), renderScaffoldEnvExample(spec));
-  writeFileSyncSafe(path.join(process.cwd(), "TRELLIS_SETUP.md"), renderScaffoldSetupChecklist(spec));
+  writeFileSyncSafe(scaffoldConfigPath, legacyScaffold.renderScaffoldConfigModule(spec));
+  writeFileSyncSafe(path.join(process.cwd(), "src", "app-config.ts"), legacyScaffold.renderScaffoldAppConfigModule(spec));
+  writeFileSyncSafe(path.join(process.cwd(), ".env.example"), legacyScaffold.renderScaffoldEnvExample(spec));
+  writeFileSyncSafe(path.join(process.cwd(), "TRELLIS_SETUP.md"), legacyScaffold.renderScaffoldSetupChecklist(spec));
   writeFileSyncSafe(path.join(process.cwd(), "README.md"), renderScaffoldReadme(metadata.scaffoldName, process.cwd(), spec));
 
   console.log(`Applied kit "${kitId}" to ${scaffoldConfigPath}`);
@@ -3111,7 +3202,7 @@ function buildScaffoldPackage(
     devDependencies: Record<string, string>;
     workspaces?: string[];
   },
-  spec: ReturnType<typeof buildScaffoldSpec>,
+  spec: LegacyScaffoldSpec,
 ) {
   const workspaceDependencies: Record<string, string> = {
     "@trellis/default-sdr": "workspace:*",

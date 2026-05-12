@@ -118,6 +118,7 @@ Local repository verification:
 
 ```bash
 npm run typecheck
+npm run build
 npm test
 npm run trellis -- doctor --json
 npm run trellis -- smoke --json
@@ -139,6 +140,8 @@ Older composition commands and the AI SDR reference app remain only for migratio
 - `trellis add ... --legacy`
 - `trellis init ... --legacy`
 - `trellis init ... --kit sdr`
+- `npm run legacy:*`
+- `npm run build:all`
 - `examples/reference-app`
 
 Do not document those as the first-run product path.
