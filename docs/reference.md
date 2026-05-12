@@ -36,11 +36,12 @@ The v3 baseline persists:
 - prospects
 - drafts
 - approvals
+- provider actions
 - audit events
 
 Those records are enough to prove the GTM control loop is observable and safe before any provider writes happen.
 
-Approval decisions update D1, append an audit event, and enqueue a runtime event. Provider side effects still remain blocked until the approved action executor exists.
+Approval decisions update D1, append an audit event, and enqueue a runtime event. Approved side effects create provider action intents. If no-send mode is still enabled, those intents are recorded as `blocked_no_send` instead of calling the provider.
 
 Signal webhooks support optional shared-secret verification through `TRELLIS_WEBHOOK_SECRET` or `SIGNAL_WEBHOOK_SECRET`. If a secret is configured, callers must send either `Authorization: Bearer <secret>`, `x-trellis-webhook-secret`, or `x-webhook-secret`.
 

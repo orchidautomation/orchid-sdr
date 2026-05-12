@@ -80,6 +80,17 @@ export interface TrellisApproval {
   status: "pending" | "approved" | "rejected" | string;
 }
 
+export interface TrellisProviderAction {
+  id: string;
+  approvalId: string;
+  signalId: string;
+  draftId?: string;
+  provider: string;
+  operation: string;
+  status: "blocked_no_send" | "queued" | "completed" | "failed" | string;
+  traceId: string;
+}
+
 export interface TrellisProspect {
   id: string;
   signalId: string;
@@ -185,6 +196,8 @@ interface TrellisApprovalDecision {
   approvalId: string;
   signalId: string;
   status: TrellisApprovalDecisionStatus;
+  action: string;
+  draftId?: string;
   actor?: string;
   reason?: string;
 }
@@ -200,6 +213,7 @@ export const schema = {
       prospects: z.array(z.unknown()).optional(),
       threads: z.array(z.unknown()).optional(),
       approvals: z.array(z.unknown()).optional(),
+      providerActions: z.array(z.unknown()).optional(),
       auditEvents: z.array(z.unknown()).optional(),
     });
   },
@@ -539,6 +553,26 @@ function matchApprovalDecisionRoute(pathname: string) {
   };
 }
 
+function inferApprovalAction(approvalId: string) {
+  if (approvalId.endsWith("_email_send")) {
+    return "email.send";
+  }
+  if (approvalId.endsWith("_crm_update")) {
+    return "crm.update";
+  }
+  return "provider.action";
+}
+
+function inferApprovalDraftId(approvalId: string) {
+  const action = inferApprovalAction(approvalId).replace(/[^a-z0-9]+/gi, "_");
+  const prefix = "approval_";
+  const suffix = `_${action}`;
+  if (!approvalId.startsWith(prefix) || !approvalId.endsWith(suffix)) {
+    return undefined;
+  }
+  return approvalId.slice(prefix.length, -suffix.length);
+}
+
 function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): TrellisCloudflareRuntime {
   class TrellisAgentObject {
     constructor(
@@ -642,9 +676,11 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             approvalId: approvalDecision.approvalId,
             signalId: readString(record.signalId) ?? `approval:${approvalDecision.approvalId}`,
             status: approvalDecision.status,
+            action: readString(record.action) ?? inferApprovalAction(approvalDecision.approvalId),
+            draftId: readString(record.draftId) ?? inferApprovalDraftId(approvalDecision.approvalId),
             actor: readString(record.actor),
             reason: readString(record.reason),
-          });
+          }, agent.config);
           return jsonResponse({
             ok: true,
             approval: {
@@ -652,6 +688,13 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               status: approvalDecision.status,
             },
             ...decision,
+          });
+        }
+
+        if (url.pathname === "/provider-actions") {
+          return jsonResponse({
+            ok: true,
+            snapshot: await readRuntimeSnapshot(env),
           });
         }
 
@@ -668,6 +711,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               "trellis.workflow.inspect",
               "trellis.approval.approve",
               "trellis.approval.reject",
+              "trellis.providerAction.inspect",
               "trellis.audit.search",
             ],
           });
@@ -697,6 +741,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             "/webhooks/signals",
             "/approvals/:id/approve",
             "/approvals/:id/reject",
+            "/provider-actions",
             "/mcp/trellis",
             "/dashboard",
           ],
@@ -860,7 +905,7 @@ async function persistRuntimeResult(env: Record<string, unknown> | undefined, ru
 
   return {
     enabled: true,
-    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_approvals", "trellis_audit_events"],
+    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_approvals", "trellis_provider_actions", "trellis_audit_events"],
   };
 }
 
@@ -918,6 +963,20 @@ async function ensureD1Schema(db: TrellisD1Database) {
       updated_at TEXT NOT NULL
     )
   `);
+  await runD1(db, `
+    CREATE TABLE IF NOT EXISTS trellis_provider_actions (
+      id TEXT PRIMARY KEY,
+      approval_id TEXT NOT NULL,
+      signal_id TEXT NOT NULL,
+      draft_id TEXT,
+      provider TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      status TEXT NOT NULL,
+      trace_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
 }
 
 async function runD1(db: TrellisD1Database, sql: string, bindings: unknown[] = []) {
@@ -948,14 +1007,57 @@ async function enqueueRuntimeEvent(env: Record<string, unknown> | undefined, run
   };
 }
 
-async function recordApprovalDecision(env: Record<string, unknown> | undefined, decision: TrellisApprovalDecision) {
+async function recordApprovalDecision(
+  env: Record<string, unknown> | undefined,
+  decision: TrellisApprovalDecision,
+  config: TrellisAgentConfig,
+) {
+  const providerAction = decision.status === "approved"
+    ? createProviderActionIntent(decision, config)
+    : null;
   return {
-    persistence: await persistApprovalDecision(env, decision),
-    queue: await enqueueApprovalDecision(env, decision),
+    persistence: await persistApprovalDecision(env, decision, providerAction),
+    queue: await enqueueApprovalDecision(env, decision, providerAction),
+    providerAction,
   };
 }
 
-async function persistApprovalDecision(env: Record<string, unknown> | undefined, decision: TrellisApprovalDecision) {
+function createProviderActionIntent(
+  decision: TrellisApprovalDecision,
+  config: TrellisAgentConfig,
+): TrellisProviderAction {
+  const provider = providerForOperation(config, decision.action);
+  const status = config.safety?.noSends === false ? "queued" : "blocked_no_send";
+  return {
+    id: `provider_action_${decision.approvalId}`,
+    approvalId: decision.approvalId,
+    signalId: decision.signalId,
+    draftId: decision.draftId,
+    provider,
+    operation: decision.action,
+    status,
+    traceId: `trace_${decision.signalId}_${decision.approvalId}`,
+  };
+}
+
+function providerForOperation(config: TrellisAgentConfig, operation: string) {
+  if (operation.startsWith("email.") || operation.startsWith("mail.")) {
+    return config.email?.id ?? "email";
+  }
+  if (operation.startsWith("crm.")) {
+    return config.crm?.id ?? "crm";
+  }
+  if (operation.startsWith("research.")) {
+    return config.research?.id ?? "research";
+  }
+  return "provider";
+}
+
+async function persistApprovalDecision(
+  env: Record<string, unknown> | undefined,
+  decision: TrellisApprovalDecision,
+  providerAction: TrellisProviderAction | null,
+) {
   const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
   if (!db?.prepare) {
     return {
@@ -988,13 +1090,50 @@ async function persistApprovalDecision(env: Record<string, unknown> | undefined,
     now,
   ]);
 
+  if (providerAction) {
+    await runD1(db, `
+      INSERT OR REPLACE INTO trellis_provider_actions
+        (id, approval_id, signal_id, draft_id, provider, operation, status, trace_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      providerAction.id,
+      providerAction.approvalId,
+      providerAction.signalId,
+      providerAction.draftId ?? null,
+      providerAction.provider,
+      providerAction.operation,
+      providerAction.status,
+      providerAction.traceId,
+      now,
+      now,
+    ]);
+    await runD1(db, `
+      INSERT OR REPLACE INTO trellis_audit_events
+        (id, signal_id, workflow, type, message, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [
+      `evt_${providerAction.status}_${providerAction.id}`,
+      providerAction.signalId,
+      "provider-action",
+      `provider_action.${providerAction.status}`,
+      `${providerAction.status === "queued" ? "Queued" : "Blocked"} provider action ${providerAction.operation} for ${providerAction.provider}.`,
+      now,
+    ]);
+  }
+
   return {
     enabled: true,
-    tables: ["trellis_approvals", "trellis_audit_events"],
+    tables: providerAction
+      ? ["trellis_approvals", "trellis_provider_actions", "trellis_audit_events"]
+      : ["trellis_approvals", "trellis_audit_events"],
   };
 }
 
-async function enqueueApprovalDecision(env: Record<string, unknown> | undefined, decision: TrellisApprovalDecision) {
+async function enqueueApprovalDecision(
+  env: Record<string, unknown> | undefined,
+  decision: TrellisApprovalDecision,
+  providerAction: TrellisProviderAction | null,
+) {
   const queue = env?.TRELLIS_EVENTS as TrellisQueue | undefined;
   if (!queue?.send) {
     return {
@@ -1002,17 +1141,29 @@ async function enqueueApprovalDecision(env: Record<string, unknown> | undefined,
     };
   }
 
+  let messages = 1;
   await queue.send({
     type: "trellis.approval.decided",
     approvalId: decision.approvalId,
     signalId: decision.signalId,
     status: decision.status,
+    action: decision.action,
     actor: decision.actor,
     reason: decision.reason,
+    providerActionId: providerAction?.id,
   });
+  if (providerAction) {
+    await queue.send({
+      type: providerAction.status === "queued"
+        ? "trellis.provider.action.queued"
+        : "trellis.provider.action.blocked",
+      providerAction,
+    });
+    messages += 1;
+  }
   return {
     enabled: true,
-    messages: 1,
+    messages,
   };
 }
 
@@ -1034,6 +1185,7 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
       prospects: await countD1Rows(db, "trellis_prospects"),
       drafts: await countD1Rows(db, "trellis_drafts"),
       approvals: await countD1Rows(db, "trellis_approvals"),
+      providerActions: await countD1Rows(db, "trellis_provider_actions"),
       auditEvents: await countD1Rows(db, "trellis_audit_events"),
     },
     packs,
@@ -1125,6 +1277,7 @@ function renderDashboard(
     prospects: 0,
     drafts: 0,
     approvals: 0,
+    providerActions: 0,
     auditEvents: 0,
   };
   const packs = snapshot.packs;
@@ -1144,6 +1297,7 @@ function renderDashboard(
         <dt>Prospects</dt><dd>${counts.prospects}</dd>
         <dt>Drafts</dt><dd>${counts.drafts}</dd>
         <dt>Approvals</dt><dd>${counts.approvals}</dd>
+        <dt>Provider Actions</dt><dd>${counts.providerActions}</dd>
         <dt>Audit Events</dt><dd>${counts.auditEvents}</dd>
         <dt>Knowledge Files</dt><dd>${packs.knowledge?.manifest?.files ?? 0}</dd>
         <dt>Skill Files</dt><dd>${packs.skills?.objects ?? 0}</dd>

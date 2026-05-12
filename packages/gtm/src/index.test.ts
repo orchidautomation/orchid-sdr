@@ -83,6 +83,9 @@ describe("@trellis/gtm v3 API", () => {
 
   it("hides the Cloudflare worker shell behind trellis.cloudflare", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
       knowledge: "knowledge/**/*.md",
       skills: "skills/**/SKILL.md",
       safety: trellis.safeOutbound(),
@@ -147,16 +150,19 @@ describe("@trellis/gtm v3 API", () => {
         source: "unit.test",
       }),
     }), env);
-    const mcp = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), env);
-    const dashboard = await runtime.worker.fetch(new Request("https://example.com/dashboard"), env);
     const approval = await runtime.worker.fetch(new Request("https://example.com/approvals/approval_draft_sig_live_email_send/approve", {
       method: "POST",
       body: JSON.stringify({
         signalId: "sig_live",
+        draftId: "draft_sig_live",
+        action: "email.send",
         actor: "operator@example.com",
         reason: "Fixture approval.",
       }),
     }), env);
+    const mcp = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), env);
+    const providerActions = await runtime.worker.fetch(new Request("https://example.com/provider-actions"), env);
+    const dashboard = await runtime.worker.fetch(new Request("https://example.com/dashboard"), env);
 
     await expect(health.json()).resolves.toMatchObject({
       ok: true,
@@ -247,6 +253,8 @@ describe("@trellis/gtm v3 API", () => {
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_prospects"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_drafts"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_approvals"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("CREATE TABLE IF NOT EXISTS trellis_provider_actions"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_provider_actions"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_audit_events"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("UPDATE trellis_approvals SET status = ?"))).toBe(true);
     expect(fakeQueue.messages).toEqual([
@@ -259,6 +267,17 @@ describe("@trellis/gtm v3 API", () => {
         type: "trellis.approval.decided",
         approvalId: "approval_draft_sig_live_email_send",
         status: "approved",
+        providerActionId: "provider_action_approval_draft_sig_live_email_send",
+      }),
+      expect.objectContaining({
+        type: "trellis.provider.action.blocked",
+        providerAction: expect.objectContaining({
+          id: "provider_action_approval_draft_sig_live_email_send",
+          provider: "agentmail",
+          operation: "email.send",
+          status: "blocked_no_send",
+          traceId: "trace_sig_live_approval_draft_sig_live_email_send",
+        }),
       }),
     ]);
     await expect(mcp.json()).resolves.toMatchObject({
@@ -270,7 +289,8 @@ describe("@trellis/gtm v3 API", () => {
           prospects: 1,
           drafts: 1,
           approvals: 2,
-          auditEvents: 4,
+          providerActions: 1,
+          auditEvents: 6,
         },
         packs: {
           enabled: true,
@@ -284,12 +304,21 @@ describe("@trellis/gtm v3 API", () => {
       },
       tools: expect.arrayContaining(["trellis.smoke", "trellis.workflow.inspect", "trellis.approval.approve"]),
     });
+    await expect(providerActions.json()).resolves.toMatchObject({
+      ok: true,
+      snapshot: {
+        counts: {
+          providerActions: 1,
+        },
+      },
+    });
     const dashboardHtml = await dashboard.text();
     expect(dashboardHtml).toContain("v3 Cloudflare GTM runtime");
     expect(dashboardHtml).toContain("<dt>Signals</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Prospects</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Drafts</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Approvals</dt><dd>2</dd>");
+    expect(dashboardHtml).toContain("<dt>Provider Actions</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Knowledge Files</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Skill Files</dt><dd>1</dd>");
     await expect(approval.json()).resolves.toMatchObject({
@@ -303,7 +332,14 @@ describe("@trellis/gtm v3 API", () => {
       },
       queue: {
         enabled: true,
-        messages: 1,
+        messages: 2,
+      },
+      providerAction: {
+        id: "provider_action_approval_draft_sig_live_email_send",
+        provider: "agentmail",
+        operation: "email.send",
+        status: "blocked_no_send",
+        traceId: "trace_sig_live_approval_draft_sig_live_email_send",
       },
     });
   });

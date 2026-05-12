@@ -178,7 +178,8 @@ v3 parity:
 - D1 stores queryable projection
 - Durable Object SQLite stores local thread memory
 - no-send mode and approval gates are enforced before every side effect
-- approvals can be approved or rejected as durable state transitions before side-effect executors exist
+- approvals can be approved or rejected as durable state transitions
+- approved side effects create provider action intents, and no-send mode records them as `blocked_no_send` instead of calling providers
 - follow-ups use Workflows durable sleep/checkpoints
 
 Legacy to remove after replacement:
@@ -206,6 +207,7 @@ v3 parity:
 - `trellis connect` writes non-secret provider manifests under `.trellis/providers/`
 - provider readiness checks are generated
 - provider side effects are approval-gated
+- provider action intents carry approval, signal, draft, operation, provider, and trace ids
 - provider calls carry trace/workflow/prospect ids
 - provider failures are retried or moved to dead letter with operator recovery
 
