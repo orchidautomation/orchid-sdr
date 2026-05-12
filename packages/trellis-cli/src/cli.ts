@@ -1116,12 +1116,26 @@ async function loadKnowledgePackManifest(cwd: string) {
   const manifestPath = path.join(cwd, trellisStateDirName, knowledgePackManifestName);
   if (!existsSync(manifestPath)) {
     const fallbackKnowledgeDir = path.join(cwd, "knowledge");
+    const fallbackFiles = existsSync(fallbackKnowledgeDir)
+      ? await collectMarkdownFiles(fallbackKnowledgeDir)
+      : [];
     return {
-      ok: existsSync(fallbackKnowledgeDir),
-      detail: existsSync(fallbackKnowledgeDir)
-        ? "knowledge directory exists; run trellis docs add <path> to create a pack manifest"
+      ok: fallbackFiles.length > 0,
+      detail: fallbackFiles.length > 0
+        ? `knowledge directory has ${fallbackFiles.length} markdown file(s); deploy will auto-pack it`
+        : existsSync(fallbackKnowledgeDir)
+          ? "knowledge directory exists but no markdown files were found"
         : "no knowledge pack manifest or knowledge directory found",
-      summary: null,
+      summary: fallbackFiles.length > 0
+        ? {
+            manifestPath: null,
+            source: "knowledge",
+            target: "r2://TRELLIS_PACKS/knowledge",
+            files: fallbackFiles.length,
+            missingFiles: [],
+            generated: true,
+          }
+        : null,
     };
   }
 
@@ -1196,7 +1210,27 @@ async function collectSkillPackFilePaths(cwd: string) {
 async function readKnowledgeManifestForSync(cwd: string) {
   const manifestPath = path.join(cwd, trellisStateDirName, knowledgePackManifestName);
   if (!existsSync(manifestPath)) {
-    return null;
+    const fallbackKnowledgeDir = path.join(cwd, "knowledge");
+    if (!existsSync(fallbackKnowledgeDir)) {
+      return null;
+    }
+    const files = await collectMarkdownFiles(fallbackKnowledgeDir);
+    if (files.length === 0) {
+      return null;
+    }
+    return {
+      manifestPath: null,
+      source: "knowledge",
+      files: await Promise.all(files.map(async (filePath) => {
+        const contents = await readFile(filePath);
+        return {
+          path: toPosixPath(path.relative(cwd, filePath)),
+          bytes: contents.byteLength,
+          sha256: createHash("sha256").update(contents).digest("hex"),
+        };
+      })),
+      generated: true,
+    };
   }
   try {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
@@ -1806,14 +1840,16 @@ async function buildCloudflarePackSyncPlan(cwd: string, wranglerConfigPath: stri
 
   const knowledgeManifest = await readKnowledgeManifestForSync(cwd);
   if (knowledgeManifest) {
-    const manifestContents = await readFile(knowledgeManifest.manifestPath);
-    entries.push({
-      scope: "knowledge",
-      filePath: knowledgeManifest.manifestPath,
-      objectKey: "knowledge/manifest.json",
-      bytes: manifestContents.byteLength,
-      sha256: createHash("sha256").update(manifestContents).digest("hex"),
-    });
+    if (knowledgeManifest.manifestPath) {
+      const manifestContents = await readFile(knowledgeManifest.manifestPath);
+      entries.push({
+        scope: "knowledge",
+        filePath: knowledgeManifest.manifestPath,
+        objectKey: "knowledge/manifest.json",
+        bytes: manifestContents.byteLength,
+        sha256: createHash("sha256").update(manifestContents).digest("hex"),
+      });
+    }
     for (const file of knowledgeManifest.files) {
       const filePath = path.join(cwd, file.path);
       if (!existsSync(filePath)) {
@@ -1971,9 +2007,9 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
     `cd ${targetDir}`,
     "npm install",
     "npm run cf:login",
-    "npm run docs:add",
     "npm run deploy",
     "npm run smoke",
+    "npm run verify",
     "npm run trellis -- connect attio",
     "npm run trellis -- connect agentmail",
     "npm run trellis -- connect firecrawl",
@@ -2574,9 +2610,9 @@ Trellis v3 GTM agent scaffold.
 \`\`\`bash
 npm install
 npm run cf:login
-npm run docs:add
 npm run deploy
 npm run smoke
+npm run verify
 \`\`\`
 
 The first deploy is Cloudflare-first and does not require Attio, AgentMail, or Firecrawl credentials. Those are connected after the app boots:
@@ -2592,7 +2628,7 @@ npm run trellis -- docs add ./product-docs
 
 Your app code stays Trellis-only in \`src/agent.ts\`. The generated \`src/trellis-flue.ts\` adapter installs the hidden Flue harness, mounts Trellis R2 markdown packs into Flue's virtual sandbox, uses the Cloudflare AI binding through the default AI Gateway, and stores Flue sessions in \`TRELLIS_DB\`.
 
-Deploy syncs the verified knowledge manifest, markdown files, and tracked \`SKILL.md\` files into the \`TRELLIS_PACKS\` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
+Deploy auto-packs the default \`knowledge/**/*.md\` files, or uses \`.trellis/knowledge-pack.json\` when you run \`trellis docs add <path>\`. It also syncs tracked \`SKILL.md\` files into the \`TRELLIS_PACKS\` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
 `;
 }
 

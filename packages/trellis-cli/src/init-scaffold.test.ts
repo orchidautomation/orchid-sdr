@@ -115,12 +115,61 @@ describe("trellis init v3 scaffold", () => {
       expect(envExample).toContain("TRELLIS_FOLLOW_UP_DELAY=3 days");
       expect(readme).toContain("first deploy is Cloudflare-first");
       expect(readme).toContain("npm run cf:login");
+      expect(readme).toContain("Deploy auto-packs the default `knowledge/**/*.md` files");
       expect(readme).toContain("npm run trellis -- connect attio");
       expect(readme).toContain("Your app code stays Trellis-only in `src/agent.ts`");
 
       expect(existsSync(path.join(targetDir, "trellis.config.ts"))).toBe(false);
       expect(existsSync(path.join(targetDir, "src", "app-config.ts"))).toBe(false);
       expect(existsSync(path.join(targetDir, "TRELLIS_SETUP.md"))).toBe(false);
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
+
+  it("auto-packs scaffold knowledge without an explicit docs add step", () => {
+    const repoRoot = process.cwd();
+    const targetDir = mkdtempSync(path.join(tmpdir(), "trellis-auto-pack-test."));
+
+    try {
+      const initResult = JSON.parse(runCli(repoRoot, [
+        "init",
+        targetDir,
+        "--name",
+        "auto-pack-sdr",
+        "--json",
+      ], repoRoot)) as {
+        nextSteps: string[];
+      };
+      expect(initResult.nextSteps).not.toContain("npm run docs:add");
+      expect(initResult.nextSteps).toContain("npm run deploy");
+      expect(existsSync(path.join(targetDir, ".trellis", "knowledge-pack.json"))).toBe(false);
+
+      const doctorResult = JSON.parse(runCli(repoRoot, [
+        "doctor",
+        "--json",
+      ], targetDir)) as {
+        knowledgePack: { files: number; generated?: boolean; manifestPath: string | null } | null;
+      };
+      expect(doctorResult.knowledgePack).toMatchObject({
+        files: 1,
+        generated: true,
+        manifestPath: null,
+      });
+
+      const deployResult = JSON.parse(runCli(repoRoot, [
+        "deploy",
+        "--json",
+      ], targetDir)) as {
+        packSync: {
+          entries: Array<{ objectKey: string }>;
+        };
+      };
+      expect(deployResult.packSync.entries.map((entry) => entry.objectKey)).toEqual(expect.arrayContaining([
+        "knowledge/files/icp.md",
+        "skills/files/icp-qualification/SKILL.md",
+      ]));
+      expect(deployResult.packSync.entries.map((entry) => entry.objectKey)).not.toContain("knowledge/manifest.json");
     } finally {
       rmSync(targetDir, { recursive: true, force: true });
     }

@@ -65,7 +65,7 @@ Keep product truth in markdown:
 npm run trellis -- docs add ./knowledge
 ```
 
-This writes `.trellis/knowledge-pack.json` with file paths, sizes, and hashes. Deploy uses that manifest plus tracked `skills/**/SKILL.md` files as the R2-backed pack sync plan.
+This step is optional for the generated app. Deploy auto-packs the default `knowledge/**/*.md` files, so first boot does not require a separate docs command. Run `docs add` when you want `.trellis/knowledge-pack.json` with file paths, sizes, and hashes. Deploy uses that manifest when present, plus tracked `skills/**/SKILL.md` files, as the R2-backed pack sync plan.
 
 ## 5. Verify Before Providers
 
