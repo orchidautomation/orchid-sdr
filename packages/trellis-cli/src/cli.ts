@@ -884,6 +884,7 @@ async function handleDoctorCommand() {
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
   const skillPack = await loadSkillPack(process.cwd());
   const providerReadiness = await loadAllV3ProviderReadiness();
+  const traceExport = readTraceExportReadiness();
   const smoke = await runTrellisSmoke();
   const checks = [
     doctorCheck("cloudflare.config", Boolean(wranglerConfigPath), "warn", wranglerConfigPath
@@ -908,6 +909,7 @@ async function handleDoctorCommand() {
     ),
     doctorCheck("knowledge.pack", knowledgePack.ok, "warn", knowledgePack.detail),
     doctorCheck("skills.pack", skillPack.ok, "warn", skillPack.detail),
+    doctorCheck("observability.traceExport", true, "warn", traceExport.detail),
     ...providerReadiness.map((provider) =>
       doctorCheck(`provider.${provider.id}`, provider.ok, "warn", provider.detail),
     ),
@@ -929,6 +931,7 @@ async function handleDoctorCommand() {
       },
       knowledgePack: knowledgePack.summary,
       skillPack: skillPack.summary,
+      traceExport: traceExport.summary,
       providers: Object.fromEntries(providerReadiness.map((provider) => [provider.id, provider.summary])),
       cloudflare: provisioning.summary,
     });
@@ -1024,6 +1027,31 @@ async function loadAllV3ProviderReadiness() {
       .map((id) => loadV3ProviderReadiness(id)),
   );
   return [...required, ...optional];
+}
+
+function readTraceExportReadiness() {
+  const generic = Boolean(process.env.TRELLIS_TRACE_EXPORT_URL);
+  const langfuseMissing = V3_CONNECTIONS.langfuse.requiredEnv.filter((name) => !process.env[name]);
+  const braintrustMissing = V3_CONNECTIONS.braintrust.requiredEnv.filter((name) => !process.env[name]);
+  const langfuse = langfuseMissing.length === 0;
+  const braintrust = braintrustMissing.length === 0;
+  const enabled = generic || langfuse || braintrust;
+  return {
+    detail: enabled
+      ? "external trace export configured; D1 trace events remain canonical"
+      : "D1 trace events enabled; optional external trace export not configured",
+    summary: {
+      enabled,
+      canonical: "trellis_trace_events",
+      generic,
+      langfuse,
+      braintrust,
+      missingEnv: {
+        langfuse: langfuseMissing,
+        braintrust: braintrustMissing,
+      },
+    },
+  };
 }
 
 async function loadV3ProviderReadiness(id: V3ConnectionId) {
@@ -1378,6 +1406,7 @@ async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
   const skillPack = await loadSkillPack(process.cwd());
   const providerReadiness = await loadAllV3ProviderReadiness();
+  const traceExport = readTraceExportReadiness();
   const packSync = await buildCloudflarePackSyncPlan(process.cwd(), wranglerConfigPath);
   const apply = flags.apply === true || flags.write === true || (Boolean(wranglerConfigPath) && !jsonOutput && flags["dry-run"] !== true);
   const plan = {
@@ -1398,6 +1427,7 @@ async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
       "R2 pack sync for knowledge and skills",
       "Queues and dead-letter queues",
       "AI Gateway route",
+      "D1 trace events and optional trace export",
       "Trellis MCP and dashboard routes",
     ],
     firstBoot: {
@@ -1409,6 +1439,7 @@ async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
     skillPack: skillPack.summary,
     cloudflare: provisioning.summary,
     packSync: packSync.summary,
+    traceExport: traceExport.summary,
     providers: Object.fromEntries(providerReadiness.map((provider) => [provider.id, provider.summary])),
     next: [
       "trellis smoke",
@@ -1438,6 +1469,7 @@ Trellis v3 provisions or verifies:
   - R2 pack sync for knowledge and skills
   - Queues and dead-letter queues
   - AI Gateway route
+  - D1 trace events and optional trace export
   - Trellis MCP and dashboard routes
 
 First boot:
