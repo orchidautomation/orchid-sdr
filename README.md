@@ -73,12 +73,23 @@ export default trellis.agent("sdr", {
   safety: trellis.safeOutbound(),
 }, async (app) => {
   const signal = await app.signal();
+  const context = await app.context(signal);
   const qualification = await app.skill("icp-qualification", {
-    context: await app.context(signal),
+    context,
     schema: schema.qualification(),
   });
+  const research = await app.skill("research-brief", {
+    context,
+    args: { qualification },
+    schema: schema.researchBrief(),
+  });
+  const draft = await app.skill("sdr-copy", {
+    context,
+    args: { qualification, research },
+    schema: schema.outboundDraft(),
+  });
 
-  return app.workflow("prospect").start({ signal, qualification });
+  return app.workflow("prospect").start({ signal, qualification, research, draft });
 });
 ```
 

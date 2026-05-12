@@ -59,13 +59,14 @@ describe("@trellis/gtm v3 API", () => {
     expect(result.externalWrites).toBe(false);
     expect(result.noSendsMode).toBe(true);
     expect(result.fixture.id).toBe("sig_smoke_001");
-    expect(result.skillCalls.map((call) => call.name)).toEqual(["icp-qualification"]);
+    expect(result.skillCalls.map((call) => call.name)).toEqual(["icp-qualification", "research-brief", "sdr-copy"]);
     expect(result.startedWorkflows.map((workflow) => workflow.name)).toEqual(["prospect"]);
     expect(result.prospects).toHaveLength(1);
     expect(result.drafts).toEqual([
       expect.objectContaining({
         status: "blocked_pending_approval",
         approvalRequiredFor: ["email.send", "crm.update"],
+        body: expect.stringContaining("Subject: GTM agent workflow"),
       }),
     ]);
     expect(result.approvals).toEqual([
@@ -74,6 +75,8 @@ describe("@trellis/gtm v3 API", () => {
     ]);
     expect(result.auditEvents.map((event) => event.type)).toEqual([
       "signal.accepted",
+      "skill.completed",
+      "skill.completed",
       "skill.completed",
       "workflow.started",
       "draft.created",

@@ -321,6 +321,22 @@ export const schema = {
       nextStep: z.string().optional(),
     });
   },
+  researchBrief() {
+    return z.object({
+      summary: z.string().min(1),
+      confidence: z.number().min(0).max(1),
+      evidence: z.array(z.string()).default([]),
+      sources: z.array(z.string()).default([]),
+      copyGuidance: z.string().optional(),
+    });
+  },
+  outboundDraft() {
+    return z.object({
+      subject: z.string().min(1),
+      body: z.string().min(1),
+      rationale: z.string().optional(),
+    });
+  },
 };
 
 export const trellis = {
@@ -423,11 +439,7 @@ export function createTrellisTestApp(input?: {
       }
 
       const result = input?.skillResults?.[name] ?? {
-        decision: "needs_review",
-        summary: "Fixture qualification result.",
-        confidence: 0.5,
-        matchedEvidence: [],
-        missingEvidence: [],
+        ...defaultSkillResult(name),
       };
       const parsed = parseSkillOutput(result, skillInput.schema);
       auditEvents.push({
@@ -455,7 +467,7 @@ export function createTrellisTestApp(input?: {
             channel: "email",
             status: "blocked_pending_approval",
             approvalRequiredFor: ["email.send", "crm.update"],
-            body: "Fixture outbound draft. Not sent.",
+            body: readDraftBody(workflowInput.draft) ?? "Fixture outbound draft. Not sent.",
           });
           auditEvents.push({
             id: `evt_${auditEvents.length + 1}`,
@@ -618,13 +630,61 @@ function createDefaultSmokeAgent() {
     safety: trellis.safeOutbound(),
   }, async (app) => {
     const signal = await app.signal();
+    const context = await app.context(signal);
     const qualification = await app.skill("icp-qualification", {
-      context: await app.context(signal),
+      context,
       schema: schema.qualification(),
     });
+    const research = await app.skill("research-brief", {
+      context,
+      args: { qualification },
+      schema: schema.researchBrief(),
+    });
+    const draft = await app.skill("sdr-copy", {
+      context,
+      args: { qualification, research },
+      schema: schema.outboundDraft(),
+    });
 
-    return app.workflow("prospect").start({ signal, qualification });
+    return app.workflow("prospect").start({ signal, qualification, research, draft });
   });
+}
+
+function defaultSkillResult(name: string) {
+  switch (name) {
+    case "research-brief":
+      return {
+        summary: "Fixture research found a GTM workflow pain signal and enough account context to draft.",
+        confidence: 0.64,
+        evidence: ["Signal mentions operationalizing GTM agents"],
+        sources: ["fixture.webhook"],
+        copyGuidance: "Keep the email specific, short, and approval-gated.",
+      };
+    case "sdr-copy":
+      return {
+        subject: "GTM agent workflow",
+        body: "Saw your note about operationalizing GTM agents. Worth comparing notes on how teams are making the workflow reliable before letting anything send.",
+        rationale: "Anchored to the signal while staying in no-send mode.",
+      };
+    case "icp-qualification":
+    default:
+      return {
+        decision: "needs_review",
+        summary: "Fixture qualification result.",
+        confidence: 0.5,
+        matchedEvidence: [],
+        missingEvidence: [],
+      };
+  }
+}
+
+function readDraftBody(value: unknown) {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const body = readString(value.body) ?? readString(value.bodyText) ?? readString(value.text);
+  const subject = readString(value.subject);
+  return subject && body ? `Subject: ${subject}\n\n${body}` : body;
 }
 
 function smokeCheck(id: string, passed: boolean, detail: string): TrellisSmokeCheck {

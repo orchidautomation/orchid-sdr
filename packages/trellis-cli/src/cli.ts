@@ -1790,6 +1790,8 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
   await mkdir(path.join(targetDir, "src"), { recursive: true });
   await mkdir(path.join(targetDir, "knowledge"), { recursive: true });
   await mkdir(path.join(targetDir, "skills", "icp-qualification"), { recursive: true });
+  await mkdir(path.join(targetDir, "skills", "research-brief"), { recursive: true });
+  await mkdir(path.join(targetDir, "skills", "sdr-copy"), { recursive: true });
 
   await writeFile(
     path.join(targetDir, "package.json"),
@@ -1802,6 +1804,8 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
   await writeFile(path.join(targetDir, "src", "index.ts"), renderV3WorkerSource());
   await writeFile(path.join(targetDir, "knowledge", "icp.md"), renderV3KnowledgeSeed());
   await writeFile(path.join(targetDir, "skills", "icp-qualification", "SKILL.md"), renderV3QualificationSkill());
+  await writeFile(path.join(targetDir, "skills", "research-brief", "SKILL.md"), renderV3ResearchSkill());
+  await writeFile(path.join(targetDir, "skills", "sdr-copy", "SKILL.md"), renderV3CopySkill());
   await writeFile(path.join(targetDir, "README.md"), renderV3Readme(appName));
 
   const nextSteps = [
@@ -1813,6 +1817,7 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
     "trellis smoke",
     "trellis connect attio",
     "trellis connect agentmail",
+    "trellis connect firecrawl",
   ];
 
   if (jsonOutput) {
@@ -1832,6 +1837,8 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
         "src/index.ts",
         "knowledge/icp.md",
         "skills/icp-qualification/SKILL.md",
+        "skills/research-brief/SKILL.md",
+        "skills/sdr-copy/SKILL.md",
         "README.md",
       ],
       nextSteps,
@@ -1995,12 +2002,23 @@ export default trellis.agent("sdr", {
   safety: trellis.safeOutbound(),
 }, async (app) => {
   const signal = await app.signal();
+  const context = await app.context(signal);
   const qualification = await app.skill("icp-qualification", {
-    context: await app.context(signal),
+    context,
     schema: schema.qualification(),
   });
+  const research = await app.skill("research-brief", {
+    context,
+    args: { qualification },
+    schema: schema.researchBrief(),
+  });
+  const draft = await app.skill("sdr-copy", {
+    context,
+    args: { qualification, research },
+    schema: schema.outboundDraft(),
+  });
 
-  return app.workflow("prospect").start({ signal, qualification });
+  return app.workflow("prospect").start({ signal, qualification, research, draft });
 });
 `;
 }
@@ -2044,6 +2062,38 @@ Return structured output matching the qualification schema:
 - nextStep
 
 Do not send email or update CRM state from this skill. Draft only.
+`;
+}
+
+function renderV3ResearchSkill() {
+  return `# Research Brief
+
+Use the signal, qualification, knowledge pack, and available research tools to produce a grounded account/person brief.
+
+Return structured output matching the research brief schema:
+
+- summary
+- confidence
+- evidence
+- sources
+- copyGuidance
+
+Prefer concise evidence. Do not invent facts when the research tool or knowledge pack does not support them.
+`;
+}
+
+function renderV3CopySkill() {
+  return `# SDR Copy
+
+Write a short outbound email draft using the qualification and research brief.
+
+Return structured output matching the outbound draft schema:
+
+- subject
+- body
+- rationale
+
+Do not send the email. The workflow will keep the draft blocked behind Trellis approvals.
 `;
 }
 

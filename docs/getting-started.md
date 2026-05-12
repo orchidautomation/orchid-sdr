@@ -25,7 +25,7 @@ npm install
 
 `trellis init` writes the v3 Cloudflare GTM app by default:
 
-- `agents/gtm-sdr.ts`
+- `src/agent.ts`
 - `knowledge/**/*.md`
 - `skills/**/SKILL.md`
 - `wrangler.jsonc`
