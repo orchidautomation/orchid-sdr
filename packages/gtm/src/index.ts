@@ -1391,34 +1391,13 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
         }
 
         if (url.pathname === "/mcp/trellis") {
-          const toolCatalog = describeTrellisMcpTools(agent.config);
+          const toolCatalog = describeTrellisMcpTools(env, agent.config);
           return jsonResponse({
             ok: true,
             server: "trellis",
             agent: agent.name,
             snapshot: await readRuntimeSnapshot(env),
-            tools: [
-              "trellis.health",
-              "trellis.smoke",
-              "trellis.smoke.history",
-              "trellis.signal.inspect",
-              "trellis.workflow.inspect",
-              "trellis.approval.approve",
-              "trellis.approval.reject",
-              "trellis.providerAction.inspect",
-              "trellis.providerAction.execute",
-              "trellis.providerAction.complete",
-              "trellis.providerAction.fail",
-              "trellis.operator.controls",
-              "trellis.operator.killSwitch.enable",
-              "trellis.operator.killSwitch.disable",
-              "trellis.workflow.pause",
-              "trellis.workflow.resume",
-              "trellis.workflow.replay",
-              "trellis.providerAction.replay",
-              "trellis.trace.export",
-              "trellis.audit.search",
-            ],
+            tools: toolCatalog.map((tool) => tool.name),
             toolCatalog,
           });
         }
@@ -1576,8 +1555,8 @@ function summarizeTraceExport(env?: Record<string, unknown>) {
   };
 }
 
-function describeTrellisMcpTools(config: TrellisAgentConfig) {
-  return createTrellisMcpTools(undefined, config).map((tool) => ({
+function describeTrellisMcpTools(env: Record<string, unknown> | undefined, config: TrellisAgentConfig) {
+  return createTrellisMcpTools(env, config).map((tool) => ({
     name: tool.name,
     description: tool.description,
     provider: tool.provider,
@@ -1617,12 +1596,186 @@ function createTrellisMcpTools(
       },
     },
     {
+      name: "trellis.smoke",
+      description: "Run the safe Trellis fixture smoke workflow without provider side effects.",
+      operation: "trellis.smoke",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+      execute() {
+        return runTrellisSmoke();
+      },
+    },
+    {
       name: "trellis.smoke.history",
       description: "Inspect durable Trellis smoke run history recorded in D1.",
       operation: "trellis.smoke.history",
       inputSchema: {
         type: "object",
         properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "trellis.signal.inspect",
+      description: "Inspect recent accepted GTM signals from the D1 runtime projection.",
+      operation: "trellis.signal.inspect",
+      inputSchema: {
+        type: "object",
+        properties: {
+          signalId: { type: "string" },
+          threadId: { type: "string" },
+          campaignId: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+      async execute() {
+        const snapshot = await readRuntimeSnapshot(env);
+        return {
+          ok: true,
+          signals: snapshot.recent?.signals ?? [],
+        };
+      },
+    },
+    {
+      name: "trellis.workflow.inspect",
+      description: "Inspect recent workflow runs, statuses, and persisted params.",
+      operation: "trellis.workflow.inspect",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workflowRunId: { type: "string" },
+          signalId: { type: "string" },
+          status: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+      async execute() {
+        const snapshot = await readRuntimeSnapshot(env);
+        return {
+          ok: true,
+          workflowRuns: snapshot.recent?.workflowRuns ?? [],
+        };
+      },
+    },
+    {
+      name: "trellis.knowledge.inspect",
+      description: "Inspect the mounted R2-backed knowledge and skill pack metadata available to Trellis skills.",
+      operation: "trellis.knowledge.inspect",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+      async execute() {
+        const snapshot = await readRuntimeSnapshot(env);
+        return {
+          ok: true,
+          packs: snapshot.packs,
+        };
+      },
+    },
+    {
+      name: "trellis.approval.approve",
+      description: "Approve a pending side-effect approval. This is an operator action and is not executable by the hidden agent harness.",
+      operation: "trellis.approval.approve",
+      inputSchema: {
+        type: "object",
+        required: ["approvalId"],
+        properties: {
+          approvalId: { type: "string" },
+          actor: { type: "string" },
+          reason: { type: "string" },
+          action: { type: "string" },
+          traceId: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "trellis.approval.reject",
+      description: "Reject a pending side-effect approval. This is an operator action and is not executable by the hidden agent harness.",
+      operation: "trellis.approval.reject",
+      inputSchema: {
+        type: "object",
+        required: ["approvalId"],
+        properties: {
+          approvalId: { type: "string" },
+          actor: { type: "string" },
+          reason: { type: "string" },
+          action: { type: "string" },
+          traceId: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "trellis.providerAction.inspect",
+      description: "Inspect recent provider action intents and statuses.",
+      operation: "trellis.providerAction.inspect",
+      inputSchema: {
+        type: "object",
+        properties: {
+          providerActionId: { type: "string" },
+          provider: { type: "string" },
+          status: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+      async execute() {
+        const snapshot = await readRuntimeSnapshot(env);
+        return {
+          ok: true,
+          providerActions: snapshot.recent?.providerActions ?? [],
+        };
+      },
+    },
+    {
+      name: "trellis.providerAction.execute",
+      description: "Execute a queued provider action through the Trellis executor route. This is an operator/runtime action and is not executable by the hidden agent harness.",
+      operation: "trellis.providerAction.execute",
+      inputSchema: {
+        type: "object",
+        required: ["providerActionId"],
+        properties: {
+          providerActionId: { type: "string" },
+          actor: { type: "string" },
+          input: { type: "object" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "trellis.providerAction.complete",
+      description: "Record a provider action completion from an external executor.",
+      operation: "trellis.providerAction.complete",
+      inputSchema: {
+        type: "object",
+        required: ["providerActionId"],
+        properties: {
+          providerActionId: { type: "string" },
+          actor: { type: "string" },
+          reason: { type: "string" },
+          traceId: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "trellis.providerAction.fail",
+      description: "Record a provider action failure from an external executor.",
+      operation: "trellis.providerAction.fail",
+      inputSchema: {
+        type: "object",
+        required: ["providerActionId"],
+        properties: {
+          providerActionId: { type: "string" },
+          actor: { type: "string" },
+          reason: { type: "string" },
+          traceId: { type: "string" },
+        },
         additionalProperties: false,
       },
     },
@@ -1640,6 +1793,29 @@ function createTrellisMcpTools(
           ok: true,
           canonical: "trellis_trace_events",
           traceExport: summarizeTraceExport(env),
+        };
+      },
+    },
+    {
+      name: "trellis.audit.search",
+      description: "Inspect recent audit and trace events for operator review.",
+      operation: "trellis.audit.search",
+      inputSchema: {
+        type: "object",
+        properties: {
+          traceId: { type: "string" },
+          signalId: { type: "string" },
+          type: { type: "string" },
+          limit: { type: "number", minimum: 1, maximum: 20 },
+        },
+        additionalProperties: false,
+      },
+      async execute() {
+        const snapshot = await readRuntimeSnapshot(env);
+        return {
+          ok: true,
+          auditEvents: snapshot.recent?.auditEvents ?? [],
+          traceEvents: snapshot.recent?.traceEvents ?? [],
         };
       },
     },

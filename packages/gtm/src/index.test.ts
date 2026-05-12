@@ -498,6 +498,31 @@ describe("@trellis/gtm v3 API", () => {
         },
       },
       tools: expect.arrayContaining(["trellis.smoke", "trellis.workflow.inspect", "trellis.approval.approve"]),
+      toolCatalog: expect.arrayContaining([
+        expect.objectContaining({
+          name: "trellis.knowledge.inspect",
+          executable: true,
+        }),
+        expect.objectContaining({
+          name: "trellis.approval.approve",
+          executable: false,
+          inputSchema: expect.objectContaining({
+            required: ["approvalId"],
+          }),
+        }),
+        expect.objectContaining({
+          name: "trellis.providerAction.execute",
+          executable: false,
+          inputSchema: expect.objectContaining({
+            required: ["providerActionId"],
+          }),
+        }),
+        expect.objectContaining({
+          name: "research.search",
+          executable: true,
+          provider: "firecrawl",
+        }),
+      ]),
     });
     await expect(providerActions.json()).resolves.toMatchObject({
       ok: true,
