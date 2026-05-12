@@ -255,7 +255,8 @@ v3 parity:
 - dashboard reads D1 projections and agent snapshots
 - operator can inspect traces, audit events, approvals, operator controls, and workflow state
 - operator can pause/resume campaigns and threads, approve/reject side effects, and enable/disable the global kill switch
-- remaining operator parity still needs workflow replay and dead-letter recovery controls
+- operator can replay stored workflow runs and requeue provider actions for recovery
+- remaining operator parity still needs verification against a real Cloudflare dead-letter queue
 
 Legacy to remove after replacement:
 
@@ -278,8 +279,9 @@ v3 parity:
 - Workers logs/traces for platform events
 - D1 audit events for product history
 - optional Langfuse/Braintrust export
-- workflow replay
-- dead-letter queue recovery
+- workflow replay through stored `trellis_workflow_runs`
+- provider-action requeue for dead-letter-style recovery
+- real Cloudflare dead-letter queue recovery verification
 - smoke test history
 
 Legacy to remove after replacement:

@@ -320,6 +320,15 @@ interface TrellisProviderActionRecord extends TrellisProviderAction {
   updatedAt?: string | null;
 }
 
+interface TrellisWorkflowRunRecord {
+  id: string;
+  signalId: string;
+  workflow: string;
+  status: string;
+  paramsJson: string;
+  updatedAt?: string | null;
+}
+
 interface TrellisDraftRecord {
   id: string;
   signalId: string;
@@ -950,6 +959,26 @@ function matchOperatorControlRoute(pathname: string) {
   };
 }
 
+function matchOperatorReplayRoute(pathname: string) {
+  const workflow = pathname.match(/^\/operator\/workflows\/([^/]+)\/replay$/);
+  if (workflow?.[1]) {
+    return {
+      kind: "workflow" as const,
+      id: decodeURIComponent(workflow[1]),
+    };
+  }
+
+  const providerAction = pathname.match(/^\/operator\/provider-actions\/([^/]+)\/replay$/);
+  if (providerAction?.[1]) {
+    return {
+      kind: "provider-action" as const,
+      id: decodeURIComponent(providerAction[1]),
+    };
+  }
+
+  return undefined;
+}
+
 function inferApprovalAction(approvalId: string) {
   if (approvalId.endsWith("_email_send")) {
     return "email.send";
@@ -1293,6 +1322,30 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           });
         }
 
+        const operatorReplay = matchOperatorReplayRoute(url.pathname);
+        if (operatorReplay && request.method === "POST") {
+          const body = await readJsonBody(request);
+          const record = isRecord(body) ? body : {};
+          const actor = readString(record.actor) ?? "operator";
+          const reason = readString(record.reason);
+          if (operatorReplay.kind === "workflow") {
+            const replay = await replayWorkflowRun(env, {
+              workflowRunId: operatorReplay.id,
+              replayId: readString(record.replayId) ?? readString(record.replay_id),
+              actor,
+              reason,
+            });
+            return jsonResponse(replay.body, replay.status);
+          }
+
+          const replay = await replayProviderAction(env, {
+            providerActionId: operatorReplay.id,
+            actor,
+            reason,
+          });
+          return jsonResponse(replay.body, replay.status);
+        }
+
         if (url.pathname === "/mcp/trellis") {
           const toolCatalog = describeTrellisMcpTools(agent.config);
           return jsonResponse({
@@ -1316,6 +1369,8 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               "trellis.operator.killSwitch.disable",
               "trellis.workflow.pause",
               "trellis.workflow.resume",
+              "trellis.workflow.replay",
+              "trellis.providerAction.replay",
               "trellis.audit.search",
             ],
             toolCatalog,
@@ -1355,6 +1410,8 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             "/operator/kill-switch/:enable|disable",
             "/operator/campaigns/:id/:pause|resume",
             "/operator/threads/:id/:pause|resume",
+            "/operator/workflows/:id/replay",
+            "/operator/provider-actions/:id/replay",
             "/mcp/trellis",
             "/dashboard",
           ],
@@ -1484,6 +1541,35 @@ function createTrellisMcpTools(
         properties: {
           scope: { type: "string", enum: ["campaign", "thread"] },
           targetId: { type: "string" },
+          reason: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "trellis.workflow.replay",
+      description: "Replay a stored workflow run through the configured Cloudflare Workflow binding.",
+      operation: "trellis.workflow.replay",
+      inputSchema: {
+        type: "object",
+        required: ["workflowRunId"],
+        properties: {
+          workflowRunId: { type: "string" },
+          replayId: { type: "string" },
+          reason: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "trellis.providerAction.replay",
+      description: "Requeue a failed or blocked provider action for retry through TRELLIS_EVENTS.",
+      operation: "trellis.providerAction.replay",
+      inputSchema: {
+        type: "object",
+        required: ["providerActionId"],
+        properties: {
+          providerActionId: { type: "string" },
           reason: { type: "string" },
         },
         additionalProperties: false,
@@ -2465,6 +2551,100 @@ async function dispatchWorkflow(env: Record<string, unknown> | undefined, run: T
   }
 }
 
+async function replayWorkflowRun(
+  env: Record<string, unknown> | undefined,
+  input: {
+    workflowRunId: string;
+    replayId?: string;
+    actor?: string;
+    reason?: string;
+  },
+) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      status: 501,
+      body: {
+        ok: false,
+        error: "workflow_state_unavailable",
+        detail: "TRELLIS_DB is required before workflow runs can be replayed.",
+      },
+    };
+  }
+
+  const workflow = env?.PROSPECT_WORKFLOW as TrellisWorkflowBinding | undefined;
+  if (!workflow?.create) {
+    return {
+      status: 501,
+      body: {
+        ok: false,
+        error: "workflow_binding_unavailable",
+        detail: "PROSPECT_WORKFLOW is required before workflow runs can be replayed.",
+      },
+    };
+  }
+
+  await ensureD1Schema(db);
+  const stored = await readWorkflowRunRecord(db, input.workflowRunId);
+  if (!stored) {
+    return {
+      status: 404,
+      body: {
+        ok: false,
+        error: "workflow_run_not_found",
+        workflowRunId: input.workflowRunId,
+      },
+    };
+  }
+
+  const params: Record<string, unknown> = parseRecordJson(stored.paramsJson);
+  const replayId = input.replayId ?? `${stored.id}_replay_${Date.now()}`;
+  const replayParams: Record<string, unknown> = {
+    ...params,
+    replayOf: stored.id,
+    replayActor: input.actor ?? null,
+    replayReason: input.reason ?? null,
+  };
+  const instance = await workflow.create({
+    id: replayId,
+    params: replayParams,
+  });
+  const record = isRecord(instance) ? instance : {};
+  const traceId = readString(replayParams.traceId) ?? traceIdForSignalId(stored.signalId);
+  const persistence = await recordWorkflowRun(env, {
+    id: replayId,
+    traceId,
+    signalId: stored.signalId,
+    workflow: stored.workflow,
+    status: "replayed",
+    params: replayParams,
+  });
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      workflowRunId: stored.id,
+      replayId: readString(record.id) ?? replayId,
+      workflow: stored.workflow,
+      persistence,
+    },
+  };
+}
+
+async function readWorkflowRunRecord(db: TrellisD1Database, workflowRunId: string) {
+  return await db.prepare(`
+    SELECT
+      id,
+      signal_id AS signalId,
+      workflow,
+      status,
+      params_json AS paramsJson,
+      updated_at AS updatedAt
+    FROM trellis_workflow_runs
+    WHERE id = ?
+  `).bind(workflowRunId).first<TrellisWorkflowRunRecord>();
+}
+
 async function recordApprovalDecision(
   env: Record<string, unknown> | undefined,
   decision: TrellisApprovalDecision,
@@ -2952,6 +3132,156 @@ async function readProviderActionRecord(db: TrellisD1Database, providerActionId:
     FROM trellis_provider_actions
     WHERE id = ?
   `).bind(providerActionId).first<TrellisProviderActionRecord>();
+}
+
+async function replayProviderAction(
+  env: Record<string, unknown> | undefined,
+  input: {
+    providerActionId: string;
+    actor?: string;
+    reason?: string;
+  },
+) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      status: 501,
+      body: {
+        ok: false,
+        error: "provider_action_state_unavailable",
+        detail: "TRELLIS_DB is required before provider actions can be replayed.",
+      },
+    };
+  }
+
+  await ensureD1Schema(db);
+  const action = await readProviderActionRecord(db, input.providerActionId);
+  if (!action) {
+    return {
+      status: 404,
+      body: {
+        ok: false,
+        error: "provider_action_not_found",
+        providerActionId: input.providerActionId,
+      },
+    };
+  }
+  if (action.status === "completed") {
+    return {
+      status: 409,
+      body: {
+        ok: false,
+        error: "provider_action_already_completed",
+        detail: `Provider action ${action.id} is already completed and cannot be replayed.`,
+        providerAction: action,
+      },
+    };
+  }
+
+  const replayed = {
+    ...action,
+    status: "queued",
+  } satisfies TrellisProviderActionRecord;
+  const persistence = await persistProviderActionReplay(env, replayed, input);
+  const queue = await enqueueProviderActionReplay(env, replayed, input);
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      providerAction: replayed,
+      persistence,
+      queue,
+    },
+  };
+}
+
+async function persistProviderActionReplay(
+  env: Record<string, unknown> | undefined,
+  action: TrellisProviderActionRecord,
+  replay: {
+    actor?: string;
+    reason?: string;
+  },
+) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      enabled: false,
+      tables: [],
+    };
+  }
+
+  const now = new Date().toISOString();
+  await ensureD1Schema(db);
+  await runD1(db, `
+    UPDATE trellis_provider_actions
+    SET status = ?, updated_at = ?
+    WHERE id = ?
+  `, [
+    "queued",
+    now,
+    action.id,
+  ]);
+  await runD1(db, `
+    INSERT OR REPLACE INTO trellis_audit_events
+      (id, signal_id, workflow, type, message, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `, [
+    `evt_provider_action_replayed_${action.id}`,
+    action.signalId,
+    "provider-action",
+    "provider_action.replayed",
+    `Requeued provider action ${action.id}.`,
+    now,
+  ]);
+  await insertTraceEvent(db, {
+    id: `trace_event_provider_action_replayed_${action.id}`,
+    traceId: action.traceId,
+    signalId: action.signalId,
+    workflow: "provider-action",
+    span: `provider:${action.provider}`,
+    type: "provider_action.replayed",
+    message: `Requeued provider action ${action.id}.`,
+    payload: {
+      providerActionId: action.id,
+      actor: replay.actor ?? null,
+      reason: replay.reason ?? null,
+    },
+  });
+  return {
+    enabled: true,
+    tables: ["trellis_provider_actions", "trellis_audit_events", "trellis_trace_events"],
+  };
+}
+
+async function enqueueProviderActionReplay(
+  env: Record<string, unknown> | undefined,
+  action: TrellisProviderActionRecord,
+  replay: {
+    actor?: string;
+    reason?: string;
+  },
+) {
+  const queue = env?.TRELLIS_EVENTS as TrellisQueue | undefined;
+  if (!queue?.send) {
+    return {
+      enabled: false,
+    };
+  }
+  await queue.send({
+    type: "trellis.provider.action.queued",
+    traceId: action.traceId,
+    providerAction: action,
+    input: {
+      replay: true,
+      actor: replay.actor,
+      reason: replay.reason,
+    },
+  });
+  return {
+    enabled: true,
+    messages: 1,
+  };
 }
 
 async function readProviderActionContext(

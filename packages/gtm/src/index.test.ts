@@ -694,6 +694,33 @@ describe("@trellis/gtm v3 API", () => {
         reason: "incident resolved",
       }),
     }), env);
+    const workflowReplay = await runtime.worker.fetch(new Request("https://example.com/operator/workflows/trellis_sig_control_prospect/replay", {
+      method: "POST",
+      body: JSON.stringify({
+        replayId: "trellis_sig_control_prospect_manual",
+        actor: "ops@example.com",
+        reason: "manual workflow retry",
+      }),
+    }), env);
+    await expect(workflowReplay.json()).resolves.toMatchObject({
+      ok: true,
+      workflowRunId: "trellis_sig_control_prospect",
+      replayId: "trellis_sig_control_prospect_manual",
+      workflow: "prospect",
+      persistence: {
+        enabled: true,
+        status: "replayed",
+      },
+    });
+    expect(fakeWorkflow.create).toHaveBeenCalledWith({
+      id: "trellis_sig_control_prospect_manual",
+      params: expect.objectContaining({
+        replayOf: "trellis_sig_control_prospect",
+        replayActor: "ops@example.com",
+        replayReason: "manual workflow retry",
+      }),
+    });
+
     const pauseCampaign = await runtime.worker.fetch(new Request("https://example.com/operator/campaigns/cmp_control/pause", {
       method: "POST",
       body: JSON.stringify({ reason: "campaign review" }),
@@ -713,6 +740,33 @@ describe("@trellis/gtm v3 API", () => {
     await expect(pausedExecution.json()).resolves.toMatchObject({
       detail: "campaign review",
     });
+    const providerReplay = await runtime.worker.fetch(new Request("https://example.com/operator/provider-actions/provider_action_approval_draft_sig_control_email_send/replay", {
+      method: "POST",
+      body: JSON.stringify({
+        actor: "ops@example.com",
+        reason: "retry after campaign review",
+      }),
+    }), env);
+    await expect(providerReplay.json()).resolves.toMatchObject({
+      ok: true,
+      providerAction: {
+        id: "provider_action_approval_draft_sig_control_email_send",
+        status: "queued",
+      },
+      queue: {
+        enabled: true,
+        messages: 1,
+      },
+    });
+    expect(fakeQueue.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "trellis.provider.action.queued",
+        providerAction: expect.objectContaining({
+          id: "provider_action_approval_draft_sig_control_email_send",
+          status: "queued",
+        }),
+      }),
+    ]));
 
     await runtime.worker.fetch(new Request("https://example.com/operator/campaigns/cmp_control/resume", {
       method: "POST",
@@ -755,10 +809,13 @@ describe("@trellis/gtm v3 API", () => {
         "trellis.operator.killSwitch.enable",
         "trellis.workflow.pause",
         "trellis.workflow.resume",
+        "trellis.workflow.replay",
+        "trellis.providerAction.replay",
       ]),
       snapshot: {
         counts: {
           operatorControls: 2,
+          workflowRuns: 2,
         },
       },
     });
@@ -1797,6 +1854,7 @@ function createFakeD1() {
   const drafts = new Map<string, Record<string, unknown>>();
   const providerActions = new Map<string, Record<string, unknown>>();
   const operatorControls = new Map<string, Record<string, unknown>>();
+  const workflowRuns = new Map<string, Record<string, unknown>>();
   return {
     statements,
     prepare(sql: string) {
@@ -1846,6 +1904,16 @@ function createFakeD1() {
                   updatedAt: bindings[9],
                 });
               }
+              if (normalized.includes("INSERT OR REPLACE INTO trellis_workflow_runs")) {
+                workflowRuns.set(String(bindings[0]), {
+                  id: bindings[0],
+                  signalId: bindings[1],
+                  workflow: bindings[2],
+                  status: bindings[3],
+                  paramsJson: bindings[4],
+                  updatedAt: bindings[5],
+                });
+              }
               if (normalized.includes("INSERT OR REPLACE INTO trellis_operator_controls")) {
                 operatorControls.set(String(bindings[0]), {
                   id: bindings[0],
@@ -1874,6 +1942,9 @@ function createFakeD1() {
                 if (tableName === "trellis_operator_controls") {
                   return { count: operatorControls.size };
                 }
+                if (tableName === "trellis_workflow_runs") {
+                  return { count: workflowRuns.size };
+                }
                 const count = statements.filter((statement) =>
                   statement.sql.includes(`INSERT OR REPLACE INTO ${tableName}`),
                 ).length;
@@ -1881,6 +1952,9 @@ function createFakeD1() {
               }
               if (normalized.includes("FROM trellis_provider_actions WHERE id = ?")) {
                 return providerActions.get(String(bindings[0])) ?? null;
+              }
+              if (normalized.includes("FROM trellis_workflow_runs WHERE id = ?")) {
+                return workflowRuns.get(String(bindings[0])) ?? null;
               }
               if (normalized.includes("FROM trellis_drafts WHERE id = ?")) {
                 return drafts.get(String(bindings[0])) ?? null;

@@ -14,7 +14,7 @@ This branch is converting Trellis from a generic composition framework into the 
 1. Port the reference AI SDR behavior into `@trellis/gtm`.
 2. Verify the generated Flue harness against a real Cloudflare AI binding and R2 pack in a Cloudflare account.
 3. Verify R2 pack sync and Cloudflare Workflow execution against a real Cloudflare account.
-4. Add richer operator controls for dead-letter recovery and workflow replay.
+4. Verify operator replay/requeue controls against a real Cloudflare Workflow and dead-letter queue.
 5. Add optional Langfuse/Braintrust trace export on top of `trellis_trace_events`.
 6. Keep legacy Convex/Vercel/Rivet paths behind explicit `legacy:*` scripts and migration flags until parity is proven.
 
