@@ -28,6 +28,7 @@ Reach feature parity with the existing AI SDR/reference app using the reference 
 | Hide Flue behind the generated runtime | Generated `src/trellis-flue.ts` uses `@flue/sdk/cloudflare`, `getVirtualSandbox`, Cloudflare AI binding provider, R2 pack hydration, and `TRELLIS_FLUE_CONTEXT_FACTORY`; `@trellis/gtm` accepts that hidden factory. | Source/test proven |
 | First boot only requires Cloudflare credentials | `trellis init` creates Cloudflare bindings and package scripts; `trellis deploy --json` reports `requiresProviderCredentials: false`, `noSendsMode: true`, `smokeMode: true`; provider manifests are connected later. | Local proven |
 | Generated app is self-contained after install | A fresh scaffold installs `@trellis/cli` and Wrangler locally, exposes `npm run trellis -- ...`, `npm run cf:login`, and `npm run docs:add`, typechecks outside the monorepo, and runs doctor/docs/smoke/deploy/verify without provider credentials. | Local proven |
+| Generated app dependency posture | Generated `package.json` overrides Flue's compromised transitive `@mistralai/mistralai` dependency away from the npm advisory path while the v3 default uses Cloudflare AI; fresh generated app `npm audit --json` reports zero vulnerabilities. | Local proven |
 | Cloudflare-first deploy path | `trellis deploy` defaults to Cloudflare, rejects Vercel target, provisions/verifies D1, R2, Queues/DLQ, and Workflows from generated Wrangler config, syncs packs, then runs Wrangler deploy when applied. | Local/source proven |
 | Cloudflare AI Gateway default | Generated apps document `TRELLIS_AI_GATEWAY_ID`, route Flue's Cloudflare AI binding through that gateway id, and `doctor` / `verify cloudflare` expose `cloudflare.aiGateway`. | Test proven |
 | Safe smoke workflow | `npm run trellis -- smoke --json` passes and shows fixture signal, prospect, qualification/research/copy skills, draft, approvals, no-send mode, and audit events. | Local proven |
@@ -64,6 +65,7 @@ npm run trellis -- init /tmp/trellis-generated-audit.<temp> --name audit-sdr --j
 cd /tmp/trellis-generated-audit.<temp>
 npm install
 npm run cf:login -- --help
+npm audit --json
 npm run typecheck
 npm run trellis -- doctor --json
 npm run docs:add -- --json
@@ -82,7 +84,7 @@ Observed results:
 - `trellis smoke --json`: safe fixture workflow passed.
 - `trellis deploy --json`: Cloudflare plan produced, with root-level warnings because the repo root is not a generated app directory.
 - `trellis verify cloudflare --json`: local verification passed; live checks were skipped because no deployed worker URL or live Cloudflare auth was supplied.
-- Fresh generated app audit: `npm install`, generated app `npm run cf:login -- --help`, `npm run typecheck`, `npm run trellis -- doctor --json`, `npm run docs:add -- --json`, `npm run trellis -- smoke --json`, `npm run trellis -- deploy --json`, and `npm run trellis -- verify cloudflare --json` all passed. The generated app verifier passed source, Flue adapter, Cloudflare binding, AI Gateway, pack sync, skill pack, and smoke checks; live route checks remained skipped.
+- Fresh generated app audit: `npm install`, generated app `npm run cf:login -- --help`, `npm audit --json`, `npm run typecheck`, `npm run trellis -- doctor --json`, `npm run docs:add -- --json`, `npm run trellis -- smoke --json`, `npm run trellis -- deploy --json`, and `npm run trellis -- verify cloudflare --json` all passed. `npm audit --json` reported zero vulnerabilities after the generated override for Flue's compromised transitive Mistral dependency. The generated app verifier passed source, Flue adapter, Cloudflare binding, AI Gateway, pack sync, skill pack, and smoke checks; live route checks remained skipped.
 
 ## Unfinished Or Weakly Verified Items
 

@@ -43,6 +43,7 @@ describe("trellis init v3 scaffold", () => {
         scripts: Record<string, string>;
         dependencies: Record<string, string>;
         devDependencies: Record<string, string>;
+        overrides: Record<string, string>;
       };
       const agentSource = readFileSync(path.join(targetDir, "src", "agent.ts"), "utf8");
       const workerSource = readFileSync(path.join(targetDir, "src", "index.ts"), "utf8");
@@ -69,6 +70,7 @@ describe("trellis init v3 scaffold", () => {
       expect(generatedPackage.scripts.smoke).toBe("trellis smoke");
       expect(generatedPackage.scripts.verify).toBe("trellis verify cloudflare");
       expect(generatedPackage.scripts["cf:login"]).toBe("wrangler login");
+      expect(generatedPackage.overrides["@mistralai/mistralai"]).toBe("npm:no-op@1.0.3");
       expect(generatedPackage.devDependencies.tsx).toBeDefined();
       expect(readFileSync(cliPath, "utf8")).toMatch(/^#!\/usr\/bin\/env tsx/);
 

@@ -2047,6 +2047,12 @@ function buildV3ScaffoldPackage(packageName: string) {
       typescript: "^5.8.3",
       wrangler: "^4.90.0",
     },
+    // Flue 0.5.3 pulls pi-ai, which currently resolves a compromised Mistral SDK.
+    // Trellis' generated path uses the Cloudflare AI binding, so keep Mistral disabled
+    // until Flue/pi-ai ship a clean upstream dependency.
+    overrides: {
+      "@mistralai/mistralai": "npm:no-op@1.0.3",
+    },
   };
 }
 
