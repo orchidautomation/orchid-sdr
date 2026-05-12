@@ -90,6 +90,8 @@ For generated Cloudflare apps, deploy also provisions the first-run infrastructu
 
 At runtime, the Worker reads `TRELLIS_PACKS`, hydrates bounded markdown contents from `knowledge/files/*` and `skills/files/*`, passes that pack context into the agent run, and exposes pack counts through the webhook response, MCP snapshot, and dashboard.
 
+`app.skill(...)` first checks for a hidden harness binding. A provided `TRELLIS_HARNESS` can implement Trellis' structural `raw()` and `skill()` methods directly, while `TRELLIS_FLUE_CONTEXT` / `FLUE_CONTEXT` can expose Flue's `init()` shape. Trellis initializes the harness, opens a session by thread id, calls `session.skill(...)`, then validates the returned `data` or JSON text against the Zod schema supplied by the Trellis app. If no harness is present, smoke and local tests use the deterministic safe fixture path.
+
 ## Provider Manifests
 
 Provider connection manifests live under `.trellis/providers/`. They are intentionally non-secret.

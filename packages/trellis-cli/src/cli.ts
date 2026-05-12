@@ -1972,6 +1972,9 @@ AGENTMAIL_API_KEY=
 AGENTMAIL_WEBHOOK_SECRET=
 FIRECRAWL_API_KEY=
 
+# Optional Flue/default model override for real harness-backed skills.
+TRELLIS_MODEL=
+
 # Optional trace export. Cloudflare logs and AI Gateway remain the default.
 LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=

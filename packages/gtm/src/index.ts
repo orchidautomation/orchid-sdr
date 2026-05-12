@@ -30,6 +30,7 @@ export interface TrellisAgentConfig {
   email?: TrellisProviderDefinition;
   research?: TrellisProviderDefinition;
   observability?: TrellisProviderDefinition;
+  model?: string;
   knowledge: string | string[];
   skills: string | string[];
   safety?: TrellisSafetyPolicy;
@@ -117,6 +118,9 @@ export interface TrellisGtmApp {
     input: {
       context: Record<string, unknown>;
       schema?: z.ZodTypeAny;
+      args?: Record<string, unknown>;
+      role?: string;
+      model?: string;
     },
   ): Promise<unknown> | unknown;
   workflow(name: "prospect" | string): TrellisWorkflowHandle;
@@ -181,6 +185,20 @@ export interface TrellisRuntimeResult {
   approvals: TrellisApproval[];
   auditEvents: TrellisAuditEvent[];
   result: unknown;
+}
+
+export interface TrellisHarnessRuntime {
+  raw(): Promise<unknown> | unknown;
+  skill(
+    name: string,
+    input: {
+      context: Record<string, unknown>;
+      schema?: z.ZodTypeAny;
+      args?: Record<string, unknown>;
+      role?: string;
+      model?: string;
+    },
+  ): Promise<unknown> | unknown;
 }
 
 interface TrellisD1Database {
@@ -331,6 +349,7 @@ export function createTrellisTestApp(input?: {
   signal?: Partial<TrellisSignal>;
   context?: Record<string, unknown>;
   skillResults?: Record<string, unknown>;
+  harness?: TrellisHarnessRuntime;
 }) {
   const startedWorkflows: Array<{ name: string; input: TrellisWorkflowStartInput }> = [];
   const skillCalls: Array<{ name: string; context: Record<string, unknown> }> = [];
@@ -377,11 +396,23 @@ export function createTrellisTestApp(input?: {
         ...(input?.context ?? {}),
       };
     },
-    skill(name, skillInput) {
+    async skill(name, skillInput) {
       skillCalls.push({
         name,
         context: skillInput.context,
       });
+      if (input?.harness) {
+        const harnessResult = await input.harness.skill(name, skillInput);
+        const parsed = parseSkillOutput(harnessResult, skillInput.schema);
+        auditEvents.push({
+          id: `evt_${auditEvents.length + 1}`,
+          type: "skill.completed",
+          message: `Completed skill ${name}.`,
+          signalId: signal.id,
+        });
+        return parsed;
+      }
+
       const result = input?.skillResults?.[name] ?? {
         decision: "needs_review",
         summary: "Fixture qualification result.",
@@ -389,7 +420,7 @@ export function createTrellisTestApp(input?: {
         matchedEvidence: [],
         missingEvidence: [],
       };
-      const parsed = skillInput.schema ? skillInput.schema.parse(result) : result;
+      const parsed = parseSkillOutput(result, skillInput.schema);
       auditEvents.push({
         id: `evt_${auditEvents.length + 1}`,
         type: "skill.completed",
@@ -441,6 +472,11 @@ export function createTrellisTestApp(input?: {
       };
     },
   };
+  if (input?.harness) {
+    app.harness = {
+      raw: () => input.harness!.raw(),
+    };
+  }
 
   return app;
 }
@@ -548,6 +584,7 @@ export async function runTrellisAgent(
     signal?: Partial<TrellisSignal>;
     context?: Record<string, unknown>;
     skillResults?: Record<string, unknown>;
+    harness?: TrellisHarnessRuntime;
   },
 ): Promise<TrellisRuntimeResult> {
   const app = createTrellisTestApp(input);
@@ -595,6 +632,28 @@ function readQualificationDecision(value: unknown): TrellisProspect["status"] {
   }
   const decision = (value as { decision?: unknown }).decision;
   return typeof decision === "string" ? decision : "needs_review";
+}
+
+function parseSkillOutput(value: unknown, schema: z.ZodTypeAny | undefined) {
+  const normalized = normalizeSkillOutput(value);
+  return schema ? schema.parse(normalized) : normalized;
+}
+
+function normalizeSkillOutput(value: unknown): unknown {
+  if (isRecord(value) && "data" in value) {
+    return value.data;
+  }
+  if (isRecord(value) && "result" in value) {
+    return value.result;
+  }
+  if (isRecord(value) && typeof value.text === "string") {
+    try {
+      return JSON.parse(value.text);
+    } catch {
+      return value;
+    }
+  }
+  return value;
 }
 
 function createApprovalsForDrafts(signal: TrellisSignal, drafts: TrellisDraft[]): TrellisApproval[] {
@@ -725,11 +784,16 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           }
           const signal = await readSignalFromRequest(request);
           const packContext = await readPackContext(env);
+          const harness = createRuntimeHarness(env, agent.config, {
+            signal,
+            packs: packContext,
+          });
           const run = await runTrellisAgent(agent, {
             signal,
             context: {
               packs: packContext,
             },
+            harness,
           });
           const persistence = await persistRuntimeResult(env, run);
           const queue = await enqueueRuntimeEvent(env, run);
@@ -896,6 +960,93 @@ function summarizeCloudflareBindings(env?: Record<string, unknown>) {
     "BROWSER",
   ];
   return Object.fromEntries(bindingNames.map((name) => [name, Boolean(env?.[name])]));
+}
+
+function createRuntimeHarness(
+  env: Record<string, unknown> | undefined,
+  config: TrellisAgentConfig,
+  runtime: {
+    signal: Partial<TrellisSignal>;
+    packs: unknown;
+  },
+): TrellisHarnessRuntime | undefined {
+  const explicitHarness = env?.TRELLIS_HARNESS;
+  if (isHarnessRuntime(explicitHarness)) {
+    return explicitHarness;
+  }
+
+  const flueContext = env?.TRELLIS_FLUE_CONTEXT ?? env?.FLUE_CONTEXT;
+  if (isFlueContextLike(flueContext)) {
+    return createFlueHarnessRuntime(flueContext, env, config, runtime);
+  }
+
+  return undefined;
+}
+
+function isHarnessRuntime(value: unknown): value is TrellisHarnessRuntime {
+  return typeof value === "object"
+    && value !== null
+    && "raw" in value
+    && "skill" in value
+    && typeof (value as { raw?: unknown }).raw === "function"
+    && typeof (value as { skill?: unknown }).skill === "function";
+}
+
+interface FlueContextLike {
+  init(options: Record<string, unknown>): Promise<FlueHarnessLike> | FlueHarnessLike;
+}
+
+interface FlueHarnessLike {
+  session(name?: string): Promise<FlueSessionLike> | FlueSessionLike;
+}
+
+interface FlueSessionLike {
+  skill(name: string, options?: Record<string, unknown>): Promise<unknown> | unknown;
+}
+
+function isFlueContextLike(value: unknown): value is FlueContextLike {
+  return typeof value === "object"
+    && value !== null
+    && "init" in value
+    && typeof (value as { init?: unknown }).init === "function";
+}
+
+function createFlueHarnessRuntime(
+  flue: FlueContextLike,
+  env: Record<string, unknown> | undefined,
+  config: TrellisAgentConfig,
+  runtime: {
+    signal: Partial<TrellisSignal>;
+    packs: unknown;
+  },
+): TrellisHarnessRuntime {
+  let harnessPromise: Promise<FlueHarnessLike> | undefined;
+  async function harness() {
+    harnessPromise ??= Promise.resolve(flue.init({
+      model: config.model ?? readString(env?.TRELLIS_MODEL) ?? "anthropic/claude-sonnet-4-6",
+      sandbox: env?.TRELLIS_FLUE_SANDBOX,
+      tools: Array.isArray(env?.TRELLIS_MCP_TOOLS) ? env.TRELLIS_MCP_TOOLS : undefined,
+    }));
+    return harnessPromise;
+  }
+
+  return {
+    raw: harness,
+    async skill(name, input) {
+      const session = await (await harness()).session(runtime.signal.threadId);
+      const args = {
+        signal: runtime.signal,
+        packs: runtime.packs,
+        context: input.context,
+        ...(input.args ?? {}),
+      };
+      return session.skill(name, {
+        args,
+        role: input.role,
+        model: input.model,
+      });
+    },
+  };
 }
 
 async function readSignalFromRequest(request: Request): Promise<Partial<TrellisSignal>> {

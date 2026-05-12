@@ -56,6 +56,8 @@ The first deploy should require only Cloudflare auth. CRM, email, research, and 
 | Browser automation | Browser Run / sandbox provider slot |
 | Observability | Workers logs, AI Gateway logs, audit events, optional Langfuse/Braintrust |
 
+`app.skill(...)` can run through a hidden Trellis harness binding or Flue-compatible `init()` context. The app code keeps using Zod schemas; Trellis validates the returned `data` or JSON text after the harness call.
+
 ## Public API Target
 
 ```ts

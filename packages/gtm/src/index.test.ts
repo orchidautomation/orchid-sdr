@@ -654,6 +654,108 @@ describe("@trellis/gtm v3 API", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("routes app.skill through a hidden Flue-compatible harness when provided", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      model: "openrouter/test-model",
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const skillCalls: Array<{ sessionName?: string; name: string; options: Record<string, unknown> }> = [];
+    const flueContext = {
+      init: vi.fn(async (options: Record<string, unknown>) => ({
+        session: vi.fn(async (sessionName?: string) => ({
+          skill: vi.fn(async (name: string, options: Record<string, unknown>) => {
+            skillCalls.push({ sessionName, name, options });
+            return {
+              data: {
+                decision: "qualified",
+                summary: "Qualified by Flue harness.",
+                confidence: 0.91,
+                matchedEvidence: ["R2 ICP pack"],
+                missingEvidence: [],
+              },
+            };
+          }),
+        })),
+        options,
+      })),
+    };
+    const fakeR2 = createFakeR2({
+      "knowledge/manifest.json": JSON.stringify({
+        source: "knowledge",
+        files: [{ path: "knowledge/icp.md" }],
+      }),
+      "knowledge/files/icp.md": "# ICP\n\nUse this rule.",
+      "skills/files/icp-qualification/SKILL.md": "# ICP Qualification",
+    });
+
+    const webhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_flue",
+        workspaceId: "wrk_flue",
+        threadId: "thr_flue",
+      }),
+    }), {
+      TRELLIS_FLUE_CONTEXT: flueContext,
+      TRELLIS_PACKS: fakeR2,
+    });
+
+    await expect(webhook.json()).resolves.toMatchObject({
+      ok: true,
+      prospects: [
+        {
+          id: "prospect_sig_flue",
+          status: "qualified",
+        },
+      ],
+      auditEvents: expect.arrayContaining([
+        expect.objectContaining({ type: "skill.completed" }),
+      ]),
+    });
+    expect(flueContext.init).toHaveBeenCalledWith({
+      model: "openrouter/test-model",
+      sandbox: undefined,
+      tools: undefined,
+    });
+    expect(skillCalls).toHaveLength(1);
+    expect(skillCalls[0]).toMatchObject({
+      sessionName: "thr_flue",
+      name: "icp-qualification",
+      options: {
+        args: {
+          signal: expect.objectContaining({ id: "sig_flue" }),
+          packs: {
+            knowledge: {
+              files: [
+                expect.objectContaining({
+                  path: "icp.md",
+                  text: "# ICP\n\nUse this rule.",
+                }),
+              ],
+            },
+          },
+          context: {
+            signal: expect.objectContaining({ id: "sig_flue" }),
+          },
+        },
+      },
+    });
+  });
 });
 
 function isTestRecord(value: unknown): value is Record<string, unknown> {
