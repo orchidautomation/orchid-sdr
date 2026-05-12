@@ -9,6 +9,10 @@ describe("@trellis/gtm v3 API", () => {
       crm: attio(),
       email: agentmail(),
       research: firecrawl(),
+      model: trellis.model({
+        env: "TRELLIS_MODEL",
+        default: "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      }),
       knowledge: "knowledge/**/*.md",
       skills: "skills/**/SKILL.md",
       safety: trellis.safeOutbound(),
@@ -44,6 +48,10 @@ describe("@trellis/gtm v3 API", () => {
     expect(agent.config.crm?.id).toBe("attio");
     expect(agent.config.email?.id).toBe("agentmail");
     expect(agent.config.research?.id).toBe("firecrawl");
+    expect(agent.config.model).toEqual({
+      env: "TRELLIS_MODEL",
+      default: "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    });
     expect(app.skillCalls).toHaveLength(1);
     expect(app.startedWorkflows).toHaveLength(1);
     expect(result).toMatchObject({
@@ -167,6 +175,10 @@ describe("@trellis/gtm v3 API", () => {
       crm: attio(),
       email: agentmail(),
       research: firecrawl(),
+      model: trellis.model({
+        env: "TRELLIS_MODEL",
+        default: "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      }),
       knowledge: "knowledge/**/*.md",
       skills: "skills/**/SKILL.md",
       safety: trellis.safeOutbound(),
@@ -2875,6 +2887,7 @@ describe("@trellis/gtm v3 API", () => {
     }), {
       TRELLIS_FLUE_CONTEXT_FACTORY: factory,
       TRELLIS_FLUE_CWD: "/workspace",
+      TRELLIS_MODEL: "cloudflare/@cf/meta/llama-3.1-8b-instruct-fast",
       TRELLIS_PACKS: fakeR2,
     });
 
@@ -2918,7 +2931,7 @@ describe("@trellis/gtm v3 API", () => {
       ]),
     }));
     expect(flueContext.init).toHaveBeenCalledWith(expect.objectContaining({
-      model: "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      model: "cloudflare/@cf/meta/llama-3.1-8b-instruct-fast",
       cwd: "/workspace",
       tools: expect.arrayContaining([
         expect.objectContaining({ name: "trellis.health" }),

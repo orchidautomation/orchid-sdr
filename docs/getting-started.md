@@ -57,6 +57,8 @@ The generated app expects Cloudflare bindings for:
 - Durable Objects / Cloudflare Agents
 - AI Gateway routing through `TRELLIS_AI_GATEWAY_ID` (defaults to `default`)
 
+The model is configured in `src/agent.ts` with `model: trellis.model(...)`. The generated default uses Cloudflare Workers AI, and `TRELLIS_MODEL` can override it per environment without changing code.
+
 ## 4. Add Knowledge
 
 Keep product truth in markdown:

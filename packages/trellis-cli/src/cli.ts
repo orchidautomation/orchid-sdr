@@ -2232,6 +2232,10 @@ export default trellis.agent("sdr", {
   crm: attio(),
   email: agentmail(),
   research: firecrawl(),
+  model: trellis.model({
+    env: "TRELLIS_MODEL",
+    default: "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  }),
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
   safety: trellis.safeOutbound(),

@@ -75,6 +75,9 @@ describe("trellis init v3 scaffold", () => {
       expect(readFileSync(cliPath, "utf8")).toMatch(/^#!\/usr\/bin\/env tsx/);
 
       expect(agentSource).toContain("trellis.agent(\"sdr\"");
+      expect(agentSource).toContain("model: trellis.model({");
+      expect(agentSource).toContain("env: \"TRELLIS_MODEL\"");
+      expect(agentSource).toContain("default: \"cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast\"");
       expect(agentSource).toContain("trellis.safeOutbound()");
       expect(agentSource).toContain("app.skill(\"icp-qualification\"");
       expect(agentSource).not.toContain("@flue/sdk");

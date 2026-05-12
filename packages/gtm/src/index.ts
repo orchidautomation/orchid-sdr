@@ -27,13 +27,20 @@ export interface TrellisSafetyPolicy {
   killSwitch: boolean;
 }
 
+export interface TrellisModelConfig {
+  default: string;
+  env: string;
+}
+
+const DEFAULT_TRELLIS_MODEL = "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+
 export interface TrellisAgentConfig {
   crm?: TrellisProviderDefinition;
   email?: TrellisProviderDefinition;
   research?: TrellisProviderDefinition;
   observability?: TrellisProviderDefinition;
   handoff?: TrellisProviderDefinition;
-  model?: string;
+  model?: string | TrellisModelConfig;
   knowledge: string | string[];
   skills: string | string[];
   safety?: TrellisSafetyPolicy;
@@ -474,6 +481,15 @@ export const trellis = {
       noSends: input?.noSends ?? true,
       requireApproval: input?.requireApproval ?? ["email.send", "mail.reply", "crm.update", "handoff.webhook"],
       killSwitch: input?.killSwitch ?? true,
+    };
+  },
+  model(input?: string | Partial<TrellisModelConfig>): TrellisModelConfig | string {
+    if (typeof input === "string") {
+      return input;
+    }
+    return {
+      default: input?.default ?? DEFAULT_TRELLIS_MODEL,
+      env: input?.env ?? "TRELLIS_MODEL",
     };
   },
   provider(definition: TrellisProviderDefinition): TrellisProviderDefinition {
@@ -2115,7 +2131,7 @@ function createFlueHarnessRuntime(
   let harnessPromise: Promise<FlueHarnessLike> | undefined;
   async function harness() {
     const initOptions: Record<string, unknown> = {
-      model: config.model ?? readString(env?.TRELLIS_MODEL) ?? "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      model: resolveTrellisModel(config.model, env),
       sandbox: env?.TRELLIS_FLUE_SANDBOX,
       tools: Array.isArray(env?.TRELLIS_MCP_TOOLS) ? env.TRELLIS_MCP_TOOLS : (tools ?? createTrellisMcpTools(env, config)),
     };
@@ -2144,6 +2160,19 @@ function createFlueHarnessRuntime(
       });
     },
   };
+}
+
+function resolveTrellisModel(
+  model: TrellisAgentConfig["model"],
+  env: Record<string, unknown> | undefined,
+) {
+  if (typeof model === "string" && model.trim()) {
+    return model;
+  }
+  if (typeof model === "object" && model !== null) {
+    return readString(env?.[model.env]) ?? model.default;
+  }
+  return readString(env?.TRELLIS_MODEL) ?? DEFAULT_TRELLIS_MODEL;
 }
 
 async function processRuntimeSignals(
