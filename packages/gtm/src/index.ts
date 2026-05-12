@@ -206,6 +206,14 @@ export interface TrellisHarnessRuntime {
   ): Promise<unknown> | unknown;
 }
 
+export interface TrellisFlueContextFactoryInput {
+  env?: Record<string, unknown>;
+  config: TrellisAgentConfig;
+  signal: Partial<TrellisSignal>;
+  packs: unknown;
+  tools: TrellisMcpToolDefinition[];
+}
+
 export interface TrellisMcpToolDefinition {
   name: string;
   description: string;
@@ -1038,7 +1046,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           }
           const signal = await readSignalFromRequest(request);
           const packContext = await readPackContext(env);
-          const harness = createRuntimeHarness(env, agent.config, {
+          const harness = await createRuntimeHarness(env, agent.config, {
             signal,
             packs: packContext,
           });
@@ -1112,7 +1120,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
 
           const signal = agentMailWebhookToSignal(agentMail, record);
           const packContext = await readPackContext(env);
-          const harness = createRuntimeHarness(env, agent.config, {
+          const harness = await createRuntimeHarness(env, agent.config, {
             signal,
             packs: packContext,
           });
@@ -1389,17 +1397,37 @@ function createTrellisMcpTools(
   return tools;
 }
 
-function createRuntimeHarness(
+async function createRuntimeHarness(
   env: Record<string, unknown> | undefined,
   config: TrellisAgentConfig,
   runtime: {
     signal: Partial<TrellisSignal>;
     packs: unknown;
   },
-): TrellisHarnessRuntime | undefined {
+): Promise<TrellisHarnessRuntime | undefined> {
   const explicitHarness = env?.TRELLIS_HARNESS;
   if (isHarnessRuntime(explicitHarness)) {
     return explicitHarness;
+  }
+
+  const factory = env?.TRELLIS_FLUE_CONTEXT_FACTORY;
+  if (typeof factory === "function") {
+    const tools = createTrellisMcpTools(env, config);
+    const created = await Promise.resolve((factory as (
+      input: TrellisFlueContextFactoryInput,
+    ) => unknown | Promise<unknown>)({
+      env,
+      config,
+      signal: runtime.signal,
+      packs: runtime.packs,
+      tools,
+    }));
+    if (isHarnessRuntime(created)) {
+      return created;
+    }
+    if (isFlueContextLike(created)) {
+      return createFlueHarnessRuntime(created, env, config, runtime, tools);
+    }
   }
 
   const flueContext = env?.TRELLIS_FLUE_CONTEXT ?? env?.FLUE_CONTEXT;
@@ -1446,14 +1474,20 @@ function createFlueHarnessRuntime(
     signal: Partial<TrellisSignal>;
     packs: unknown;
   },
+  tools?: TrellisMcpToolDefinition[],
 ): TrellisHarnessRuntime {
   let harnessPromise: Promise<FlueHarnessLike> | undefined;
   async function harness() {
-    harnessPromise ??= Promise.resolve(flue.init({
-      model: config.model ?? readString(env?.TRELLIS_MODEL) ?? "anthropic/claude-sonnet-4-6",
+    const initOptions: Record<string, unknown> = {
+      model: config.model ?? readString(env?.TRELLIS_MODEL) ?? "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
       sandbox: env?.TRELLIS_FLUE_SANDBOX,
-      tools: Array.isArray(env?.TRELLIS_MCP_TOOLS) ? env.TRELLIS_MCP_TOOLS : createTrellisMcpTools(env, config),
-    }));
+      tools: Array.isArray(env?.TRELLIS_MCP_TOOLS) ? env.TRELLIS_MCP_TOOLS : (tools ?? createTrellisMcpTools(env, config)),
+    };
+    const cwd = readString(env?.TRELLIS_FLUE_CWD);
+    if (cwd) {
+      initOptions.cwd = cwd;
+    }
+    harnessPromise ??= Promise.resolve(flue.init(initOptions));
     return harnessPromise;
   }
 

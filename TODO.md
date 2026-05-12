@@ -12,7 +12,7 @@ This branch is converting Trellis from a generic composition framework into the 
 ## Remaining Work
 
 1. Port the reference AI SDR behavior into `@trellis/gtm`.
-2. Replace fixture-only local skill behavior with the real installed Flue package/runtime in generated apps.
+2. Verify the generated Flue harness against a real Cloudflare AI binding and R2 pack in a Cloudflare account.
 3. Verify R2 pack sync and Cloudflare Workflow execution against a real Cloudflare account.
 4. Add richer operator controls for dead-letter recovery, replay, pause/resume, and kill switches.
 5. Add optional Langfuse/Braintrust trace export on top of `trellis_trace_events`.

@@ -1484,6 +1484,115 @@ describe("@trellis/gtm v3 API", () => {
       },
     });
   });
+
+  it("builds hidden Flue context through a factory after Trellis hydrates Cloudflare packs", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const skill = vi.fn(async () => ({
+      data: {
+        decision: "qualified",
+        summary: "Qualified by generated Flue factory.",
+        confidence: 0.88,
+        matchedEvidence: ["Generated R2 pack"],
+        missingEvidence: [],
+      },
+    }));
+    const session = vi.fn(async () => ({ skill }));
+    const flueContext = {
+      init: vi.fn(async () => ({ session })),
+    };
+    const factory = vi.fn(async () => flueContext);
+    const fakeR2 = createFakeR2({
+      "knowledge/manifest.json": JSON.stringify({
+        source: "knowledge",
+        files: [{ path: "knowledge/icp.md" }],
+      }),
+      "knowledge/files/icp.md": "# ICP\n\nGenerated pack rule.",
+      "skills/files/icp-qualification/SKILL.md": "# ICP Qualification",
+    });
+
+    const webhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_factory",
+        workspaceId: "wrk_factory",
+        threadId: "thr_factory",
+      }),
+    }), {
+      TRELLIS_FLUE_CONTEXT_FACTORY: factory,
+      TRELLIS_FLUE_CWD: "/workspace",
+      TRELLIS_PACKS: fakeR2,
+    });
+
+    await expect(webhook.json()).resolves.toMatchObject({
+      ok: true,
+      traceId: "trace_sig_factory",
+      prospects: [
+        {
+          id: "prospect_sig_factory",
+          status: "qualified",
+        },
+      ],
+    });
+    expect(factory).toHaveBeenCalledWith(expect.objectContaining({
+      signal: expect.objectContaining({
+        id: "sig_factory",
+        workspaceId: "wrk_factory",
+        threadId: "thr_factory",
+      }),
+      packs: expect.objectContaining({
+        enabled: true,
+        knowledge: expect.objectContaining({
+          files: [
+            expect.objectContaining({
+              path: "icp.md",
+              text: "# ICP\n\nGenerated pack rule.",
+            }),
+          ],
+        }),
+        skills: expect.objectContaining({
+          files: [
+            expect.objectContaining({
+              path: "icp-qualification/SKILL.md",
+              text: "# ICP Qualification",
+            }),
+          ],
+        }),
+      }),
+      tools: expect.arrayContaining([
+        expect.objectContaining({ name: "trellis.health" }),
+      ]),
+    }));
+    expect(flueContext.init).toHaveBeenCalledWith(expect.objectContaining({
+      model: "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      cwd: "/workspace",
+      tools: expect.arrayContaining([
+        expect.objectContaining({ name: "trellis.health" }),
+      ]),
+    }));
+    expect(session).toHaveBeenCalledWith("thr_factory");
+    expect(skill).toHaveBeenCalledWith("icp-qualification", expect.objectContaining({
+      args: expect.objectContaining({
+        signal: expect.objectContaining({ id: "sig_factory" }),
+        packs: expect.objectContaining({ enabled: true }),
+      }),
+    }));
+  });
 });
 
 function isTestRecord(value: unknown): value is Record<string, unknown> {

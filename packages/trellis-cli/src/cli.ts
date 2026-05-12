@@ -1905,6 +1905,7 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
   await writeFile(path.join(targetDir, ".env.example"), renderV3EnvExample());
   await writeFile(path.join(targetDir, "src", "agent.ts"), renderV3AgentSource());
   await writeFile(path.join(targetDir, "src", "index.ts"), renderV3WorkerSource());
+  await writeFile(path.join(targetDir, "src", "trellis-flue.ts"), renderV3FlueSource());
   await writeFile(path.join(targetDir, "knowledge", "icp.md"), renderV3KnowledgeSeed());
   await writeFile(path.join(targetDir, "skills", "icp-qualification", "SKILL.md"), renderV3QualificationSkill());
   await writeFile(path.join(targetDir, "skills", "research-brief", "SKILL.md"), renderV3ResearchSkill());
@@ -1940,6 +1941,7 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
         ".env.example",
         "src/agent.ts",
         "src/index.ts",
+        "src/trellis-flue.ts",
         "knowledge/icp.md",
         "skills/icp-qualification/SKILL.md",
         "skills/research-brief/SKILL.md",
@@ -1975,6 +1977,7 @@ function buildV3ScaffoldPackage(packageName: string) {
       "cf:tail": "wrangler tail",
     },
     dependencies: {
+      "@flue/sdk": "^0.5.3",
       "@trellis/gtm": "workspace:*",
       "@trellis/providers": "workspace:*",
       zod: "^3.25.76",
@@ -2088,7 +2091,8 @@ FIRECRAWL_API_KEY=
 HANDOFF_WEBHOOK_URL=
 HANDOFF_WEBHOOK_SECRET=
 
-# Optional Flue/default model override for real harness-backed skills.
+# Optional model override for Flue-backed skills.
+# The default uses Cloudflare Workers AI through Cloudflare's default AI Gateway.
 TRELLIS_MODEL=
 
 # Optional trace export. Cloudflare logs and AI Gateway remain the default.
@@ -2150,13 +2154,226 @@ export default trellis.agent("sdr", {
 function renderV3WorkerSource() {
   return `import { trellis } from "@trellis/gtm";
 import agent from "./agent";
+import { withTrellisFlue } from "./trellis-flue";
 
 const runtime = trellis.cloudflare(agent);
 
 export const TrellisAgent = runtime.TrellisAgent;
 export const ProspectWorkflow = runtime.ProspectWorkflow;
 
-export default runtime.worker;
+export default {
+  fetch(request: Request, env: Record<string, unknown>) {
+    return runtime.worker.fetch(request, withTrellisFlue(env, request));
+  },
+  queue(batch: MessageBatch<unknown>, env: Record<string, unknown>) {
+    return runtime.worker.queue?.(batch as never, withTrellisFlue(env));
+  },
+};
+`;
+}
+
+function renderV3FlueSource() {
+  return `import { registerApiProvider, registerProvider } from "@flue/sdk/app";
+import { createFlueContext, type SessionData, type SessionEnv, type SessionStore } from "@flue/sdk/client";
+import { getCloudflareAIBindingApiProvider, getVirtualSandbox } from "@flue/sdk/cloudflare";
+import { resolveModel } from "@flue/sdk/internal";
+import { bashFactoryToSessionEnv } from "@flue/sdk/sandbox";
+import type { TrellisFlueContextFactoryInput } from "@trellis/gtm";
+
+type TrellisEnv = Record<string, unknown> & {
+  TRELLIS_DB?: D1Database;
+  AI?: unknown;
+};
+
+type PackFile = {
+  path: string;
+  text: string;
+};
+
+export function withTrellisFlue(env: Record<string, unknown>, request?: Request) {
+  return {
+    ...env,
+    TRELLIS_FLUE_CWD: "/workspace",
+    TRELLIS_FLUE_CONTEXT_FACTORY: (input: TrellisFlueContextFactoryInput) =>
+      createTrellisFlueContext(input, request),
+  };
+}
+
+async function createTrellisFlueContext(
+  input: TrellisFlueContextFactoryInput,
+  request?: Request,
+) {
+  registerApiProvider(getCloudflareAIBindingApiProvider());
+  if (input.env?.AI) {
+    registerProvider("cloudflare", {
+      api: "cloudflare-ai-binding",
+      binding: input.env.AI,
+      gateway: { id: "default" },
+    } as never);
+  }
+
+  const env = (input.env ?? {}) as TrellisEnv;
+  const sandbox = await getVirtualSandbox();
+  await preloadTrellisPacks(sandbox, input);
+
+  return createFlueContext({
+    id: stableAgentId(input),
+    runId: stableRunId(input),
+    payload: input.signal.payload ?? {},
+    env,
+    req: request,
+    agentConfig: {
+      systemPrompt: "",
+      skills: {},
+      roles: {},
+      model: undefined,
+      resolveModel,
+    },
+    createDefaultEnv: async (): Promise<SessionEnv> => bashFactoryToSessionEnv(sandbox),
+    createLocalEnv: async (): Promise<SessionEnv> => {
+      throw new Error("Trellis Cloudflare agents use the Flue virtual sandbox by default.");
+    },
+    defaultStore: createTrellisSessionStore(env),
+  });
+}
+
+async function preloadTrellisPacks(
+  sandbox: Awaited<ReturnType<typeof getVirtualSandbox>>,
+  input: TrellisFlueContextFactoryInput,
+) {
+  const bash = await Promise.resolve(sandbox());
+  await bash.fs.mkdir("/workspace/.agents/skills", { recursive: true });
+  await bash.fs.mkdir("/workspace/knowledge", { recursive: true });
+  await bash.fs.writeFile("/workspace/AGENTS.md", renderAgentsMd(input));
+
+  for (const file of readPackFiles(input.packs, "knowledge")) {
+    const target = workspaceFile("knowledge", file.path);
+    await ensureParentDir(bash, target);
+    await bash.fs.writeFile(target, file.text);
+  }
+
+  for (const file of readPackFiles(input.packs, "skills")) {
+    const target = workspaceFile(".agents/skills", file.path);
+    await ensureParentDir(bash, target);
+    await bash.fs.writeFile(target, file.text);
+  }
+}
+
+function renderAgentsMd(input: TrellisFlueContextFactoryInput) {
+  const knowledge = readPackFiles(input.packs, "knowledge")
+    .map((file) => \`- knowledge/\${safePackPath(file.path)}\`)
+    .join("\\n");
+  return \`You are a Trellis GTM agent.
+
+Use the mounted markdown knowledge and SKILL.md files to complete the requested GTM step.
+Never send email, update CRM, or call handoff webhooks directly. Trellis approval gates own those side effects.
+
+Knowledge files:
+\${knowledge || "- none mounted yet"}
+\`;
+}
+
+async function ensureParentDir(bash: { fs: { mkdir(path: string, options?: { recursive?: boolean }): Promise<void> } }, filePath: string) {
+  const parent = filePath.split("/").slice(0, -1).join("/") || "/";
+  await bash.fs.mkdir(parent, { recursive: true });
+}
+
+function readPackFiles(packs: unknown, scope: "knowledge" | "skills"): PackFile[] {
+  const root = asRecord(packs);
+  const section = asRecord(root?.[scope]);
+  const files = Array.isArray(section?.files) ? section.files : [];
+  return files.flatMap((file) => {
+    const record = asRecord(file);
+    const filePath = typeof record?.path === "string" ? record.path : undefined;
+    const text = typeof record?.text === "string" ? record.text : undefined;
+    return filePath && text ? [{ path: filePath, text }] : [];
+  });
+}
+
+function workspaceFile(prefix: string, packPath: string) {
+  return \`/workspace/\${prefix}/\${safePackPath(packPath)}\`;
+}
+
+function safePackPath(value: string) {
+  const normalized = value
+    .split(/[\\\\/]+/)
+    .filter((part) => part && part !== "." && part !== "..")
+    .join("/");
+  return normalized || "untitled.md";
+}
+
+function stableAgentId(input: TrellisFlueContextFactoryInput) {
+  return normalizeId(input.signal.workspaceId ?? input.signal.id ?? "default");
+}
+
+function stableRunId(input: TrellisFlueContextFactoryInput) {
+  return normalizeId(input.signal.traceId ?? input.signal.id ?? \`run_\${Date.now()}\`);
+}
+
+function normalizeId(value: unknown) {
+  return String(value).replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 128) || "default";
+}
+
+function createTrellisSessionStore(env: TrellisEnv): SessionStore {
+  const db = env.TRELLIS_DB;
+  if (!db?.prepare) {
+    return createMemorySessionStore();
+  }
+
+  let ready: Promise<unknown> | undefined;
+  const ensureReady = () => {
+    ready ??= db.prepare(\`
+      CREATE TABLE IF NOT EXISTS trellis_flue_sessions (
+        id TEXT PRIMARY KEY,
+        data_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    \`).bind().run();
+    return ready;
+  };
+
+  return {
+    async save(id, data) {
+      await ensureReady();
+      await db.prepare(\`
+        INSERT OR REPLACE INTO trellis_flue_sessions (id, data_json, updated_at)
+        VALUES (?, ?, ?)
+      \`).bind(id, JSON.stringify(data), new Date().toISOString()).run();
+    },
+    async load(id) {
+      await ensureReady();
+      const row = await db.prepare("SELECT data_json FROM trellis_flue_sessions WHERE id = ?")
+        .bind(id)
+        .first<{ data_json: string }>();
+      return row ? JSON.parse(row.data_json) as SessionData : null;
+    },
+    async delete(id) {
+      await ensureReady();
+      await db.prepare("DELETE FROM trellis_flue_sessions WHERE id = ?").bind(id).run();
+    },
+  };
+}
+
+function createMemorySessionStore(): SessionStore {
+  const sessions = new Map<string, SessionData>();
+  return {
+    async save(id, data) {
+      sessions.set(id, data);
+    },
+    async load(id) {
+      return sessions.get(id) ?? null;
+    },
+    async delete(id) {
+      sessions.delete(id);
+    },
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
 `;
 }
 
@@ -2277,6 +2494,8 @@ trellis connect agentmail
 trellis connect firecrawl
 trellis docs add ./product-docs
 \`\`\`
+
+Your app code stays Trellis-only in \`src/agent.ts\`. The generated \`src/trellis-flue.ts\` adapter installs the hidden Flue harness, mounts Trellis R2 markdown packs into Flue's virtual sandbox, uses the Cloudflare AI binding through the default AI Gateway, and stores Flue sessions in \`TRELLIS_DB\`.
 
 Deploy syncs the verified knowledge manifest, markdown files, and tracked \`SKILL.md\` files into the \`TRELLIS_PACKS\` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
 `;
