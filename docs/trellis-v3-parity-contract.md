@@ -163,6 +163,7 @@ v3 parity:
 - optional shared-secret verification is enforced when `TRELLIS_WEBHOOK_SECRET` or `SIGNAL_WEBHOOK_SECRET` is configured
 - idempotency keys can derive stable signal ids for retry-safe webhook senders
 - accepted signal is durable before downstream workflow dispatch
+- webhook runs dispatch `PROSPECT_WORKFLOW` after persistence, and dispatch failures are reported without failing ingestion
 - Queues handle fanout/retries/dead letters
 - D1 records signal, provider run, audit event, and workflow dispatch
 

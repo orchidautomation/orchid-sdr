@@ -190,10 +190,16 @@ describe("@trellis/gtm v3 API", () => {
       "knowledge/files/icp.md": "# ICP",
       "skills/files/icp-qualification/SKILL.md": "# ICP Qualification",
     });
+    const fakeWorkflow = {
+      create: vi.fn(async (options: Record<string, unknown>) => ({
+        id: options.id,
+      })),
+    };
     const env = {
       TRELLIS_DB: fakeD1,
       TRELLIS_EVENTS: fakeQueue,
       TRELLIS_PACKS: fakeR2,
+      PROSPECT_WORKFLOW: fakeWorkflow,
       TRELLIS_WEBHOOK_SECRET: "test-secret",
     };
 
@@ -342,6 +348,12 @@ describe("@trellis/gtm v3 API", () => {
         enabled: true,
         messages: 1,
       },
+      workflowDispatch: {
+        enabled: true,
+        ok: true,
+        workflow: "prospect",
+        instanceId: "trellis_sig_live_prospect",
+      },
       webhook: {
         verified: true,
         idempotencyKey: "retry-sig-live",
@@ -369,6 +381,19 @@ describe("@trellis/gtm v3 API", () => {
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_audit_events"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("UPDATE trellis_approvals SET status = ?"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("UPDATE trellis_provider_actions SET status = ?"))).toBe(true);
+    expect(fakeWorkflow.create).toHaveBeenCalledWith({
+      id: "trellis_sig_live_prospect",
+      params: expect.objectContaining({
+        workflow: "prospect",
+        signal: expect.objectContaining({ id: "sig_live" }),
+        prospectIds: ["prospect_sig_live"],
+        draftIds: ["draft_sig_live"],
+        approvalIds: [
+          "approval_draft_sig_live_email_send",
+          "approval_draft_sig_live_crm_update",
+        ],
+      }),
+    });
     expect(fakeQueue.messages).toEqual([
       expect.objectContaining({
         type: "trellis.signal.processed",

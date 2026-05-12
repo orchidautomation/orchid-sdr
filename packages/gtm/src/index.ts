@@ -239,6 +239,13 @@ interface TrellisR2Bucket {
   list?(options?: { prefix?: string }): Promise<{ objects?: Array<{ key: string; size?: number }> }> | { objects?: Array<{ key: string; size?: number }> };
 }
 
+interface TrellisWorkflowBinding {
+  create(options: {
+    id?: string;
+    params?: Record<string, unknown>;
+  }): Promise<{ id?: string; status?(): Promise<unknown> | unknown } | unknown> | { id?: string; status?(): Promise<unknown> | unknown } | unknown;
+}
+
 type TrellisApprovalDecisionStatus = "approved" | "rejected";
 type TrellisProviderActionTransitionStatus = "completed" | "failed";
 
@@ -947,6 +954,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           });
           const persistence = await persistRuntimeResult(env, run);
           const queue = await enqueueRuntimeEvent(env, run);
+          const workflowDispatch = await dispatchWorkflow(env, run);
           return jsonResponse({
             ok: true,
             accepted: true,
@@ -958,6 +966,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             auditEvents: run.auditEvents,
             persistence,
             queue,
+            workflowDispatch,
             webhook: {
               verified: verification.enabled,
               idempotencyKey: run.signal.idempotencyKey ?? null,
@@ -1019,6 +1028,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           });
           const persistence = await persistRuntimeResult(env, run);
           const queue = await enqueueRuntimeEvent(env, run);
+          const workflowDispatch = await dispatchWorkflow(env, run);
           return jsonResponse({
             ok: true,
             accepted: true,
@@ -1030,6 +1040,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             auditEvents: run.auditEvents,
             persistence,
             queue,
+            workflowDispatch,
             webhook: {
               verified: verification.enabled,
               type: "agentmail",
@@ -1699,6 +1710,47 @@ async function enqueueRuntimeEvent(env: Record<string, unknown> | undefined, run
     enabled: true,
     messages: 1,
   };
+}
+
+async function dispatchWorkflow(env: Record<string, unknown> | undefined, run: TrellisRuntimeResult) {
+  const workflow = env?.PROSPECT_WORKFLOW as TrellisWorkflowBinding | undefined;
+  if (!workflow?.create) {
+    return {
+      enabled: false,
+    };
+  }
+
+  const workflowName = run.startedWorkflows[0]?.name ?? "prospect";
+  const id = `trellis_${normalizeIdPart(run.signal.id)}_${normalizeIdPart(workflowName)}`;
+  try {
+    const instance = await workflow.create({
+      id,
+      params: {
+        signal: run.signal,
+        workflow: workflowName,
+        startedWorkflows: run.startedWorkflows,
+        prospectIds: run.prospects.map((prospect) => prospect.id),
+        draftIds: run.drafts.map((draft) => draft.id),
+        approvalIds: run.approvals.map((approval) => approval.id),
+        auditEventIds: run.auditEvents.map((event) => event.id),
+      },
+    });
+    const record = isRecord(instance) ? instance : {};
+    return {
+      enabled: true,
+      ok: true,
+      workflow: workflowName,
+      instanceId: readString(record.id) ?? id,
+    };
+  } catch (error) {
+    return {
+      enabled: true,
+      ok: false,
+      workflow: workflowName,
+      instanceId: id,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function recordApprovalDecision(
