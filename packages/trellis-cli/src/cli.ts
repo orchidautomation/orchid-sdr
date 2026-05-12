@@ -1781,7 +1781,7 @@ async function applyCloudflareProvisioning(
     const queueResult = createCloudflareResourceIfNeeded({
       id: "queue.TRELLIS_EVENTS",
       command: ["npx", "wrangler", "queues", "create", plan.queue.queueName],
-      alreadyExistsPattern: /already exists|queue with this name/i,
+      alreadyExistsPattern: /already exists|already taken|queue with this name/i,
     });
     results.push(queueResult);
     if (!captureOutput) {
@@ -1792,7 +1792,7 @@ async function applyCloudflareProvisioning(
     const dlqResult = createCloudflareResourceIfNeeded({
       id: "queue.TRELLIS_EVENTS_DLQ",
       command: ["npx", "wrangler", "queues", "create", plan.queue.deadLetterQueueName],
-      alreadyExistsPattern: /already exists|queue with this name/i,
+      alreadyExistsPattern: /already exists|already taken|queue with this name/i,
     });
     results.push(dlqResult);
     if (!captureOutput) {
@@ -1989,6 +1989,7 @@ async function syncCloudflarePacks(
       "object",
       "put",
       `${plan.bucketName}/${entry.objectKey}`,
+      "--remote",
       "--file",
       entry.filePath,
     ], {
@@ -2422,14 +2423,26 @@ export default attioMap;
 }
 
 function renderV3WorkerSource() {
-  return `import { trellis } from "@trellis/gtm";
+  return `import { DurableObject, WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
+import { trellis } from "@trellis/gtm";
 import agent from "./agent";
 import { withTrellisFlue } from "./trellis-flue";
 
 const runtime = trellis.cloudflare(agent);
+const RuntimeTrellisAgent = runtime.TrellisAgent;
+const RuntimeProspectWorkflow = runtime.ProspectWorkflow;
 
-export const TrellisAgent = runtime.TrellisAgent;
-export const ProspectWorkflow = runtime.ProspectWorkflow;
+export class TrellisAgent extends DurableObject<Record<string, unknown>> {
+  async fetch(request: Request) {
+    return new RuntimeTrellisAgent(this.ctx, this.env).fetch(request);
+  }
+}
+
+export class ProspectWorkflow extends WorkflowEntrypoint<Record<string, unknown>, Record<string, unknown>> {
+  async run(event: Readonly<WorkflowEvent<Record<string, unknown>>>, step: WorkflowStep) {
+    return new RuntimeProspectWorkflow(this.env).run(event, step);
+  }
+}
 
 export default {
   fetch(request: Request, env: Record<string, unknown>) {
@@ -2479,7 +2492,7 @@ async function createTrellisFlueContext(
   if (env.AI) {
     registerProvider("cloudflare", {
       api: "cloudflare-ai-binding",
-      binding: env.AI,
+      binding: createTrellisAiBinding(env.AI),
       gateway: { id: readAiGatewayId(env) },
     } as never);
   }
@@ -2589,6 +2602,78 @@ function readAiGatewayId(env: TrellisEnv) {
   return typeof env.TRELLIS_AI_GATEWAY_ID === "string" && env.TRELLIS_AI_GATEWAY_ID.trim()
     ? env.TRELLIS_AI_GATEWAY_ID.trim()
     : "default";
+}
+
+function createTrellisAiBinding(binding: unknown) {
+  const ai = binding as { run?: (model: string, payload: unknown, options?: unknown) => Promise<unknown> | unknown };
+  if (typeof ai.run !== "function") {
+    return binding;
+  }
+
+  return {
+    ...ai,
+    run(model: string, payload: unknown, options?: unknown) {
+      return ai.run?.(model, normalizeTrellisAiPayload(model, payload), options);
+    },
+  };
+}
+
+function normalizeTrellisAiPayload(model: string, payload: unknown) {
+  if (!model.startsWith("anthropic/")) {
+    return payload;
+  }
+
+  const record = asRecord(payload);
+  if (!record) {
+    return payload;
+  }
+
+  const system: string[] = [];
+  const messages = Array.isArray(record.messages) ? record.messages.flatMap((message) => {
+    const item = asRecord(message);
+    const role = typeof item?.role === "string" ? item.role : undefined;
+    const content = normalizeMessageContent(item?.content);
+    if (!role || !content) {
+      return [];
+    }
+    if (role === "system") {
+      system.push(content);
+      return [];
+    }
+    return [{ ...item, role, content }];
+  }) : record.messages;
+
+  const normalized: Record<string, unknown> = {
+    ...record,
+    messages,
+    max_tokens: readPositiveNumber(record.max_tokens)
+      ?? readPositiveNumber(record.max_completion_tokens)
+      ?? 2048,
+  };
+  delete normalized.max_completion_tokens;
+  delete normalized.stream_options;
+  if (system.length > 0) {
+    normalized.system = system.join("\\n\\n");
+  }
+  return normalized;
+}
+
+function normalizeMessageContent(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((part) => {
+      const record = asRecord(part);
+      const text = typeof record?.text === "string" ? record.text : undefined;
+      return text ? [text] : [];
+    }).join("\\n");
+  }
+  return undefined;
+}
+
+function readPositiveNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 function createTrellisSessionStore(env: TrellisEnv): SessionStore {

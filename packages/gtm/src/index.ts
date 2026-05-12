@@ -627,22 +627,39 @@ export function createTrellisTestApp(input?: {
         context: skillInput.context,
       });
       if (input?.harness) {
-        const harnessResult = await input.harness.skill(name, skillInput);
-        const parsed = parseSkillOutput(harnessResult, skillInput.schema);
-        auditEvents.push({
-          id: nextAuditEventId(signal, auditEvents),
-          traceId: signal.traceId,
-          type: "skill.completed",
-          message: `Completed skill ${name}.`,
-          signalId: signal.id,
-          metadata: {
-            skill: name,
-            role: skillInput.role ?? null,
-            model: skillInput.model ?? null,
-            harness: true,
-          },
-        });
-        return parsed;
+        try {
+          const harnessResult = await input.harness.skill(name, skillInput);
+          const parsed = parseSkillOutput(harnessResult, skillInput.schema);
+          auditEvents.push({
+            id: nextAuditEventId(signal, auditEvents),
+            traceId: signal.traceId,
+            type: "skill.completed",
+            message: `Completed skill ${name}.`,
+            signalId: signal.id,
+            metadata: {
+              skill: name,
+              role: skillInput.role ?? null,
+              model: skillInput.model ?? null,
+              harness: true,
+            },
+          });
+          return parsed;
+        } catch (error) {
+          auditEvents.push({
+            id: nextAuditEventId(signal, auditEvents),
+            traceId: signal.traceId,
+            type: "skill.fallback",
+            message: `Skill ${name} fell back to deterministic safe-mode output after the harness failed.`,
+            signalId: signal.id,
+            metadata: {
+              skill: name,
+              role: skillInput.role ?? null,
+              model: skillInput.model ?? null,
+              harness: true,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          });
+        }
       }
 
       const result = input?.skillResults?.[name] ?? {

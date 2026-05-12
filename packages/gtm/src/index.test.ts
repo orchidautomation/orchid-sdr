@@ -3008,6 +3008,65 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
+  it("falls back to safe deterministic skill output when the hidden harness fails", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      model: "cloudflare/test-model",
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const flueContext = {
+      init: vi.fn(async () => ({
+        session: vi.fn(async () => ({
+          skill: vi.fn(async () => {
+            throw new Error("Cloudflare AI binding returned 400 Bad Request");
+          }),
+        })),
+      })),
+    };
+
+    const webhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_flue_fallback",
+        workspaceId: "wrk_flue",
+        threadId: "thr_flue_fallback",
+      }),
+    }), {
+      TRELLIS_FLUE_CONTEXT: flueContext,
+      TRELLIS_PACKS: createFakeR2({
+        "skills/files/icp-qualification/SKILL.md": "# ICP Qualification",
+      }),
+    });
+
+    expect(webhook.status).toBe(202);
+    await expect(webhook.json()).resolves.toMatchObject({
+      ok: true,
+      prospects: [
+        {
+          id: "prospect_sig_flue_fallback",
+          status: "needs_review",
+        },
+      ],
+      auditEvents: expect.arrayContaining([
+        expect.objectContaining({ type: "skill.fallback" }),
+        expect.objectContaining({
+          type: "skill.completed",
+          metadata: expect.objectContaining({ harness: false }),
+        }),
+      ]),
+    });
+  });
+
   it("builds hidden Flue context through a factory after Trellis hydrates Cloudflare packs", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
