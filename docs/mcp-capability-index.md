@@ -25,12 +25,6 @@ MCP servers:
 | `parallel-task` | `https://task-mcp.parallel.ai/mcp` | bearer | `getStatus` | `observability` | none |
 | `parallel-task` | `https://task-mcp.parallel.ai/mcp` | bearer | `getResultMarkdown` | `extract`, `enrichment` | `research.extract.v1`, `research.enrich.v1` |
 
-v3 connection:
-
-```bash
-trellis connect parallel
-```
-
 Parallel is not part of the default GTM stack today. If it returns, it should be a curated research provider connection, not a generic `add` command.
 
 ## Firecrawl
