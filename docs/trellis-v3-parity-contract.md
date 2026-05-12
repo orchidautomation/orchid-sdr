@@ -120,7 +120,7 @@ v3 parity:
 - Trellis mounts knowledge and skills into the Flue/just-bash filesystem
 - `app.skill(...)` is the public API
 - skills can be versioned and traced
-- `trellis docs add <path>` syncs docs into the knowledge pack
+- `trellis docs add <path>` writes `.trellis/knowledge-pack.json` with markdown file hashes as the local verification and R2 upload plan
 
 Legacy to remove after replacement:
 

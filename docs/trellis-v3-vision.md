@@ -601,7 +601,7 @@ Good:
 trellis connect attio
 trellis connect agentmail
 trellis docs add ./product-docs
-trellis add observability langfuse
+trellis connect langfuse
 ```
 
 Bad:
@@ -715,6 +715,8 @@ Each connect command should:
 - add smoke test
 - update MCP tool catalog if relevant
 - update dashboard capability state
+
+`trellis docs add` writes `.trellis/knowledge-pack.json` with markdown file paths, byte sizes, and hashes. That gives `doctor`, `smoke`, and deploy a concrete artifact to verify before the pack is synced into `TRELLIS_PACKS`.
 
 ### Doctor
 

@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -46,6 +47,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const referenceAppRoot = path.resolve(repoRoot, "examples/reference-app");
 const coreAppRoot = path.resolve(repoRoot, "examples/core-app");
 const meetingPrepRoot = path.resolve(repoRoot, "examples/meeting-prep");
+const trellisStateDirName = ".trellis";
+const knowledgePackManifestName = "knowledge-pack.json";
 const SHARED_SCAFFOLD_COPY_ENTRIES = [
   ".dockerignore",
   ".gitignore",
@@ -644,6 +647,30 @@ async function handleDocsCommand(subcommand: string | undefined, docsPath: strin
   }
 
   const resolvedPath = path.resolve(process.cwd(), docsPath);
+  const files = await collectMarkdownFiles(resolvedPath);
+  if (files.length === 0) {
+    throw new Error(`No markdown files found at ${resolvedPath}`);
+  }
+
+  const manifest = {
+    version: 1,
+    createdAt: new Date().toISOString(),
+    source: toPosixPath(path.relative(process.cwd(), resolvedPath)) || ".",
+    target: "r2://TRELLIS_PACKS/knowledge",
+    files: await Promise.all(files.map(async (filePath) => {
+      const contents = await readFile(filePath);
+      return {
+        path: toPosixPath(path.relative(process.cwd(), filePath)),
+        bytes: contents.byteLength,
+        sha256: createHash("sha256").update(contents).digest("hex"),
+      };
+    })),
+  };
+  const trellisDir = path.join(process.cwd(), trellisStateDirName);
+  const manifestPath = path.join(trellisDir, knowledgePackManifestName);
+  await mkdir(trellisDir, { recursive: true });
+  await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+
   if (jsonOutput) {
     emitJson({
       ok: true,
@@ -651,9 +678,11 @@ async function handleDocsCommand(subcommand: string | undefined, docsPath: strin
       subcommand: "add",
       path: docsPath,
       resolvedPath,
+      manifestPath,
       target: "R2-backed Trellis knowledge pack",
+      files: manifest.files,
       next: [
-        "upload or sync docs into the Trellis knowledge pack",
+        "trellis deploy uses this manifest as the TRELLIS_PACKS upload plan",
         "run trellis smoke to verify pack loading",
       ],
     });
@@ -663,10 +692,13 @@ async function handleDocsCommand(subcommand: string | undefined, docsPath: strin
   console.log(`Docs add plan:
 
   source: ${resolvedPath}
+  manifest: ${manifestPath}
+  files: ${manifest.files.length}
   target: Trellis knowledge pack
 
 v3 behavior:
-  - sync docs into the R2-backed pack store
+  - record markdown file hashes in .trellis/knowledge-pack.json
+  - deploy uses the manifest as the R2-backed pack upload plan
   - make them available to skills through the Trellis sandbox filesystem
   - verify retrieval during trellis smoke`);
 }
@@ -674,6 +706,7 @@ v3 behavior:
 async function handleDoctorCommand() {
   const wranglerConfigPath = findWranglerConfig(process.cwd());
   const wranglerSource = wranglerConfigPath ? readFileSync(wranglerConfigPath, "utf8") : "";
+  const knowledgePack = await loadKnowledgePackManifest(process.cwd());
   const smoke = await runTrellisSmoke();
   const checks = [
     doctorCheck("cloudflare.config", Boolean(wranglerConfigPath), "warn", wranglerConfigPath
@@ -693,7 +726,7 @@ async function handleDoctorCommand() {
     ].map((binding) =>
       doctorCheck(`binding.${binding}`, wranglerSource.includes(binding), "warn", `${binding} binding ${wranglerSource.includes(binding) ? "declared" : "not declared"}`),
     ),
-    doctorCheck("knowledge.pack", existsSync(path.join(process.cwd(), "knowledge")), "warn", "knowledge directory should contain markdown GTM context"),
+    doctorCheck("knowledge.pack", knowledgePack.ok, "warn", knowledgePack.detail),
     doctorCheck("skills.pack", existsSync(path.join(process.cwd(), "skills")), "warn", "skills directory should contain SKILL.md packs"),
     doctorCheck("provider.attio", Boolean(process.env.ATTIO_API_KEY), "warn", "Attio can be connected after first deploy"),
     doctorCheck("provider.agentmail", Boolean(process.env.AGENTMAIL_API_KEY), "warn", "AgentMail can be connected after first deploy"),
@@ -714,6 +747,7 @@ async function handleDoctorCommand() {
         fixture: smoke.fixture.id,
         auditEvents: smoke.auditEvents.map((event) => event.type),
       },
+      knowledgePack: knowledgePack.summary,
     });
     return;
   }
@@ -740,9 +774,90 @@ function doctorCheck(
   };
 }
 
+async function collectMarkdownFiles(inputPath: string): Promise<string[]> {
+  const details = await stat(inputPath);
+  if (details.isFile()) {
+    return isMarkdownFile(inputPath) ? [inputPath] : [];
+  }
+  if (!details.isDirectory()) {
+    return [];
+  }
+
+  const entries = await readdir(inputPath, { withFileTypes: true });
+  const nested = await Promise.all(entries.flatMap((entry) => {
+    if (entry.name === "node_modules" || entry.name === trellisStateDirName || entry.name.startsWith(".")) {
+      return [];
+    }
+    const entryPath = path.join(inputPath, entry.name);
+    if (entry.isDirectory()) {
+      return [collectMarkdownFiles(entryPath)];
+    }
+    return [Promise.resolve(isMarkdownFile(entryPath) ? [entryPath] : [])];
+  }));
+
+  return nested.flat().sort((left, right) => left.localeCompare(right));
+}
+
+function isMarkdownFile(filePath: string) {
+  const extension = path.extname(filePath).toLowerCase();
+  return extension === ".md" || extension === ".mdx";
+}
+
+function toPosixPath(value: string) {
+  return value.split(path.sep).join("/");
+}
+
+async function loadKnowledgePackManifest(cwd: string) {
+  const manifestPath = path.join(cwd, trellisStateDirName, knowledgePackManifestName);
+  if (!existsSync(manifestPath)) {
+    const fallbackKnowledgeDir = path.join(cwd, "knowledge");
+    return {
+      ok: existsSync(fallbackKnowledgeDir),
+      detail: existsSync(fallbackKnowledgeDir)
+        ? "knowledge directory exists; run trellis docs add <path> to create a pack manifest"
+        : "no knowledge pack manifest or knowledge directory found",
+      summary: null,
+    };
+  }
+
+  try {
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+      version?: number;
+      source?: string;
+      target?: string;
+      files?: Array<{ path: string; bytes?: number; sha256?: string }>;
+    };
+    const files = manifest.files ?? [];
+    const missing = files.filter((file) => !existsSync(path.join(cwd, file.path)));
+    return {
+      ok: files.length > 0 && missing.length === 0,
+      detail: missing.length > 0
+        ? `knowledge pack manifest has ${missing.length} missing file(s)`
+        : `knowledge pack manifest has ${files.length} markdown file(s)`,
+      summary: {
+        manifestPath,
+        source: manifest.source ?? null,
+        target: manifest.target ?? null,
+        files: files.length,
+        missingFiles: missing.map((file) => file.path),
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      detail: `knowledge pack manifest is unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      summary: {
+        manifestPath,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
 async function handleSmokeCommand(scope: string | undefined) {
   const resolvedScope = scope ?? "fixture-signal";
   const result = await runTrellisSmoke();
+  const knowledgePack = await loadKnowledgePackManifest(process.cwd());
   if (!result.ok) {
     process.exitCode = 1;
   }
@@ -752,6 +867,7 @@ async function handleSmokeCommand(scope: string | undefined) {
       ...result,
       command: "smoke",
       scope: resolvedScope,
+      knowledgePack: knowledgePack.summary,
     });
     return;
   }
@@ -777,7 +893,8 @@ Result:
   - workflows started: ${result.startedWorkflows.map((workflow) => workflow.name).join(", ") || "none"}
   - prospects created: ${result.prospects.length}
   - drafts created: ${result.drafts.length}
-  - audit events: ${result.auditEvents.map((event) => event.type).join(", ") || "none"}`);
+  - audit events: ${result.auditEvents.map((event) => event.type).join(", ") || "none"}
+  - knowledge pack: ${knowledgePack.detail}`);
 }
 
 async function handleDeployCommand(target: string | undefined, flags: Record<string, string | boolean>) {
@@ -944,6 +1061,7 @@ Recommended sequence:
 
 async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
   const wranglerConfigPath = findWranglerConfig(process.cwd());
+  const knowledgePack = await loadKnowledgePackManifest(process.cwd());
   const apply = flags.apply === true || flags.write === true || (Boolean(wranglerConfigPath) && !jsonOutput && flags["dry-run"] !== true);
   const plan = {
     ok: true,
@@ -969,6 +1087,7 @@ async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
       noSendsMode: true,
       smokeMode: true,
     },
+    knowledgePack: knowledgePack.summary,
     next: [
       "trellis smoke",
       "trellis connect attio",
