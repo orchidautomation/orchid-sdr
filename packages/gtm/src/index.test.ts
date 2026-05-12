@@ -212,9 +212,25 @@ describe("@trellis/gtm v3 API", () => {
             files: 1,
           },
           objects: 1,
+          files: [
+            {
+              key: "knowledge/files/icp.md",
+              path: "icp.md",
+              text: "# ICP",
+              truncated: false,
+            },
+          ],
         },
         skills: {
           objects: 1,
+          files: [
+            {
+              key: "skills/files/icp-qualification/SKILL.md",
+              path: "icp-qualification/SKILL.md",
+              text: "# ICP Qualification",
+              truncated: false,
+            },
+          ],
         },
       },
     });

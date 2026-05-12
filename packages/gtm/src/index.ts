@@ -255,6 +255,9 @@ interface TrellisProviderExecutionContext {
   input: Record<string, unknown>;
 }
 
+const MAX_PACK_CONTEXT_FILES = 24;
+const MAX_PACK_CONTEXT_FILE_CHARS = 16_000;
+
 export const schema = {
   gtm() {
     return z.object({
@@ -1715,6 +1718,12 @@ async function readPackContext(env: Record<string, unknown> | undefined) {
   const manifest = parseKnowledgeManifest(manifestText);
   const listed = bucket.list ? await bucket.list({ prefix: "" }) : null;
   const objects = listed?.objects ?? [];
+  const knowledgeObjects = objects.filter((object) => object.key.startsWith("knowledge/files/"));
+  const skillObjects = objects.filter((object) => object.key.startsWith("skills/files/"));
+  const [knowledgeFiles, skillFiles] = await Promise.all([
+    hydratePackFiles(bucket, knowledgeObjects, "knowledge/files/"),
+    hydratePackFiles(bucket, skillObjects, "skills/files/"),
+  ]);
 
   return {
     enabled: true,
@@ -1725,12 +1734,37 @@ async function readPackContext(env: Record<string, unknown> | undefined) {
             files: Array.isArray(manifest.files) ? manifest.files.length : 0,
           }
         : null,
-      objects: objects.filter((object) => object.key.startsWith("knowledge/files/")).length,
+      objects: knowledgeObjects.length,
+      files: knowledgeFiles,
     },
     skills: {
-      objects: objects.filter((object) => object.key.startsWith("skills/files/")).length,
+      objects: skillObjects.length,
+      files: skillFiles,
     },
   };
+}
+
+async function hydratePackFiles(
+  bucket: TrellisR2Bucket,
+  objects: Array<{ key: string; size?: number }>,
+  prefix: string,
+) {
+  const files = [];
+  for (const object of objects
+    .slice()
+    .sort((left, right) => left.key.localeCompare(right.key))
+    .slice(0, MAX_PACK_CONTEXT_FILES)) {
+    const stored = await bucket.get(object.key);
+    const text = stored ? String(await stored.text()) : "";
+    files.push({
+      key: object.key,
+      path: object.key.slice(prefix.length),
+      bytes: object.size ?? text.length,
+      text: text.slice(0, MAX_PACK_CONTEXT_FILE_CHARS),
+      truncated: text.length > MAX_PACK_CONTEXT_FILE_CHARS,
+    });
+  }
+  return files;
 }
 
 function parseKnowledgeManifest(value: unknown) {
