@@ -1,281 +1,100 @@
-# Framework Primitives
+# Trellis v3 Primitives
 
-This page describes the main framework contracts behind the Trellis reference app. It is written for GTM engineers and developers extending the system with coding agents or direct code changes.
+Trellis v3 should not expose "framework primitives" as a menu of interchangeable infrastructure pieces. The public primitives are GTM product objects.
 
-## Mental Model
-
-A Trellis app deployment is composed from a small set of explicit parts:
+## Product Primitives
 
 ```text
-signals -> prospects -> threads -> skills -> providers -> MCP tools
+signal -> context -> skill -> qualification -> prospect -> draft -> approval -> workflow -> audit
 ```
 
-Each part is designed to be inspectable, testable, and replaceable.
+These are the primitives Trellis users should understand.
 
-## Configuration Surface
+## Signal
 
-The root app config file (the reference app uses `trellis.config.ts`, and scaffolded apps use `<app-name>.config.ts`) describes a deployment in framework terms:
-
-- knowledge files
-- tracked skills
-- provider modules
-- campaigns
-- required environment variables
-
-The config surface is schema-backed in [src/framework/index.ts](../src/framework/index.ts):
-
-```ts
-aiSdrConfigSchema
-aiSdrModuleDefinitionSchema
-aiSdrProviderDefinitionSchema
-aiSdrSkillDefinitionSchema
-aiSdrKnowledgeDefinitionSchema
-defineAiSdr
-validateAiSdrConfigReferences
-```
-
-Use this file as the primary composition point when changing providers, enabling modules, or preparing a deployment for automation.
-
-Current provider modules are defined in [src/framework/builtin-modules.ts](../src/framework/builtin-modules.ts). A module can bundle:
-
-- provider definitions
-- provider keys
-- capability IDs
-- normalized contracts
-- environment variables
-- docs
-- smoke checks
-- package names for extracted providers
-
-## Capability Model
-
-The CLI and framework use capability IDs to describe what a provider supplies.
-
-MVP capability IDs:
-
-```text
-crm
-email
-source
-state
-search
-extract
-enrichment
-runtime
-model
-handoff
-observability
-compliance
-```
-
-Platform capabilities such as `database` and `mcp` are modeled separately because a self-hosted SDR needs durable state and an operator tool surface.
-
-The default stack uses Convex as `state` and Rivet as `runtime`. See [Agent-Native Architecture](agent-native-architecture.md).
-
-Contract examples:
-
-```text
-signal.normalized.v1
-crm.prospectSync.v1
-crm.stageUpdate.v1
-email.outbound.v1
-state.reactive.v1
-state.workflow.v1
-state.agentThreads.v1
-research.extract.v1
-research.monitor.v1
-runtime.actor.v1
-runtime.sandbox.v1
-```
-
-These contracts let different providers implement the same workflow surface without leaking vendor-specific behavior into the core app.
-
-## Signals
-
-Signals are normalized events that start or update SDR workflows.
+A normalized event that starts or updates GTM work.
 
 Examples:
 
-- HubSpot form submission
-- LinkedIn public post
-- X/Twitter post
+- form submission
+- product signup
+- LinkedIn post
 - job post
-- website visitor
-- funding event
+- manual webhook
 - CSV row
-- manual Slack submission
+- reply event
 
-The shared signal contract lives in [src/framework/signals.ts](../src/framework/signals.ts).
+## Context
 
-Core schema:
+The small, relevant bundle of facts the agent needs:
 
-```ts
-normalizedSignalSchema
-signalWebhookPayloadSchema
-providerSignalSchema
-```
+- signal payload
+- CRM account or contact record
+- product and ICP markdown
+- recent research
+- prior thread state
+- policy constraints
 
-The generic webhook path and provider adapters share the same contract so new sources can be added without defining a new ingest shape each time.
+## Skill
 
-## Providers
+A tracked markdown instruction pack that performs one repeatable behavior:
 
-Providers are swappable integrations behind the main workflow surfaces.
+- ICP qualification
+- research sufficiency
+- SDR copy
+- reply classification
+- handoff policy
 
-Examples:
+## Qualification
 
-- CRM: Attio, HubSpot, Salesforce, Twenty
-- Email: AgentMail, Gmail, Outlook, custom SMTP or API
-- State: Convex
-- Search: Parallel, Firecrawl, search APIs, browser or sandbox tools
-- Extract: Parallel, Firecrawl, browser or sandbox tools
-- Enrichment: Parallel, Prospeo, Clay, custom data providers
-- Discovery: Apify, first-party sources, custom webhooks
-- Runtime: Rivet actors, local development, Vercel Sandbox, other cloud code harnesses
-- Model: Vercel AI Gateway, OpenAI, Anthropic, OpenRouter, local models
+A typed decision that can be validated, stored, and inspected.
 
-The early executable contracts live in [src/framework/provider-contracts.ts](../src/framework/provider-contracts.ts).
+## Prospect
 
-Current contract examples:
+The durable GTM object created from a signal and qualification.
 
-```ts
-DiscoverySignalSourceAdapter
-EmailEnrichmentProvider
-BasicResearchSearchProvider
-ConfigurableResearchSearchProvider
-WebExtractProvider
-OutboundEmailProvider
-CrmProvider
-HandoffProvider
-```
+## Draft
 
-These contracts support package extraction for providers such as:
+The proposed outbound or CRM mutation. Drafts are blocked by default when they would cause side effects.
 
-```text
-@trellis/attio
-@trellis/hubspot
-@trellis/agentmail
-@trellis/convex
-@trellis/parallel
-@trellis/firecrawl
-@trellis/neon
-@trellis/apify-linkedin
-@trellis/twenty
-```
+## Approval
 
-### CLI Mapping
+The explicit gate for unsafe actions such as:
 
-Current package targets:
+- `email.send`
+- `crm.update`
+- `calendar.book`
+- `workflow.escalate`
 
-| Command | Package | Capabilities |
-| --- | --- | --- |
-| `trellis add crm attio` | `@trellis/attio` | `crm` |
-| `trellis add email agentmail` | `@trellis/agentmail` | `email` |
-| `trellis add state convex` | `@trellis/convex` | `state` |
-| `trellis add source apify` | `@trellis/apify-linkedin` | `source` |
-| `trellis add source webhook` | `@trellis/webhooks` | `source` |
-| `trellis add search parallel` | `@trellis/parallel` | `search`, `extract`, `enrichment`, `source` |
-| `trellis add extract firecrawl` | `@trellis/firecrawl` | `source`, `search`, `extract`, `enrichment`, `runtime`, `observability` |
-| `trellis add database neon` | `@trellis/neon` | `database` |
-| `trellis add model vercel-ai-gateway` | `@trellis/vercel-ai-gateway` | `model` |
-| `trellis add runtime rivet` | `@trellis/rivet` | `runtime` |
-| `trellis add runtime vercel-sandbox` | `@trellis/vercel-sandbox` | `runtime` |
-| `trellis add handoff slack` | `@trellis/slack` | `handoff` |
-| `trellis add mcp trellis-mcp` | `@trellis/mcp` | `mcp` |
+## Workflow
 
-Provider packages can satisfy more than one capability. The CLI installs by capability and provider pair while the underlying package remains provider-owned.
+The durable GTM process:
 
-`research` remains a CLI alias for search, extract, and enrichment, but manifests should use the granular capability IDs.
+- qualify
+- research
+- draft
+- wait for approval
+- send
+- wait for reply
+- follow up
+- hand off
 
-## Minimum Runnable Stack
+## Audit
 
-The reference app currently has two composition profiles:
+Append-only proof of what happened and why.
 
-| Profile | Purpose |
-| --- | --- |
-| `minimum` | Ingest one signal, research it, run model and runtime work, persist state, and expose MCP tools. |
-| `productionParity` | Run the full reference workflow: state, source, research, enrichment, runtime actors, sandbox harness, model gateway, email, CRM, handoff, and MCP. |
+## Hidden Infrastructure
 
-Verification commands:
+The user should not need to choose these on day one:
 
-```bash
-npm run trellis -- check
-npm run doctor
-```
+- Flue harness
+- Cloudflare Workers
+- Cloudflare Agents / Durable Objects
+- D1
+- R2
+- Queues
+- Workflows
+- AI Gateway
+- Sandbox
 
-Use these checks after changing provider composition or preparing a deployment profile.
-
-## Skills
-
-Skills encode agent behavior and judgment. Current skills live under `skills/`:
-
-- `icp-qualification`
-- `research-brief`
-- `research-checks`
-- `sdr-copy`
-- `reply-policy`
-- `handoff-policy`
-
-Developers can treat skills as a composable surface for company-specific qualification, drafting, reply handling, or routing logic.
-
-## MCP Tools
-
-The first-party MCP server is the operator and agent control surface.
-
-Primary tool groups:
-
-- pipeline inspection
-- lead and thread inspection
-- research and qualification
-- mail preview, send, and reply
-- CRM sync
-- runtime flags
-- discovery controls
-- handoff
-
-This interface allows external agents to inspect and control the live SDR system through typed tools instead of direct database or dashboard coupling.
-
-## Extend The Framework
-
-Typical developer workflow:
-
-1. scaffold or clone a Trellis project
-2. define product and ICP context in `knowledge/`
-3. add providers for the target stack
-4. add or modify skills
-5. run `npm run doctor`
-6. test in `NO_SENDS_MODE=true`
-7. feed real or test signals into the system
-8. inspect behavior through MCP and the dashboard
-9. iterate on providers, contracts, or skills
-
-Current local CLI examples:
-
-```bash
-npm run trellis -- modules
-npm run trellis -- add crm attio
-npm run trellis -- add state convex
-npm run trellis -- add search parallel
-npm run trellis -- add extract firecrawl
-npm run trellis -- add database neon
-```
-
-## Deployment Boundary
-
-App-specific code currently includes:
-
-- database repository
-- dashboard
-- Trellis MCP tool implementations
-- product knowledge
-- deployment-specific skills
-- provider instantiation
-
-Framework code currently includes:
-
-- `src/framework/index.ts`
-- `src/framework/signals.ts`
-- `src/framework/provider-contracts.ts`
-- `trellis.config.ts`
-- `scripts/doctor.ts`
-
-When extending or deploying Trellis, keep reusable contracts in `src/framework/` and keep customer-specific behavior in the app layer.
+Those are Trellis internals unless a deployment is being debugged or extended.

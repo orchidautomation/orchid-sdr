@@ -1,355 +1,109 @@
-# Trellis New User Guide
+# Trellis User Guide
 
-This guide covers the Trellis reference app from a product and implementation perspective:
+Trellis v3 is the GTM agent stack for teams that want to ship an agent without assembling the harness, runtime, queues, storage, gateway, safety gates, provider glue, and observability from scratch.
 
-- what Trellis includes
-- which core and optional lanes are available
-- what accounts and environment variables are required
-- how to run the app locally
-- how to extend the stack
-- how to deploy it
-
-If you are trying to get one demo live, use this order:
-
-1. fill the core env
-2. keep `NO_SENDS_MODE=true`
-3. run `npm run doctor`
-4. deploy the app
-5. verify `/healthz` and `/dashboard`
-6. connect remote MCP
-7. ingest one known signal
-8. verify state, research, and draft output before enabling any send lane
+The product promise is intentionally narrow: build and deploy a reliable GTM agent with one blessed stack, then connect the business systems you actually need.
 
 ## What Trellis Is
 
-Trellis is a framework for composing agentic GTM systems. This repository includes:
+Trellis owns the GTM product contract:
 
-1. a reference application
-2. the framework packages and contracts that support it
+- inbound signals
+- account and prospect context
+- markdown knowledge packs
+- skills as operating judgment
+- qualification outputs
+- blocked drafts
+- approval gates
+- workflow starts
+- audit events
+- dashboard and MCP inspection
 
-The reference app provides a working control plane for signal ingestion, research, qualification, workflow state, dashboard operations, and MCP access.
+Trellis hides the plumbing:
 
-## What The Reference App Does
+- Flue for the agent harness
+- Cloudflare Workers for HTTP
+- Cloudflare Agents / Durable Objects for identity and state locality
+- D1 for queryable app state
+- R2 for knowledge, skills, attachments, and artifacts
+- Queues for background work and retries
+- Workflows for long-running GTM steps
+- AI Gateway for model routing and usage visibility
+- Sandbox or browser primitives only when lightweight filesystem context is not enough
 
-At a high level, the reference workflow:
+## The Demo Shape
 
-1. ingests normalized signals
-2. researches the person, company, and source context
-3. qualifies the lead against the repo knowledge pack
-4. persists workflow state
-5. exposes pipeline state through the dashboard and MCP server
-6. optionally syncs CRM, drafts email, handles replies, and routes handoff
-
-Core capabilities:
-
-- normalized inbound signal ingest through webhooks
-- optional scheduled discovery from public sources such as LinkedIn
-- Convex-backed state and audit history
-- Rivet orchestration
-- dashboard and first-party MCP control surfaces
-
-Optional capabilities:
-
-- enrichment
-- Attio CRM sync
-- AgentMail outbound and reply handling
-- Slack handoff
-
-## Recommended Demo Shape
-
-For one credible demo, do not start with every optional lane.
-
-Start with:
-
-- normalized signal ingest
-- Convex for state
-- Rivet for orchestration
-- Vercel Sandbox for agent execution
-- Vercel AI Gateway for model routing
-- the first-party MCP server
-
-Then add only what you plan to show:
-
-- `Apify` for scheduled discovery
-- `Prospeo` for enrichment
-- `Attio` for CRM sync
-- `AgentMail` for outbound and replies
-- `Slack` for handoff
-
-That is also the Trellis scaffold rule now:
-
-- `npm run trellis -- init ...` always gives you the core app
-- optional lanes are added explicitly with `--with-*`, `add`, and `connect`
-
-The public capability categories are:
-
-- `source`
-- `search`
-- `extract`
-- `deep-research`
-- `enrichment`
-- `crm`
-- `email`
-- `handoff`
-- `state`
-- `runtime`
-- `model`
-- `mcp`
-
-The safest first demo keeps `NO_SENDS_MODE=true` and proves:
-
-- one signal entered
-- one thread persisted
-- one research brief exists
-- one draft exists, if outbound is enabled
-- MCP and dashboard agree on state
-
-### Model Routing
-
-Model routing is configured in the app config file. The reference app uses `trellis.config.ts`.
-
-- `modelRouting.defaultModel` sets the global fallback.
-- `modelRouting.sandbox.defaultModel` sets the default model for sandbox agent turns.
-- `modelRouting.sandbox.stages` can override per-stage models for discovery, qualification, research briefing, outbound drafting, reply classification, and handoff handling.
-- `modelRouting.structured` can override models used for structured operations such as reply classification, policy checks, and prospect qualification.
-
-This allows a deployment to mix lower-cost drafting models with stronger reasoning models for research or qualification.
-
-## Required Accounts And Secrets
-
-### Core Dependencies
-
-#### Convex
-
-Role:
-
-- operational state plane
-- source of record for the reference app
-- dashboard and workflow backing store
-
-Typical environment variables:
-
-- `CONVEX_URL`
-- `NEXT_PUBLIC_CONVEX_URL`
-- optional `CONVEX_DEPLOYMENT`
-- optional `CONVEX_DEPLOY_KEY`
-
-#### Vercel
-
-Role:
-
-- Sandbox execution
-- AI Gateway model routing
-- optional hosted deployment target
-
-Typical Sandbox auth:
-
-- `VERCEL_OIDC_TOKEN`
-- or `VERCEL_TOKEN`, `VERCEL_TEAM_ID`, and `VERCEL_PROJECT_ID`
-
-Model routing keys:
-
-- `AI_GATEWAY_API_KEY`
-- or `VERCEL_AI_GATEWAY_KEY`
-
-#### Firecrawl
-
-Role:
-
-- primary search
-- primary extraction
-
-Required:
-
-- `FIRECRAWL_API_KEY`
-
-#### Rivet
-
-Role:
-
-- actor orchestration
-- workflow scheduling
-- runtime control plane
-
-Typical variables:
-
-- `RIVET_ENDPOINT`
-- `RIVET_TOKEN`
-- `RIVET_PROJECT`
-- `RIVET_ENV`
-- optional `RIVET_PUBLIC_ENDPOINT`
-- optional `RIVET_PUBLIC_TOKEN`
-
-#### App Secrets
-
-Required:
-
-- `APP_URL`
-- `TRELLIS_SANDBOX_TOKEN`
-- `HANDOFF_WEBHOOK_SECRET`
-
-Recommended:
-
-- `TRELLIS_MCP_TOKEN`
-- `DASHBOARD_PASSWORD`
-
-### Additional Dependencies By Optional Lane
-
-- `Apify`
-  - `APIFY_TOKEN`
-  - `APIFY_LINKEDIN_TASK_ID` or `APIFY_LINKEDIN_ACTOR_ID`
-  - `APIFY_WEBHOOK_SECRET`
-  - optional `APIFY_LINKEDIN_PROFILE_TASK_ID` or `APIFY_LINKEDIN_PROFILE_ACTOR_ID`
-- `Parallel`
-  - `PARALLEL_API_KEY`
-- `Prospeo`
-  - `PROSPEO_API_KEY`
-- `Attio`
-  - `ATTIO_API_KEY`
-- `AgentMail`
-  - `AGENTMAIL_API_KEY`
-  - `AGENTMAIL_WEBHOOK_SECRET`
-- `Slack`
-  - `SLACK_BOT_TOKEN` and/or `SLACK_WEBHOOK_URL`
-
-## Run It Locally
-
-If the repo is configured correctly, the standard local flow is:
+The demo should read like a product, not infrastructure assembly:
 
 ```bash
-npm install
-cp .env.example .env
-npm run typecheck
-npm test
-npm run doctor
-npm run dev
+trellis init acme-sdr
+trellis docs add ./knowledge
+trellis doctor
+trellis smoke
+trellis deploy
+trellis connect attio
+trellis connect agentmail
+trellis connect firecrawl
 ```
 
-Open the dashboard at:
+The proof point is that a user can see one signal become a qualified prospect, a blocked outbound draft, two pending approvals, audit events, and a workflow start without touching Convex, Rivet, Vercel Sandbox, or custom orchestration code.
 
-```text
-http://localhost:3000/dashboard
+## The 20-ish Line Pitch
+
+```ts
+import { trellis, schema } from "@trellis/gtm";
+import { attio, agentmail, firecrawl } from "@trellis/providers";
+
+export default trellis.agent("gtm-sdr", {
+  crm: attio(),
+  email: agentmail(),
+  research: firecrawl(),
+  knowledge: "knowledge/**/*.md",
+  skills: "skills/**/SKILL.md",
+  safety: trellis.safeOutbound({
+    noSends: true,
+    requireApproval: ["email.send", "crm.update"],
+  }),
+}, async (app) => {
+  const signal = await app.signal();
+  const qualification = await app.skill("icp-qualification", {
+    context: await app.context(signal),
+    schema: schema.qualification(),
+  });
+
+  return app.workflow("prospect").start({ signal, qualification });
+});
 ```
 
-If Convex is not available and you only need a local boot check, use smoke mode:
+That snippet is the public story. The generated Cloudflare wrapper can mount health checks, signal webhooks, MCP, dashboard, persistence, queues, and smoke routes around it.
 
-```bash
-export TRELLIS_LOCAL_SMOKE_MODE=true
-export TRELLIS_SANDBOX_TOKEN=local-sandbox-token
-export HANDOFF_WEBHOOK_SECRET=local-handoff-secret
-npm run doctor
-npm run dev
-```
+## Safety Defaults
 
-Smoke mode is limited to boot and dashboard verification.
+New apps should start in no-send mode.
 
-### Expected First-Boot Behavior
+Approvals are product state, not comments in a log. Trellis should persist and expose:
 
-- the app starts locally
-- `/dashboard` resolves
-- `/healthz` returns `200`
-- dashboard data may take a few seconds to populate on the first load
+- which draft is blocked
+- which action is gated
+- who or what approved it
+- when it changed state
+- what audit event proves the transition
 
-### Auth Model
+## Provider Strategy
 
-Dashboard auth:
+Do not make users choose every primitive.
 
-- route: `/dashboard`
-- password source: `DASHBOARD_PASSWORD`
-- fallback: `TRELLIS_SANDBOX_TOKEN`
+The default GTM stack ships with a small business-level provider surface:
 
-MCP auth:
+- `trellis connect attio`
+- `trellis connect agentmail`
+- `trellis connect firecrawl`
+- `trellis connect langfuse`
 
-- route: `/mcp/trellis`
-- bearer token: `TRELLIS_MCP_TOKEN`
-- fallback: `TRELLIS_SANDBOX_TOKEN`
+Cloudflare is not a provider choice in the happy path. It is the runtime Trellis uses.
 
-### URL Derivation
+## Legacy Reference App
 
-Local URLs:
+The existing AI SDR app remains useful because it proves the desired behavior: discovery, ingest, research, qualification, copy, CRM sync, replies, handoff, dashboard, and MCP.
 
-- dashboard: `http://localhost:3000/dashboard`
-- MCP: `http://localhost:3000/mcp/trellis`
-
-Deployment URLs:
-
-- dashboard: `${APP_URL}/dashboard`
-- MCP: `${APP_URL}/mcp/trellis`
-- webhooks: `${APP_URL}/webhooks/...`
-
-Set `APP_URL` explicitly for deployed environments. On Vercel, the app falls back to `https://$VERCEL_URL` when `APP_URL` is unset.
-
-## Recommended Enablement Path
-
-For a new deployment:
-
-1. start from the current reference app
-2. connect Convex, Vercel, Firecrawl, and Rivet
-3. set `NO_SENDS_MODE=true`
-4. run `npm run doctor`
-5. deploy or run locally
-6. open the dashboard and verify `/healthz`
-7. connect MCP and verify read-only tools first
-8. send one known signal into `/webhooks/signals`
-9. inspect leads and workflow state
-10. add discovery, enrichment, CRM, and outbound only after the pipeline is stable
-
-## Extend The System
-
-### Add Providers
-
-Add optional providers through the CLI:
-
-```bash
-npm run trellis -- add source apify --apply
-npm run trellis -- add deep-research parallel --apply
-npm run trellis -- add enrichment prospeo --apply
-```
-
-For operator-triggered discovery:
-
-```bash
-npm run trellis -- discovery seed "clay workflow"
-npm run trellis -- discovery run "https://www.linkedin.com/feed/update/urn:li:activity:123/"
-npm run trellis -- discovery tick --source linkedin_public_post
-```
-
-These commands update the app config file and `.env`.
-
-### Add MCPs And Skills
-
-To extend the operator or agent surface:
-
-- mount another provider MCP into the harness
-- add skills that encode how the agent should use it
-
-### Add A First-Class Package
-
-When an integration should become part of the framework:
-
-- add or use a dedicated `@trellis/<provider>` package
-- map it into capability bindings
-- document its environment variables, smoke checks, and contracts
-
-## Deploy It
-
-The minimum deployment stack is:
-
-- Convex
-- Vercel Sandbox
-- Vercel AI Gateway
-- Firecrawl
-- Rivet
-- normalized webhook ingest
-- first-party MCP
-
-Optional deployment modules:
-
-- Apify
-- Parallel
-- Prospeo
-- Attio
-- AgentMail
-- Slack
-
-For a production deployment, keep `APP_URL` set explicitly, verify webhook routes against the deployed hostname, and leave `NO_SENDS_MODE=true` until workflow behavior has been reviewed end to end.
+It is not the v3 architecture. Use it as a parity checklist while moving behavior into the curated Cloudflare-first runtime.

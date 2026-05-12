@@ -411,7 +411,7 @@ You can boot the app with the required env block above, but to actually feel the
 
 ${renderValueAccountLines(spec)}
 
-Vercel OAuth is **not** part of the default Trellis auth story right now. The current happy path uses tokens and provider keys so the scaffold stays self-hostable and works outside a Vercel-only environment.
+This is a legacy scaffold checklist. The v3 happy path is Cloudflare-first and uses \`trellis init\`, \`docs add\`, \`doctor\`, \`smoke\`, \`deploy\`, and \`connect\`.
 
 ## Login And Auth Model
 

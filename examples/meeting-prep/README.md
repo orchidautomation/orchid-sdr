@@ -1,16 +1,13 @@
 # Meeting Prep
 
-Meeting-prep domain kit for Trellis.
+Legacy domain kit example.
 
-This example assumes a structured booking webhook and produces a pre-meeting brief artifact for operators and MCP clients.
+This folder is useful as migration material for future vertical packs, but it is not the v3 first-run path.
 
-Default kit shape:
+The v3 lesson to carry forward is the pack shape:
 
-- booking webhook intake
-- meeting and attendee state
-- prep brief generation
-- web search and extraction for thin account context
-
-Optional later:
-
-- CRM sync via `trellis add crm attio --apply`
+- webhook signal
+- markdown knowledge
+- skill instructions
+- typed output
+- dashboard/MCP inspection

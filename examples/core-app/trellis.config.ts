@@ -13,7 +13,7 @@ const modules = defaultTrellisModules().filter((module) => selectedModuleIds.inc
 
 export default defineAiSdr({
   name: "trellis-core",
-  description: "Neutral Trellis core app scaffold with webhook intake, actor-backed processing, MCP access, and sandboxed agent turns.",
+  description: "Legacy core scaffold kept for migration tests while the v3 Cloudflare-first Trellis stack becomes the default.",
   compositionTargets: ["minimum"],
   modelRouting: {
     defaultModel: "moonshotai/kimi-k2.6",

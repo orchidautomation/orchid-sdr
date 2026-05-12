@@ -1,360 +1,72 @@
 # Self-Hosting Trellis
 
-This guide is for a company that wants to clone the repo and run its own Trellis control plane.
-
-It assumes one deployment owns one product knowledge pack. Multiple campaigns can run inside one deployment, but if the underlying product or ICP is different, use a separate deployment or fork until product-specific knowledge is first-class.
-
-## Deployment Modes
-
-Use one of these modes first:
-
-- **Safe pilot**
-  `NO_SENDS_MODE=true`. The system can ingest, research, qualify, preview, sync CRM, and expose MCP state, but outbound sends are blocked.
-
-- **Operator-approved outbound**
-  Keep `NO_SENDS_MODE=true` while reviewing the first batch. Temporarily disable it only for approved sends through MCP or the operator console.
-
-- **Autonomous outbound**
-  Do not use this for a new customer until their source, qualification, copy, reply handling, unsubscribe handling, and CRM sync have been tested with real examples.
+For v3, "self-hosting" means you own the Cloudflare account and Trellis deploys into it. It does not mean assembling a custom Convex/Vercel/Rivet stack.
 
 ## Prerequisites
 
-Required:
+- Node.js 22
+- npm
+- Wrangler
+- Cloudflare account access
+- either `wrangler login` or `CLOUDFLARE_ACCOUNT_ID` plus `CLOUDFLARE_API_TOKEN`
 
-- Node.js 22 or Docker
-- Convex deployment details
-- a public HTTPS URL for production
-- a long random `TRELLIS_SANDBOX_TOKEN`
-- a long random `TRELLIS_MCP_TOKEN`
-- a long random `HANDOFF_WEBHOOK_SECRET`
+Business provider keys are optional for first deploy.
 
-Usually required for the full agent lane:
-
-- Vercel AI Gateway key
-- Vercel Sandbox credentials
-- Convex deployment details for the future default reactive state plane
-- Apify token and a LinkedIn public-post task or actor
-- Firecrawl key
-- Parallel API key for authenticated research MCP and Task MCP
-
-Optional:
-
-- AgentMail for send/reply handling
-- Attio for CRM sync
-- Slack for handoff
-- Prospeo for email enrichment
-
-## 1. Clone And Configure
+## Create The App
 
 ```bash
-git clone <repo-url> trellis
-cd trellis
-cp .env.example .env
-```
-
-Edit `.env`.
-
-Minimum safe-pilot values:
-
-```bash
-PORT=3000
-APP_URL=https://sdr.example.com
-CONVEX_URL=https://your-deployment.convex.cloud
-NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
-NO_SENDS_MODE=true
-DEFAULT_CAMPAIGN_TIMEZONE=America/New_York
-
-TRELLIS_SANDBOX_TOKEN=<long-random-secret>
-TRELLIS_MCP_TOKEN=<long-random-secret>
-HANDOFF_WEBHOOK_SECRET=<long-random-secret>
-DASHBOARD_PASSWORD=<long-random-password>
-```
-
-Important:
-
-- `APP_URL` must be reachable from Vercel Sandboxes.
-- `APP_URL` must be reachable from Apify and AgentMail if those webhooks are enabled.
-- For Convex, set `CONVEX_URL` for the Node service and `NEXT_PUBLIC_CONVEX_URL` for future browser/live-query clients.
-- Keep `NO_SENDS_MODE=true` until the customer has approved real sends.
-
-## 2. Customize The Knowledge Pack
-
-Before running a customer pilot, update:
-
-- `knowledge/icp.md`
-- `knowledge/product.md`
-- `knowledge/usp.md`
-- `knowledge/compliance.md`
-- `knowledge/negative-signals.md`
-- `knowledge/handoff.md`
-
-Then review the tracked skills:
-
-- `skills/icp-qualification`
-- `skills/research-brief`
-- `skills/research-checks`
-- `skills/sdr-copy`
-- `skills/reply-policy`
-- `skills/handoff-policy`
-
-The knowledge files are product facts. The skills are operating judgment. Both affect qualification and messaging.
-
-## 3. Run With Docker Compose
-
-Docker Compose is the most repeatable single-server path.
-
-```bash
-cp docker-compose.example.yml docker-compose.yml
-docker compose up --build
-```
-
-The app bootstraps the Convex-backed runtime on startup. To verify:
-
-```bash
-curl -fsS http://localhost:3000/healthz
-```
-
-Expected response:
-
-```json
-{"ok":true,"service":"trellis"}
-```
-
-Open:
-
-```text
-http://localhost:3000/dashboard
-```
-
-For production, put the app behind HTTPS with Caddy, Nginx, Traefik, a cloud load balancer, or the host platform's domain layer. Set `APP_URL` to that public HTTPS origin.
-
-## 4. Run Without Docker
-
-Use this path on a VM or PaaS that provides Node and can reach your configured Convex deployment and provider APIs.
-
-```bash
+npm run trellis -- init ../acme-sdr --name acme-sdr
+cd ../acme-sdr
 npm install
-npm run typecheck
-npm test
-npm run doctor
-npm run build
-npm start
 ```
 
-`npm start` runs `dist/index.js`. The production process should be supervised by the host platform, `systemd`, PM2, Docker, or another process manager.
+## Configure Cloudflare
 
-Health check:
+The scaffold expects Cloudflare bindings for:
+
+- D1 app state
+- R2 packs and artifacts
+- Queues
+- Durable Objects / Cloudflare Agents
+- AI Gateway
+
+Use the generated `wrangler.jsonc` as the source of truth, then run:
 
 ```bash
-curl -fsS http://localhost:3000/healthz
+npm run trellis -- doctor
 ```
 
-## 5. Configure Remote MCP Access
+## Deploy
 
-Add this to the MCP client that should operate the deployment:
-
-```json
-{
-  "mcpServers": {
-    "trellis": {
-      "type": "http",
-      "url": "https://sdr.example.com/mcp/trellis",
-      "headers": {
-        "Authorization": "Bearer ${TRELLIS_MCP_TOKEN}"
-      }
-    }
-  }
-}
+```bash
+npm run trellis -- smoke
+npm run trellis -- deploy
 ```
 
-Verify with a read-only tool first:
+The deployed app should answer:
 
 ```text
-pipeline.summary
-runtime.flags
-runtime.discoveryHealth
-knowledge.search
+GET /healthz
+GET /smoke
+GET /dashboard
+POST /webhooks/signals
+POST /mcp/trellis
 ```
 
-Do not test `mail.send` until `NO_SENDS_MODE` and the customer's sending policy are intentionally set.
+## Connect Business Systems
 
-## 6. Configure Discovery
-
-For LinkedIn public-post discovery, set either a task ID or actor ID:
+After the app is live:
 
 ```bash
-APIFY_TOKEN=<token>
-APIFY_LINKEDIN_TASK_ID=<task-id>
-# or
-APIFY_LINKEDIN_ACTOR_ID=<actor-id>
-DISCOVERY_LINKEDIN_ENABLED=true
-DISCOVERY_LINKEDIN_SEED_TERMS=sales automation,revops,gtm engineering
+npm run trellis -- connect attio
+npm run trellis -- connect agentmail
+npm run trellis -- connect firecrawl
 ```
 
-If you also want exact known LinkedIn post URLs to run through the same discovery source, optionally add a Harvest profile-posts actor or task:
+Then add provider secrets to Cloudflare.
 
-```bash
-APIFY_LINKEDIN_POSTS_TASK_ID=<task-id>
-# or
-APIFY_LINKEDIN_POSTS_ACTOR_ID=harvestapi/linkedin-profile-posts
-```
+Keep no-send mode enabled until real customer examples have been reviewed.
 
-When a discovery term is itself a LinkedIn post URL, Trellis will prefer that exact-post actor/task and send a `targetUrls`-style payload instead of the normal search payload.
+## Legacy Self-Hosting
 
-Webhook endpoint:
-
-```text
-POST https://sdr.example.com/webhooks/apify?secret=<APIFY_WEBHOOK_SECRET>
-```
-
-Set:
-
-```bash
-APIFY_WEBHOOK_SECRET=<long-random-secret>
-```
-
-If you also want richer LinkedIn profile/company research during qualification and research-brief generation, point Trellis at a Harvest-style LinkedIn profile scraper task or actor:
-
-```bash
-APIFY_LINKEDIN_PROFILE_TASK_ID=<task-id>
-# or
-APIFY_LINKEDIN_PROFILE_ACTOR_ID=<actor-id>
-```
-
-The default input shape Trellis uses is:
-
-```json
-{
-  "profileScraperMode": "Profile details no email ($4 per 1k)",
-  "queries": ["https://www.linkedin.com/in/example/"]
-}
-```
-
-If both a person URL and a company URL are available, Trellis will send them in the same `queries` array so one Apify run can return both records.
-
-This is the current post-discovery Apify lane used by AI SDR.
-
-Operator commands:
-
-```bash
-npm run trellis -- discovery seed "clay workflow"
-npm run trellis -- discovery run "https://www.linkedin.com/feed/update/urn:li:activity:123/"
-npm run trellis -- discovery tick --source linkedin_public_post
-```
-
-For generic warm leads or custom sources, post normalized signals to:
-
-```text
-POST https://sdr.example.com/webhooks/signals?secret=<SIGNAL_WEBHOOK_SECRET>
-```
-
-Example payload:
-
-```json
-{
-  "provider": "hubspot",
-  "source": "warm_form",
-  "externalId": "form-submission-123",
-  "signals": [
-    {
-      "url": "https://example.com/forms/demo",
-      "authorName": "Jane Doe",
-      "authorTitle": "VP Marketing",
-      "authorCompany": "Northstar",
-      "companyDomain": "northstar.ai",
-      "topic": "demo request",
-      "content": "Interested in automating account research and outbound workflows."
-    }
-  ]
-}
-```
-
-## 7. Configure Email And Replies
-
-Keep this off for the first customer run unless there is an explicit send test.
-
-```bash
-AGENTMAIL_API_KEY=<key>
-AGENTMAIL_WEBHOOK_SECRET=<svix-secret>
-AGENTMAIL_AUTO_PROVISION_INBOX=false
-AGENTMAIL_DEFAULT_SENDER_NAME="Customer SDR"
-AGENTMAIL_DEFAULT_INBOX_DOMAIN=mail.customer-domain.com
-```
-
-AgentMail webhook endpoint:
-
-```text
-POST https://sdr.example.com/webhooks/agentmail
-```
-
-Before live sending, prove:
-
-- sender inbox is correct
-- reply webhook reaches the app
-- unsubscribe handling pauses the thread
-- bounce handling pauses the thread
-- positive replies route to handoff or CRM correctly
-
-## 8. Configure CRM Sync
-
-For Attio:
-
-```bash
-ATTIO_API_KEY=<key>
-ATTIO_DEFAULT_LIST_ID=<list-id>
-ATTIO_DEFAULT_LIST_STAGE=Prospecting
-ATTIO_AUTO_OUTBOUND_STAGE=Prospecting
-ATTIO_AUTO_POSITIVE_REPLY_STAGE=Qualification
-ATTIO_AUTO_NEGATIVE_REPLY_STAGE=Paused
-```
-
-Test with one reviewed prospect through:
-
-```text
-crm.syncProspect
-```
-
-Verify the company, person, list entry, notes, and stored Attio IDs before enabling automatic sync behavior.
-
-## 9. First Customer Smoke Test
-
-Run this in safe-pilot mode.
-
-1. Confirm `/healthz` is green.
-2. Run `npm run doctor` and review any warnings.
-3. Open `/dashboard`.
-4. Call `runtime.flags` through MCP and confirm `no_sends_mode` is enabled.
-5. Call `knowledge.search` for a known ICP phrase.
-6. Post one normalized test signal to `/webhooks/signals`.
-7. Confirm the signal, prospect, thread, research brief, and audit events appear.
-8. Call `lead.inspect` on the created prospect.
-9. Generate a preview, but do not send.
-10. Review the qualification and copy with the customer.
-11. Only then decide whether to run a controlled send.
-
-## Production Readiness Checklist
-
-Before telling a customer this is production-ready, verify:
-
-- deployment has a public HTTPS `APP_URL`
-- database backups are enabled
-- dashboard has a password
-- MCP token is unique and stored as a secret
-- webhook secrets are unique and stored as secrets
-- `NO_SENDS_MODE=true` for first run
-- knowledge pack is customized for the customer's product
-- discovery source has produced at least one real signal
-- generic signal webhook has been tested if using warm leads
-- reply webhook has been tested with real provider payloads
-- unsubscribe, bounce, wrong-person, referral, objection, and positive replies have been reviewed
-- CRM sync has been tested on one real prospect
-- blocked-send reasons are visible to the operator
-- the customer has approved the first outbound batch
-
-## Known Constraints
-
-- HubSpot form ingestion should use `/webhooks/signals` today; a first-class HubSpot adapter is not built yet.
-- X/Twitter discovery exists as a disabled source and should be treated as not ready until configured and tested.
-- Product-fit routing across multiple products is a future idea, not part of the current production path.
-- `mail.preview` can still be slower than ideal because it uses the sandbox drafting lane.
-- Do not promise autonomous outbound until the customer's reply handling, compliance rules, and CRM workflow have been proven with real examples.
+The older Docker/Node self-hosting path is retained only for the existing reference app while v3 reaches parity. It is not the target architecture.

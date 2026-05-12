@@ -1,24 +1,11 @@
 # Trellis Core App
 
-Neutral Trellis scaffold source.
+Legacy core scaffold source.
 
-This example exists for `trellis init` and for engineers who want a minimal Trellis runtime without SDR assumptions.
+This folder predates the v3 Cloudflare-first path and remains only as migration material for older scaffold tests. New apps should start with:
 
-It includes:
+```bash
+npm run trellis -- init ../acme-sdr --name acme-sdr
+```
 
-- generic webhook intake
-- Convex-backed state
-- Rivet actor runtime
-- Vercel Sandbox turn execution
-- AI Gateway model routing
-- Trellis MCP
-
-It does not assume:
-
-- leads
-- prospects
-- campaigns
-- CRM sync
-- outbound email
-- discovery providers
-
+Do not present this example as the current Trellis product architecture.

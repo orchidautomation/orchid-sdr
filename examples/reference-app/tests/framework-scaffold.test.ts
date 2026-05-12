@@ -130,7 +130,7 @@ describe("framework scaffold profiles", () => {
     expect(setupChecklist).toContain("# Trellis Setup Checklist");
     expect(setupChecklist).toContain(spec.selection.description);
     expect(setupChecklist).toContain("External Accounts You Actually Need");
-    expect(setupChecklist).toContain("Vercel OAuth is **not** part of the default Trellis auth story right now.");
+    expect(setupChecklist).toContain("This is a legacy scaffold checklist.");
     expect(setupChecklist).toContain("Deployed MCP endpoint");
     expect(setupChecklist).toContain("npm run trellis -- mcp claude-code --local --write");
     expect(setupChecklist).not.toContain("npm run ai-sdr --");

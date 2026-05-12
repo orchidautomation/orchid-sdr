@@ -4,7 +4,7 @@ const modules = defaultTrellisModules();
 
 export default defineAiSdr({
   name: "trellis",
-  description: "Reference implementation for a self-hostable, composable AI SDR control plane.",
+  description: "Legacy AI SDR behavior baseline used to port parity into the v3 Cloudflare-first Trellis stack.",
   compositionTargets: ["minimum", "productionParity"],
   modelRouting: {
     defaultModel: "moonshotai/kimi-k2.6",

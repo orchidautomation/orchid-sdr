@@ -1,259 +1,117 @@
 # Getting Started
 
-This is the shortest path to a working Trellis app.
+This is the v3 happy path. Trellis is now a curated GTM agent stack, not a toolkit for assembling your own agent framework.
 
-If your goal is one demo, use the reference app already in this repo before scaffolding a custom app.
+The first boot should require only Node, npm, and Cloudflare auth. Business providers come after the app is alive.
 
-Canonical order:
-
-1. copy `.env.example` to `.env`
-2. fill the minimum core env
-3. keep `NO_SENDS_MODE=true`
-4. run `npm run doctor`
-5. run `npm run dev` or deploy
-6. verify `/dashboard` and `/healthz`
-7. connect MCP
-8. ingest one signal
-
-## 1. Use The Existing Reference App First
+## 1. Install
 
 From the repo root:
 
 ```bash
 nvm use 22
 npm install
-cp .env.example .env
-```
-
-Minimum core env for a real demo:
-
-- `APP_URL`
-- `CONVEX_URL`
-- `NEXT_PUBLIC_CONVEX_URL`
-- `TRELLIS_SANDBOX_TOKEN`
-- `TRELLIS_MCP_TOKEN`
-- `HANDOFF_WEBHOOK_SECRET`
-- `RIVET_ENDPOINT`
-- `RIVET_TOKEN`
-- `AI_GATEWAY_API_KEY` or `VERCEL_AI_GATEWAY_KEY`
-- `NO_SENDS_MODE=true`
-
-Then run:
-
-```bash
-npx convex dev
 npm run typecheck
 npm test
-npm run doctor
-npm run dev
 ```
 
-Keep `npx convex dev` running while you do real local development against Convex. Trellis uses the repo-root `convex.json` file to point Convex at the reference app functions in `examples/reference-app/convex`.
-
-If port `3000` is already in use, either stop the old process or set a new app port:
+## 2. Create An App
 
 ```bash
-PORT=3001 npm run dev
-```
-
-If you only want a boot check before wiring Convex, use smoke mode:
-
-```bash
-export TRELLIS_LOCAL_SMOKE_MODE=true
-export TRELLIS_SANDBOX_TOKEN=local-sandbox-token
-export HANDOFF_WEBHOOK_SECRET=local-handoff-secret
-npm run doctor
-npm run dev
-```
-
-Smoke mode is only for boot and dashboard checks.
-
-## 2. Scaffold
-
-```bash
-npm run trellis -- init ../trellis-core --name trellis-core
-```
-
-That command scaffolds the base Trellis runtime and nothing extra:
-
-- normalized signal webhook ingest
-- Convex state
-- Rivet actor runtime
-- Vercel Sandbox
-- Vercel AI Gateway
-- first-party Trellis MCP
-
-After boot, add capabilities incrementally:
-
-```bash
-npm run trellis -- add source apify --apply
-npm run trellis -- add search firecrawl --apply
-npm run trellis -- add extract firecrawl --apply
-npm run trellis -- add deep-research parallel --apply
-npm run trellis -- add enrichment prospeo --apply
-```
-
-Or choose optional lanes up front with flags:
-
-```bash
-npm run trellis -- init ../trellis-core-plus --name trellis-core-plus --with-discovery --with-deep-research
-```
-
-The CLI no longer owns a guided wizard, and it no longer exposes starter/production profiles.
-Guided onboarding should sit on top of the CLI, not inside it.
-When an agent or plugin is driving setup, use the JSON contract:
-
-```bash
-npm run trellis -- init ../trellis-core --name trellis-core --json
-npm run doctor -- --json
-npm run trellis -- connect source apify --json
-npm run trellis -- deploy local --json
-npm run trellis -- mcp claude-code --local --write --json
-```
-
-## 3. Install
-
-```bash
-cd <your-target-directory>
+npm run trellis -- init ../acme-sdr --name acme-sdr
+cd ../acme-sdr
 npm install
-cp .env.example .env
 ```
 
-## 4. Fill the minimum env
+`trellis init` writes the v3 Cloudflare GTM app by default:
 
-At minimum:
+- `agents/gtm-sdr.ts`
+- `knowledge/**/*.md`
+- `skills/**/SKILL.md`
+- `wrangler.jsonc`
+- `.env.example`
+- package scripts for `doctor`, `smoke`, and `deploy`
 
-- `APP_URL`
-- `CONVEX_URL`
-- `TRELLIS_SANDBOX_TOKEN`
-- `HANDOFF_WEBHOOK_SECRET`
-- `NO_SENDS_MODE=true`
+No SDR kit, Convex app, Vercel Sandbox, or Rivet runtime is installed by default.
 
-If the scaffolded lanes include additional providers, fill those after the core env is working.
+## 3. Authenticate Cloudflare
 
-## 5. Which accounts do you really need?
-
-To simply boot the app safely, the required env block is enough.
-
-To actually feel the product as a new user:
-
-- base runtime
-  - `Convex`
-  - `Vercel` for Sandbox and AI Gateway
-  - `Rivet`
-- add lanes as needed
-  - `Firecrawl`
-  - `Apify`
-  - `Parallel`
-  - `Prospeo`
-  - `AgentMail`
-  - `Attio`
-  - `Slack` if you want handoff
-
-That is the current happy path. Vercel OAuth is not required for the scaffolded app.
-
-## 5.1. Core capability categories
-
-These are the categories you add/connect against from the CLI:
-
-- `source`
-- `search`
-- `extract`
-- `deep-research`
-- `enrichment`
-- `crm`
-- `email`
-- `handoff`
-- `state`
-- `runtime`
-- `model`
-- `mcp`
-
-Examples:
+Use Wrangler login or environment auth:
 
 ```bash
-npm run trellis -- add source apify --apply
-npm run trellis -- connect source apify
-npm run trellis -- add crm attio --apply
-npm run trellis -- connect crm attio
+npx wrangler login
 ```
 
-## 6. Verify
+or:
 
 ```bash
-npm run typecheck
-npm test
-npm run doctor
-npm run dev
+export CLOUDFLARE_ACCOUNT_ID=<account-id>
+export CLOUDFLARE_API_TOKEN=<api-token>
 ```
 
-If you are only verifying local boot and do not have Convex ready yet, use boot-only smoke mode:
+The generated app expects Cloudflare bindings for:
+
+- D1 app state
+- R2 knowledge and artifact packs
+- Queues
+- Durable Objects / Cloudflare Agents
+- AI Gateway routing
+
+## 4. Add Knowledge
+
+Keep product truth in markdown:
 
 ```bash
-export TRELLIS_LOCAL_SMOKE_MODE=true
-export TRELLIS_SANDBOX_TOKEN=local-sandbox-token
-export HANDOFF_WEBHOOK_SECRET=local-handoff-secret
-npm run doctor
-npm run dev
+npm run trellis -- docs add ./knowledge
 ```
 
-Smoke mode boots the dashboard and health check with in-memory repository/state fallbacks. It is not a full workflow runtime.
+This writes `.trellis/knowledge-pack.json` with file paths, sizes, and hashes. Deploy uses that manifest as the R2-backed pack plan.
 
-## 7. Open the operator surface
+## 5. Verify Before Providers
+
+```bash
+npm run trellis -- doctor
+npm run trellis -- smoke
+```
+
+`doctor` checks Cloudflare wiring, markdown packs, skill packs, provider readiness, and the no-send safety gate.
+
+`smoke` runs a safe GTM fixture through the Trellis runtime and proves the core loop works:
 
 ```text
-http://localhost:3000/dashboard
+signal -> qualification skill -> prospect -> blocked draft -> approvals -> audit -> workflow
 ```
 
-To wire the first-party MCP into Claude Code locally:
+## 6. Deploy
 
 ```bash
-npm run trellis -- mcp claude-code --local --write
+npm run trellis -- deploy
 ```
 
-For a hosted demo, connect remote MCP only after the app is reachable at `${APP_URL}` and `/dashboard` is healthy.
-
-## 8. How auth and URLs work
-
-- dashboard login:
-  - uses `DASHBOARD_PASSWORD`
-  - if unset, falls back to `TRELLIS_SANDBOX_TOKEN`
-- remote MCP:
-  - endpoint: `${APP_URL}/mcp/trellis`
-  - bearer token: `TRELLIS_MCP_TOKEN`
-  - fallback token: `TRELLIS_SANDBOX_TOKEN`
-- local MCP URL:
-  - `http://localhost:3000/mcp/trellis`
-- deployed app origin:
-  - `APP_URL`
-  - on Vercel, if `APP_URL` is unset, the app falls back to `https://$VERCEL_URL`
-- webhook URLs:
-  - `${APP_URL}/webhooks/apify`
-  - `${APP_URL}/webhooks/signals`
-  - `${APP_URL}/webhooks/agentmail`
-
-## 9. Use the generated checklist
-
-Every scaffolded project includes:
-
-- `TRELLIS_SETUP.md`
-- `packages/` with the local `@trellis/*` workspace packages used by the scaffold
-
-That file is the app-specific onboarding checklist. Start there before enabling discovery, CRM, or outbound email.
-
-Helpful follow-up commands:
+Use JSON output when another agent or setup tool is orchestrating the flow:
 
 ```bash
-npm run trellis -- connect source apify
-npm run trellis -- deploy local
-npm run trellis -- mcp claude-code --local --write
+npm run trellis -- deploy --json
 ```
 
-## 10. Stay safe on first boot
+## 7. Connect Providers
 
-- keep `NO_SENDS_MODE=true`
-- confirm `/healthz` returns 200
-- confirm dashboard flags resolve
-- connect MCP only after dashboard and health checks are healthy
-- ingest one normalized signal before enabling live discovery
-- confirm the same thread state is visible in the dashboard and through MCP
+Provider manifests are non-secret. Secrets stay in Cloudflare env or your shell.
+
+```bash
+npm run trellis -- connect attio
+npm run trellis -- connect agentmail
+npm run trellis -- connect firecrawl
+npm run trellis -- connect langfuse
+```
+
+The default GTM provider lanes are:
+
+- Attio for CRM
+- AgentMail for email preview/send/replies
+- Firecrawl for research
+- Langfuse as optional trace/eval export
+
+## Legacy Material
+
+`examples/reference-app` and the older framework packages remain in the repo only as parity and migration material while v3 catches up to the existing AI SDR behavior. They are not the v3 public architecture.

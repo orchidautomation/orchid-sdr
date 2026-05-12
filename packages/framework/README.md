@@ -1,3 +1,5 @@
 # @trellis/framework
 
-Typed capability schema, composition logic, provider/module definitions, validation, install planning, and scaffold generation for Trellis and Trellis.
+Compatibility package for the legacy reference app.
+
+The v3 public surface is `@trellis/gtm` plus the curated provider package. New user-facing work should avoid adding concepts here unless it is needed to keep the existing AI SDR reference behavior running during migration.
