@@ -695,6 +695,60 @@ async function verifyRemoteCloudflareRoutes(input: {
       ? `/webhooks/signals returned ${webhook.status}; this is the live Flue/Cloudflare harness check and may use one model call`
       : `could not post /webhooks/signals: ${webhook.error ?? "unknown error"}`, summarizeRemoteEvidence(webhook)));
 
+  const persistence = asCliRecord(webhookBody?.persistence);
+  const providerRun = asCliRecord(webhookBody?.providerRun);
+  const workflowDispatch = asCliRecord(webhookBody?.workflowDispatch);
+  const queue = asCliRecord(webhookBody?.queue);
+  const packs = asCliRecord(webhookBody?.packs);
+  const knowledge = asCliRecord(packs?.knowledge);
+  const skills = asCliRecord(packs?.skills);
+  checks.push(verifyCheck("remote.webhook.persistence", webhook.status === 202
+    && persistence?.enabled === true
+    && providerRun?.enabled === true
+    ? "pass"
+    : "fail", "safe signal should persist D1 state and a provider-run record", {
+    persistence,
+    providerRun,
+  }));
+  checks.push(verifyCheck("remote.webhook.workflow", webhook.status === 202
+    && workflowDispatch?.enabled === true
+    && workflowDispatch.ok !== false
+    && typeof workflowDispatch.instanceId === "string"
+    ? "pass"
+    : "fail", "safe signal should dispatch the configured Cloudflare Workflow", {
+    workflowDispatch,
+  }));
+  checks.push(verifyCheck("remote.webhook.queue", webhook.status === 202
+    && queue?.enabled === true
+    && readCliNumber(queue.messages) >= 1
+    ? "pass"
+    : "fail", "safe signal should fan out at least one Cloudflare Queue event", {
+    queue,
+  }));
+  checks.push(verifyCheck("remote.webhook.packs", webhook.status === 202
+    && packs?.enabled === true
+    && readCliNumber(knowledge?.objects) > 0
+    && readCliNumber(skills?.objects) > 0
+    ? "pass"
+    : "fail", "safe signal should load R2-backed knowledge and skill packs", {
+    packs,
+  }));
+
+  const mcpAfterWebhook = await fetchVerifyJson(verifyRouteUrl(input.endpoint, "/mcp/trellis"));
+  const mcpAfterWebhookBody = asCliRecord(mcpAfterWebhook.body);
+  const snapshot = asCliRecord(mcpAfterWebhookBody?.snapshot);
+  const counts = asCliRecord(snapshot?.counts);
+  checks.push(verifyCheck("remote.state.snapshot", mcpAfterWebhook.status === 200
+    && mcpAfterWebhookBody?.ok === true
+    && readCliNumber(counts?.signals) >= 1
+    && readCliNumber(counts?.providerRuns) >= 1
+    && readCliNumber(counts?.workflowRuns) >= 1
+    ? "pass"
+    : "fail", "MCP snapshot should expose persisted signal, provider-run, and workflow state after the live exercise", {
+    counts,
+    response: summarizeRemoteEvidence(mcpAfterWebhook),
+  }));
+
   return checks;
 }
 
@@ -757,6 +811,17 @@ function asCliRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
       ? value as Record<string, unknown>
       : undefined;
+}
+
+function readCliNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
 }
 
 function parseJsonText(text: string) {

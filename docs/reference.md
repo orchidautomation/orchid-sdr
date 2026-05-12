@@ -160,7 +160,10 @@ npm run trellis -- smoke
 npm run trellis -- deploy
 npm run trellis -- verify cloudflare
 npm run trellis -- verify cloudflare --live --url https://<worker>
+npm run trellis -- verify cloudflare --live --url https://<worker> --exercise-agent
 ```
+
+`--exercise-agent` posts one safe signal webhook and verifies the deployed worker records D1 persistence, provider-run state, queue fanout, workflow dispatch, R2 pack visibility, and the post-run MCP snapshot.
 
 ## Migration Material
 

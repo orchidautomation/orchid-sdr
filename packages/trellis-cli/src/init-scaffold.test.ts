@@ -1,5 +1,6 @@
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { execFile, execFileSync } from "node:child_process";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -349,9 +350,156 @@ describe("trellis init v3 scaffold", () => {
       rmSync(targetDir, { recursive: true, force: true });
     }
   });
+
+  it("verifies live Cloudflare exercise artifacts from the deployed worker", async () => {
+    const repoRoot = process.cwd();
+    const targetDir = mkdtempSync(path.join(tmpdir(), "trellis-live-verify-test."));
+    const fakeBinDir = mkdtempSync(path.join(tmpdir(), "trellis-fake-bin."));
+    const fakeNpxPath = path.join(fakeBinDir, "npx");
+    const server = createServer(async (request, response) => {
+      const url = new URL(request.url ?? "/", "http://127.0.0.1");
+      if (url.pathname === "/healthz") {
+        writeJson(response, {
+          ok: true,
+          stack: "trellis-v3-cloudflare",
+        });
+        return;
+      }
+      if (url.pathname === "/smoke") {
+        writeJson(response, {
+          ok: true,
+          externalWrites: false,
+        });
+        return;
+      }
+      if (url.pathname === "/mcp/trellis") {
+        writeJson(response, {
+          ok: true,
+          tools: ["trellis.health", "trellis.workflow.inspect"],
+          snapshot: {
+            counts: {
+              signals: 1,
+              providerRuns: 1,
+              workflowRuns: 1,
+            },
+          },
+        });
+        return;
+      }
+      if (url.pathname === "/webhooks/signals" && request.method === "POST") {
+        const body = JSON.parse(await readRequestText(request)) as { id?: string };
+        writeJson(response, {
+          ok: true,
+          accepted: true,
+          mode: "processed",
+          signal: {
+            id: body.id ?? "sig_verify",
+          },
+          auditEvents: [
+            { type: "signal.accepted" },
+            { type: "skill.completed" },
+          ],
+          persistence: {
+            enabled: true,
+          },
+          providerRun: {
+            enabled: true,
+            status: "succeeded",
+          },
+          queue: {
+            enabled: true,
+            messages: 1,
+          },
+          workflowDispatch: {
+            enabled: true,
+            ok: true,
+            instanceId: "trellis_sig_verify_prospect",
+          },
+          packs: {
+            enabled: true,
+            knowledge: { objects: 1 },
+            skills: { objects: 5 },
+          },
+        }, 202);
+        return;
+      }
+      writeJson(response, { ok: false, error: "not_found" }, 404);
+    });
+
+    try {
+      writeFileSync(fakeNpxPath, "#!/bin/sh\nif [ \"$1\" = \"wrangler\" ] && [ \"$2\" = \"whoami\" ]; then echo 'test@example.com'; exit 0; fi\nexit 0\n");
+      chmodSync(fakeNpxPath, 0o755);
+      await listen(server);
+
+      runCli(repoRoot, [
+        "init",
+        targetDir,
+        "--name",
+        "live-verify-sdr",
+        "--json",
+      ], repoRoot);
+      runCli(repoRoot, [
+        "docs",
+        "add",
+        "./knowledge",
+        "--json",
+      ], targetDir);
+
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Expected test server to listen on a TCP port.");
+      }
+      const verifyResult = JSON.parse(await runCliAsync(repoRoot, [
+        "verify",
+        "cloudflare",
+        "--url",
+        `http://127.0.0.1:${address.port}`,
+        "--exercise-agent",
+        "--json",
+      ], targetDir, {
+        PATH: `${fakeBinDir}:${process.env.PATH ?? ""}`,
+      })) as {
+        ok: boolean;
+        mode: string;
+        live: boolean;
+        exerciseAgent: boolean;
+        checks: Array<{ id: string; status: string }>;
+      };
+      const checks = new Map(verifyResult.checks.map((check) => [check.id, check.status]));
+
+      expect(verifyResult).toMatchObject({
+        ok: true,
+        mode: "live",
+        live: true,
+        exerciseAgent: true,
+      });
+      expect(checks.get("wrangler.auth")).toBe("pass");
+      expect(checks.get("remote.healthz")).toBe("pass");
+      expect(checks.get("remote.mcp")).toBe("pass");
+      expect(checks.get("remote.smoke")).toBe("pass");
+      expect(checks.get("remote.webhook.agent")).toBe("pass");
+      expect(checks.get("remote.webhook.persistence")).toBe("pass");
+      expect(checks.get("remote.webhook.workflow")).toBe("pass");
+      expect(checks.get("remote.webhook.queue")).toBe("pass");
+      expect(checks.get("remote.webhook.packs")).toBe("pass");
+      expect(checks.get("remote.state.snapshot")).toBe("pass");
+    } finally {
+      await close(server);
+      rmSync(targetDir, { recursive: true, force: true });
+      rmSync(fakeBinDir, { recursive: true, force: true });
+    }
+  });
 });
 
-function runCli(repoRoot: string, args: string[], cwd: string) {
+function cliProcessArgs(repoRoot: string, args: string[]) {
+  return [
+    path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs"),
+    path.join(repoRoot, "packages", "trellis-cli", "src", "cli.ts"),
+    ...args,
+  ];
+}
+
+function buildCliEnv(extraEnv: Record<string, string> = {}) {
   const env = { ...process.env };
   for (const name of [
     "ATTIO_API_KEY",
@@ -364,15 +512,33 @@ function runCli(repoRoot: string, args: string[], cwd: string) {
   ]) {
     delete env[name];
   }
+  Object.assign(env, extraEnv);
+  return env;
+}
 
+function runCli(repoRoot: string, args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
   return execFileSync(process.execPath, [
-    path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs"),
-    path.join(repoRoot, "packages", "trellis-cli", "src", "cli.ts"),
-    ...args,
+    ...cliProcessArgs(repoRoot, args),
   ], {
     cwd,
-    env,
+    env: buildCliEnv(extraEnv),
     encoding: "utf8",
+  });
+}
+
+function runCliAsync(repoRoot: string, args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
+  return new Promise<string>((resolve, reject) => {
+    execFile(process.execPath, cliProcessArgs(repoRoot, args), {
+      cwd,
+      env: buildCliEnv(extraEnv),
+      encoding: "utf8",
+    }, (error, stdout, stderr) => {
+      if (error) {
+        reject(Object.assign(error, { stdout, stderr }));
+        return;
+      }
+      resolve(stdout);
+    });
   });
 }
 
@@ -390,4 +556,43 @@ function runCliFailure(repoRoot: string, args: string[], cwd: string) {
   }
 
   throw new Error(`Expected CLI command to fail: ${args.join(" ")}`);
+}
+
+function listen(server: ReturnType<typeof createServer>) {
+  return new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+}
+
+function close(server: ReturnType<typeof createServer>) {
+  return new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
+}
+
+function readRequestText(request: IncomingMessage) {
+  return new Promise<string>((resolve, reject) => {
+    let text = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      text += chunk;
+    });
+    request.on("end", () => resolve(text));
+    request.on("error", reject);
+  });
+}
+
+function writeJson(
+  response: ServerResponse,
+  body: unknown,
+  status = 200,
+) {
+  response.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+  });
+  response.end(JSON.stringify(body));
 }
