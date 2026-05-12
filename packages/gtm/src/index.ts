@@ -140,6 +140,28 @@ export interface TrellisCloudflareRuntime {
   };
 }
 
+export interface TrellisRuntimeResult {
+  signal: TrellisSignal;
+  skillCalls: Array<{ name: string; context: Record<string, unknown> }>;
+  startedWorkflows: Array<{ name: string; input: TrellisWorkflowStartInput }>;
+  prospects: TrellisProspect[];
+  drafts: TrellisDraft[];
+  auditEvents: TrellisAuditEvent[];
+  result: unknown;
+}
+
+interface TrellisD1Database {
+  prepare(sql: string): {
+    bind(...values: unknown[]): {
+      run(): Promise<unknown> | unknown;
+    };
+  };
+}
+
+interface TrellisQueue {
+  send(message: unknown): Promise<unknown> | unknown;
+}
+
 export const schema = {
   gtm() {
     return z.object({
@@ -320,7 +342,7 @@ export async function runTrellisSmoke(input?: {
   skillResults?: Record<string, unknown>;
 }): Promise<TrellisSmokeResult> {
   const agent = input?.agent ?? createDefaultSmokeAgent();
-  const app = createTrellisTestApp({
+  const run = await runTrellisAgent(agent, {
     signal: {
       id: "sig_smoke_001",
       threadId: "thr_smoke_001",
@@ -345,7 +367,6 @@ export async function runTrellisSmoke(input?: {
       },
     },
   });
-  const result = await agent.handler(app);
   const checks = [
     smokeCheck(
       "agent.manifest",
@@ -354,33 +375,33 @@ export async function runTrellisSmoke(input?: {
     ),
     smokeCheck(
       "signal.accepted",
-      app.auditEvents.some((event) => event.type === "signal.accepted"),
+      run.auditEvents.some((event) => event.type === "signal.accepted"),
       "accepted one fixture GTM signal",
     ),
     smokeCheck(
       "skill.qualification",
-      app.skillCalls.some((call) => call.name === "icp-qualification"),
+      run.skillCalls.some((call) => call.name === "icp-qualification"),
       "ran icp-qualification through the Trellis skill API",
     ),
     smokeCheck(
       "workflow.prospect",
-      app.startedWorkflows.some((workflow) => workflow.name === "prospect"),
+      run.startedWorkflows.some((workflow) => workflow.name === "prospect"),
       "started the prospect workflow",
     ),
     smokeCheck(
       "state.prospect",
-      app.prospects.length === 1,
+      run.prospects.length === 1,
       "created a prospect state projection",
     ),
     smokeCheck(
       "draft.blocked",
-      app.drafts.some((draft) => draft.status === "blocked_pending_approval"),
+      run.drafts.some((draft) => draft.status === "blocked_pending_approval"),
       "created an outbound draft without sending it",
     ),
     smokeCheck(
       "audit.events",
       ["signal.accepted", "skill.completed", "workflow.started", "draft.created"].every((type) =>
-        app.auditEvents.some((event) => event.type === type),
+        run.auditEvents.some((event) => event.type === type),
       ),
       "recorded signal, skill, workflow, and draft audit events",
     ),
@@ -400,8 +421,29 @@ export async function runTrellisSmoke(input?: {
     agent: agent.name,
     externalWrites: false,
     noSendsMode: agent.config.safety?.noSends ?? false,
-    fixture: app.fixtureSignal,
+    fixture: run.signal,
     checks,
+    skillCalls: run.skillCalls,
+    startedWorkflows: run.startedWorkflows,
+    prospects: run.prospects,
+    drafts: run.drafts,
+    auditEvents: run.auditEvents,
+    result: run.result,
+  };
+}
+
+export async function runTrellisAgent(
+  agent: TrellisAgentDefinition<TrellisGtmApp>,
+  input?: {
+    signal?: Partial<TrellisSignal>;
+    context?: Record<string, unknown>;
+    skillResults?: Record<string, unknown>;
+  },
+): Promise<TrellisRuntimeResult> {
+  const app = createTrellisTestApp(input);
+  const result = await agent.handler(app);
+  return {
+    signal: app.fixtureSignal,
     skillCalls: app.skillCalls,
     startedWorkflows: app.startedWorkflows,
     prospects: app.prospects,
@@ -500,10 +542,20 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
         }
 
         if (url.pathname === "/webhooks/signals" && request.method === "POST") {
+          const signal = await readSignalFromRequest(request);
+          const run = await runTrellisAgent(agent, { signal });
+          const persistence = await persistRuntimeResult(env, run);
+          const queue = await enqueueRuntimeEvent(env, run);
           return jsonResponse({
             ok: true,
             accepted: true,
-            mode: "queued",
+            mode: "processed",
+            signal: run.signal,
+            prospects: run.prospects,
+            drafts: run.drafts,
+            auditEvents: run.auditEvents,
+            persistence,
+            queue,
             noSendsMode: agent.config.safety?.noSends ?? true,
           }, 202);
         }
@@ -560,6 +612,187 @@ function summarizeCloudflareBindings(env?: Record<string, unknown>) {
     "BROWSER",
   ];
   return Object.fromEntries(bindingNames.map((name) => [name, Boolean(env?.[name])]));
+}
+
+async function readSignalFromRequest(request: Request): Promise<Partial<TrellisSignal>> {
+  const payload = await readJsonBody(request);
+  const record = isRecord(payload) ? payload : {};
+  const now = Date.now();
+  return {
+    id: readString(record.id) ?? readString(record.signalId) ?? `sig_${now}`,
+    threadId: readString(record.threadId) ?? `thr_${readString(record.id) ?? now}`,
+    workspaceId: readString(record.workspaceId) ?? readString(record.workspace) ?? "wrk_default",
+    campaignId: readString(record.campaignId) ?? readString(record.campaign),
+    provider: readString(record.provider) ?? "webhook",
+    source: readString(record.source) ?? "webhook.signals",
+    payload: record,
+  };
+}
+
+async function readJsonBody(request: Request): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    return {};
+  }
+}
+
+async function persistRuntimeResult(env: Record<string, unknown> | undefined, run: TrellisRuntimeResult) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      enabled: false,
+      tables: [],
+    };
+  }
+
+  await ensureD1Schema(db);
+  await runD1(db, `
+    INSERT OR REPLACE INTO trellis_signals
+      (id, workspace_id, thread_id, campaign_id, provider, source, payload_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    run.signal.id,
+    run.signal.workspaceId,
+    run.signal.threadId,
+    run.signal.campaignId ?? null,
+    run.signal.provider ?? null,
+    run.signal.source ?? null,
+    JSON.stringify(run.signal.payload ?? {}),
+    new Date().toISOString(),
+  ]);
+
+  for (const prospect of run.prospects) {
+    await runD1(db, `
+      INSERT OR REPLACE INTO trellis_prospects
+        (id, signal_id, workspace_id, thread_id, status, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [
+      prospect.id,
+      prospect.signalId,
+      prospect.workspaceId,
+      prospect.threadId,
+      prospect.status,
+      new Date().toISOString(),
+    ]);
+  }
+
+  for (const draft of run.drafts) {
+    await runD1(db, `
+      INSERT OR REPLACE INTO trellis_drafts
+        (id, signal_id, channel, status, approval_required_json, body, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [
+      draft.id,
+      run.signal.id,
+      draft.channel,
+      draft.status,
+      JSON.stringify(draft.approvalRequiredFor),
+      draft.body,
+      new Date().toISOString(),
+    ]);
+  }
+
+  for (const event of run.auditEvents) {
+    await runD1(db, `
+      INSERT OR REPLACE INTO trellis_audit_events
+        (id, signal_id, workflow, type, message, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [
+      event.id,
+      event.signalId ?? run.signal.id,
+      event.workflow ?? null,
+      event.type,
+      event.message,
+      new Date().toISOString(),
+    ]);
+  }
+
+  return {
+    enabled: true,
+    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_audit_events"],
+  };
+}
+
+async function ensureD1Schema(db: TrellisD1Database) {
+  await runD1(db, `
+    CREATE TABLE IF NOT EXISTS trellis_signals (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      campaign_id TEXT,
+      provider TEXT,
+      source TEXT,
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await runD1(db, `
+    CREATE TABLE IF NOT EXISTS trellis_prospects (
+      id TEXT PRIMARY KEY,
+      signal_id TEXT NOT NULL,
+      workspace_id TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await runD1(db, `
+    CREATE TABLE IF NOT EXISTS trellis_drafts (
+      id TEXT PRIMARY KEY,
+      signal_id TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      status TEXT NOT NULL,
+      approval_required_json TEXT NOT NULL,
+      body TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await runD1(db, `
+    CREATE TABLE IF NOT EXISTS trellis_audit_events (
+      id TEXT PRIMARY KEY,
+      signal_id TEXT NOT NULL,
+      workflow TEXT,
+      type TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+}
+
+async function runD1(db: TrellisD1Database, sql: string, bindings: unknown[] = []) {
+  await db.prepare(sql).bind(...bindings).run();
+}
+
+async function enqueueRuntimeEvent(env: Record<string, unknown> | undefined, run: TrellisRuntimeResult) {
+  const queue = env?.TRELLIS_EVENTS as TrellisQueue | undefined;
+  if (!queue?.send) {
+    return {
+      enabled: false,
+    };
+  }
+
+  await queue.send({
+    type: "trellis.signal.processed",
+    signalId: run.signal.id,
+    workspaceId: run.signal.workspaceId,
+    threadId: run.signal.threadId,
+    prospectIds: run.prospects.map((prospect) => prospect.id),
+    draftIds: run.drafts.map((draft) => draft.id),
+    auditEventIds: run.auditEvents.map((event) => event.id),
+  });
+  return {
+    enabled: true,
+    messages: 1,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 function jsonResponse(body: unknown, status = 200) {

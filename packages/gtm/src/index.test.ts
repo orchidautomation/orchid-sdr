@@ -92,18 +92,35 @@ describe("@trellis/gtm v3 API", () => {
       return app.workflow("prospect").start({ signal, qualification });
     }));
 
-    const health = await runtime.worker.fetch(new Request("https://example.com/healthz"), {});
+    const fakeD1 = createFakeD1();
+    const fakeQueue = createFakeQueue();
+    const env = {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_EVENTS: fakeQueue,
+    };
+
+    const health = await runtime.worker.fetch(new Request("https://example.com/healthz"), env);
     const smoke = await runtime.worker.fetch(new Request("https://example.com/smoke"), {});
     const webhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
       method: "POST",
-      body: JSON.stringify({ id: "sig" }),
-    }), {});
+      body: JSON.stringify({
+        id: "sig_live",
+        workspaceId: "wrk_live",
+        threadId: "thr_live",
+        provider: "test",
+        source: "unit.test",
+      }),
+    }), env);
     const mcp = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), {});
     const dashboard = await runtime.worker.fetch(new Request("https://example.com/dashboard"), {});
 
     await expect(health.json()).resolves.toMatchObject({
       ok: true,
       stack: "trellis-v3-cloudflare",
+      bindings: {
+        TRELLIS_DB: true,
+        TRELLIS_EVENTS: true,
+      },
     });
     await expect(smoke.json()).resolves.toMatchObject({
       ok: true,
@@ -112,8 +129,39 @@ describe("@trellis/gtm v3 API", () => {
     await expect(webhook.json()).resolves.toMatchObject({
       ok: true,
       accepted: true,
+      mode: "processed",
+      signal: {
+        id: "sig_live",
+        workspaceId: "wrk_live",
+        threadId: "thr_live",
+      },
+      prospects: [
+        expect.objectContaining({ signalId: "sig_live" }),
+      ],
+      drafts: [
+        expect.objectContaining({ status: "blocked_pending_approval" }),
+      ],
+      persistence: {
+        enabled: true,
+      },
+      queue: {
+        enabled: true,
+        messages: 1,
+      },
       noSendsMode: true,
     });
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("CREATE TABLE IF NOT EXISTS trellis_signals"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_signals"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_prospects"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_drafts"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_audit_events"))).toBe(true);
+    expect(fakeQueue.messages).toEqual([
+      expect.objectContaining({
+        type: "trellis.signal.processed",
+        signalId: "sig_live",
+        workspaceId: "wrk_live",
+      }),
+    ]);
     await expect(mcp.json()).resolves.toMatchObject({
       ok: true,
       tools: expect.arrayContaining(["trellis.smoke", "trellis.workflow.inspect"]),
@@ -121,3 +169,36 @@ describe("@trellis/gtm v3 API", () => {
     await expect(dashboard.text()).resolves.toContain("v3 Cloudflare GTM runtime");
   });
 });
+
+function createFakeD1() {
+  const statements: Array<{ sql: string; bindings: unknown[] }> = [];
+  return {
+    statements,
+    prepare(sql: string) {
+      return {
+        bind(...bindings: unknown[]) {
+          return {
+            run() {
+              statements.push({
+                sql: sql.replace(/\s+/g, " ").trim(),
+                bindings,
+              });
+              return { success: true };
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+function createFakeQueue() {
+  const messages: unknown[] = [];
+  return {
+    messages,
+    send(message: unknown) {
+      messages.push(message);
+      return { success: true };
+    },
+  };
+}
