@@ -283,7 +283,7 @@ v3 parity:
 - workflow replay through stored `trellis_workflow_runs`
 - provider-action requeue for dead-letter-style recovery
 - real Cloudflare dead-letter queue recovery verification
-- smoke test history
+- smoke test history is recorded in D1 via `trellis_smoke_runs` and surfaced through MCP/dashboard snapshots
 
 Legacy to remove after replacement:
 

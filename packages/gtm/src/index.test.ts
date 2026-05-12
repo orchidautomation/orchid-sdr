@@ -480,9 +480,34 @@ describe("@trellis/gtm v3 API", () => {
     expect(dashboardHtml).toContain("<dt>Approvals</dt><dd>2</dd>");
     expect(dashboardHtml).toContain("<dt>Provider Actions</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Workflow Runs</dt><dd>1</dd>");
+    expect(dashboardHtml).toContain("<dt>Smoke Runs</dt><dd>0</dd>");
     expect(dashboardHtml).toContain("<dt>Trace Events</dt><dd>8</dd>");
     expect(dashboardHtml).toContain("<dt>Knowledge Files</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Skill Files</dt><dd>1</dd>");
+    const smokeWithHistory = await runtime.worker.fetch(new Request("https://example.com/smoke"), env);
+    await expect(smokeWithHistory.json()).resolves.toMatchObject({
+      ok: true,
+      history: {
+        enabled: true,
+        table: "trellis_smoke_runs",
+        status: "pass",
+      },
+    });
+    expect(fakeD1.statements.some((statement) =>
+      statement.sql.includes("CREATE TABLE IF NOT EXISTS trellis_smoke_runs"),
+    )).toBe(true);
+    expect(fakeD1.statements.some((statement) =>
+      statement.sql.includes("INSERT OR REPLACE INTO trellis_smoke_runs"),
+    )).toBe(true);
+    const snapshotAfterSmoke = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), env);
+    await expect(snapshotAfterSmoke.json()).resolves.toMatchObject({
+      snapshot: {
+        counts: {
+          smokeRuns: 1,
+        },
+      },
+      tools: expect.arrayContaining(["trellis.smoke.history"]),
+    });
     const workflowStep = createFakeWorkflowStep();
     const workflowRun = await new runtime.ProspectWorkflow(env).run({
       params: {

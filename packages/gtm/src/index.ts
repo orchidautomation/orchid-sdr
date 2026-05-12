@@ -168,6 +168,13 @@ export interface TrellisSmokeResult {
   result: unknown;
 }
 
+export interface TrellisSmokeHistory {
+  enabled: boolean;
+  table?: string;
+  id?: string;
+  status?: "pass" | "fail";
+}
+
 export interface TrellisCloudflareRuntime {
   TrellisAgent: new (state?: unknown, env?: unknown) => {
     fetch(request: Request): Promise<Response>;
@@ -1131,7 +1138,11 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
         }
 
         if (url.pathname === "/smoke") {
-          return jsonResponse(await runTrellisSmoke({ agent }));
+          const smoke = await runTrellisSmoke({ agent });
+          return jsonResponse({
+            ...smoke,
+            history: await recordSmokeRun(env, smoke),
+          });
         }
 
         if (url.pathname === "/webhooks/signals" && request.method === "POST") {
@@ -1382,6 +1393,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             tools: [
               "trellis.health",
               "trellis.smoke",
+              "trellis.smoke.history",
               "trellis.signal.inspect",
               "trellis.workflow.inspect",
               "trellis.approval.approve",
@@ -1522,6 +1534,16 @@ function createTrellisMcpTools(
           bindings: summarizeCloudflareBindings(env),
           traceExport: summarizeTraceExport(env),
         };
+      },
+    },
+    {
+      name: "trellis.smoke.history",
+      description: "Inspect durable Trellis smoke run history recorded in D1.",
+      operation: "trellis.smoke.history",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
       },
     },
     {
@@ -2053,7 +2075,69 @@ async function persistRuntimeResult(env: Record<string, unknown> | undefined, ru
 
   return {
     enabled: true,
-    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_approvals", "trellis_provider_actions", "trellis_workflow_runs", "trellis_operator_controls", "trellis_audit_events", "trellis_trace_events"],
+    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_approvals", "trellis_provider_actions", "trellis_workflow_runs", "trellis_operator_controls", "trellis_smoke_runs", "trellis_audit_events", "trellis_trace_events"],
+  };
+}
+
+async function recordSmokeRun(
+  env: Record<string, unknown> | undefined,
+  smoke: TrellisSmokeResult,
+): Promise<TrellisSmokeHistory> {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      enabled: false,
+    };
+  }
+
+  await ensureD1Schema(db);
+  const createdAt = new Date().toISOString();
+  const status = smoke.ok ? "pass" : "fail";
+  const id = `smoke_${normalizeIdPart(smoke.fixture.id)}_${normalizeIdPart(createdAt)}`;
+  await runD1(db, `
+    INSERT OR REPLACE INTO trellis_smoke_runs
+      (id, agent, status, fixture_id, trace_id, checks_json, result_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    id,
+    smoke.agent,
+    status,
+    smoke.fixture.id,
+    traceIdForSignal(smoke.fixture),
+    JSON.stringify(smoke.checks),
+    JSON.stringify({
+      mode: smoke.mode,
+      externalWrites: smoke.externalWrites,
+      noSendsMode: smoke.noSendsMode,
+      prospects: smoke.prospects.length,
+      drafts: smoke.drafts.length,
+      approvals: smoke.approvals.length,
+      auditEvents: smoke.auditEvents.map((event) => event.type),
+    }),
+    createdAt,
+  ]);
+  await insertTraceEvent(env, db, {
+    id: `trace_event_${id}`,
+    traceId: traceIdForSignal(smoke.fixture),
+    signalId: smoke.fixture.id,
+    workflow: "smoke",
+    span: "smoke:fixture",
+    type: `smoke.${status}`,
+    message: `Smoke fixture ${status === "pass" ? "passed" : "failed"}.`,
+    payload: {
+      smokeRunId: id,
+      checks: smoke.checks.map((check) => ({
+        id: check.id,
+        status: check.status,
+      })),
+    },
+  });
+
+  return {
+    enabled: true,
+    table: "trellis_smoke_runs",
+    id,
+    status,
   };
 }
 
@@ -2144,6 +2228,18 @@ async function ensureD1Schema(db: TrellisD1Database) {
       reason TEXT,
       actor TEXT,
       updated_at TEXT NOT NULL
+    )
+  `);
+  await runD1(db, `
+    CREATE TABLE IF NOT EXISTS trellis_smoke_runs (
+      id TEXT PRIMARY KEY,
+      agent TEXT NOT NULL,
+      status TEXT NOT NULL,
+      fixture_id TEXT NOT NULL,
+      trace_id TEXT NOT NULL,
+      checks_json TEXT NOT NULL,
+      result_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
     )
   `);
   await runD1(db, `
@@ -4452,6 +4548,7 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
       providerActions: await countD1Rows(db, "trellis_provider_actions"),
       workflowRuns: await countD1Rows(db, "trellis_workflow_runs"),
       operatorControls: await countD1Rows(db, "trellis_operator_controls"),
+      smokeRuns: await countD1Rows(db, "trellis_smoke_runs"),
       traceEvents: await countD1Rows(db, "trellis_trace_events"),
       auditEvents: await countD1Rows(db, "trellis_audit_events"),
     },
@@ -4602,6 +4699,7 @@ function renderDashboard(
     providerActions: 0,
     workflowRuns: 0,
     operatorControls: 0,
+    smokeRuns: 0,
     traceEvents: 0,
     auditEvents: 0,
   };
@@ -4627,6 +4725,7 @@ function renderDashboard(
         <dt>Provider Actions</dt><dd>${counts.providerActions}</dd>
         <dt>Workflow Runs</dt><dd>${counts.workflowRuns}</dd>
         <dt>Operator Controls</dt><dd>${counts.operatorControls}</dd>
+        <dt>Smoke Runs</dt><dd>${counts.smokeRuns}</dd>
         <dt>Kill Switch</dt><dd>${controls.globalKillSwitch?.status === "enabled" ? "enabled" : "disabled"}</dd>
         <dt>Active Control Blocks</dt><dd>${controls.reasons.join("; ") || "none"}</dd>
         <dt>Trace Events</dt><dd>${counts.traceEvents}</dd>
