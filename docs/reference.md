@@ -28,6 +28,13 @@ The generated Cloudflare app should expose:
 - `POST /provider-actions/:id/execute`
 - `POST /provider-actions/:id/complete`
 - `POST /provider-actions/:id/fail`
+- `GET /operator/controls`
+- `POST /operator/kill-switch/enable`
+- `POST /operator/kill-switch/disable`
+- `POST /operator/campaigns/:id/pause`
+- `POST /operator/campaigns/:id/resume`
+- `POST /operator/threads/:id/pause`
+- `POST /operator/threads/:id/resume`
 - `POST /mcp/trellis`
 - `GET /dashboard`
 - `POST /agents/*` for durable agent dispatch
@@ -52,6 +59,8 @@ Approval decisions update D1, append an audit event, and enqueue a runtime event
 After a webhook run is persisted and enqueued, Trellis starts the configured `PROSPECT_WORKFLOW` binding with a stable instance id and params containing the signal, workflow name, prospect ids, draft ids, approval ids, and audit event ids. Dispatch and workflow checkpoints are recorded in `trellis_workflow_runs`; dispatch errors are returned as `workflowDispatch.ok: false` but do not make webhook ingestion fail.
 
 Queued provider actions can be executed through `POST /provider-actions/:id/execute`. The executor refuses to run while no-send mode is enabled, refuses actions that are not `queued`, dispatches through a bound `TRELLIS_PROVIDER_EXECUTOR` when present, and includes built-in AgentMail `email.send` / `mail.reply`, Attio `crm.update`, and `handoff.webhook` executors. Execution success or failure updates D1, appends audit, and emits queue events.
+
+Operator controls live in `trellis_operator_controls`. The global kill switch and campaign/thread pause records are exposed through `/operator/*` routes, the dashboard, and the MCP snapshot. Active controls block workflow dispatch before Cloudflare Workflows start and block queued provider-action execution before side effects run. Each control change writes audit, trace, and queue events.
 
 The generated Worker also exposes a Cloudflare Queues consumer through the same hidden runtime object. `trellis.provider.action.queued` messages are drained by the executor, acknowledged on handled outcomes, and retried on provider execution failures.
 

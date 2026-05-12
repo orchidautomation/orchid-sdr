@@ -293,6 +293,28 @@ interface TrellisProviderActionExecutionRequest {
   input?: Record<string, unknown>;
 }
 
+type TrellisOperatorControlScope = "global" | "campaign" | "thread";
+type TrellisOperatorControlStatus = "enabled" | "disabled" | "paused" | "active";
+
+interface TrellisOperatorControlRecord {
+  id: string;
+  scope: TrellisOperatorControlScope;
+  targetId: string;
+  status: TrellisOperatorControlStatus;
+  reason?: string | null;
+  actor?: string | null;
+  updatedAt?: string | null;
+}
+
+interface TrellisOperatorControlChange {
+  scope: TrellisOperatorControlScope;
+  targetId: string;
+  status: TrellisOperatorControlStatus;
+  actor?: string;
+  reason?: string;
+  traceId?: string;
+}
+
 interface TrellisProviderActionRecord extends TrellisProviderAction {
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -311,6 +333,7 @@ interface TrellisSignalRecord {
   traceId: string;
   workspaceId: string;
   threadId: string;
+  campaignId?: string | null;
   payload: Record<string, unknown>;
 }
 
@@ -906,6 +929,27 @@ function matchProviderActionExecutionRoute(pathname: string) {
   };
 }
 
+function matchOperatorControlRoute(pathname: string) {
+  const killSwitch = pathname.match(/^\/operator\/kill-switch\/(enable|disable)$/);
+  if (killSwitch?.[1]) {
+    return {
+      scope: "global" as const,
+      targetId: "kill_switch",
+      status: killSwitch[1] === "enable" ? "enabled" as const : "disabled" as const,
+    };
+  }
+
+  const scoped = pathname.match(/^\/operator\/(campaigns|threads)\/([^/]+)\/(pause|resume)$/);
+  if (!scoped?.[1] || !scoped[2] || !scoped[3]) {
+    return undefined;
+  }
+  return {
+    scope: scoped[1] === "campaigns" ? "campaign" as const : "thread" as const,
+    targetId: decodeURIComponent(scoped[2]),
+    status: scoped[3] === "pause" ? "paused" as const : "active" as const,
+  };
+}
+
 function inferApprovalAction(approvalId: string) {
   if (approvalId.endsWith("_email_send")) {
     return "email.send";
@@ -1224,6 +1268,31 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           });
         }
 
+        const operatorControl = matchOperatorControlRoute(url.pathname);
+        if (operatorControl && request.method === "POST") {
+          const body = await readJsonBody(request);
+          const record = isRecord(body) ? body : {};
+          const result = await recordOperatorControl(env, {
+            scope: operatorControl.scope,
+            targetId: operatorControl.targetId,
+            status: operatorControl.status,
+            actor: readString(record.actor) ?? "operator",
+            reason: readString(record.reason),
+            traceId: readString(record.traceId) ?? readString(record.trace_id),
+          });
+          return jsonResponse({
+            ok: result.persistence.enabled,
+            ...result,
+          }, result.persistence.enabled ? 200 : 501);
+        }
+
+        if (url.pathname === "/operator/controls") {
+          return jsonResponse({
+            ok: true,
+            controls: await readOperatorControls(env),
+          });
+        }
+
         if (url.pathname === "/mcp/trellis") {
           const toolCatalog = describeTrellisMcpTools(agent.config);
           return jsonResponse({
@@ -1242,6 +1311,11 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               "trellis.providerAction.execute",
               "trellis.providerAction.complete",
               "trellis.providerAction.fail",
+              "trellis.operator.controls",
+              "trellis.operator.killSwitch.enable",
+              "trellis.operator.killSwitch.disable",
+              "trellis.workflow.pause",
+              "trellis.workflow.resume",
               "trellis.audit.search",
             ],
             toolCatalog,
@@ -1277,6 +1351,10 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             "/provider-actions/:id/execute",
             "/provider-actions/:id/complete",
             "/provider-actions/:id/fail",
+            "/operator/controls",
+            "/operator/kill-switch/:enable|disable",
+            "/operator/campaigns/:id/:pause|resume",
+            "/operator/threads/:id/:pause|resume",
             "/mcp/trellis",
             "/dashboard",
           ],
@@ -1345,6 +1423,70 @@ function createTrellisMcpTools(
           safety: config.safety ?? trellis.safeOutbound(),
           bindings: summarizeCloudflareBindings(env),
         };
+      },
+    },
+    {
+      name: "trellis.operator.controls",
+      description: "Inspect the global kill switch and campaign/thread pause controls.",
+      operation: "trellis.operator.controls",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "trellis.operator.killSwitch.enable",
+      description: "Enable the global Trellis kill switch before provider side effects or workflow dispatch.",
+      operation: "trellis.operator.killSwitch.enable",
+      inputSchema: {
+        type: "object",
+        properties: {
+          reason: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "trellis.operator.killSwitch.disable",
+      description: "Disable the global Trellis kill switch.",
+      operation: "trellis.operator.killSwitch.disable",
+      inputSchema: {
+        type: "object",
+        properties: {
+          reason: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "trellis.workflow.pause",
+      description: "Pause workflow dispatch and provider execution for a campaign or thread.",
+      operation: "trellis.workflow.pause",
+      inputSchema: {
+        type: "object",
+        required: ["scope", "targetId"],
+        properties: {
+          scope: { type: "string", enum: ["campaign", "thread"] },
+          targetId: { type: "string" },
+          reason: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "trellis.workflow.resume",
+      description: "Resume workflow dispatch and provider execution for a campaign or thread.",
+      operation: "trellis.workflow.resume",
+      inputSchema: {
+        type: "object",
+        required: ["scope", "targetId"],
+        properties: {
+          scope: { type: "string", enum: ["campaign", "thread"] },
+          targetId: { type: "string" },
+          reason: { type: "string" },
+        },
+        additionalProperties: false,
       },
     },
   ];
@@ -1766,7 +1908,7 @@ async function persistRuntimeResult(env: Record<string, unknown> | undefined, ru
 
   return {
     enabled: true,
-    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_approvals", "trellis_provider_actions", "trellis_workflow_runs", "trellis_audit_events", "trellis_trace_events"],
+    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_approvals", "trellis_provider_actions", "trellis_workflow_runs", "trellis_operator_controls", "trellis_audit_events", "trellis_trace_events"],
   };
 }
 
@@ -1845,6 +1987,17 @@ async function ensureD1Schema(db: TrellisD1Database) {
       workflow TEXT NOT NULL,
       status TEXT NOT NULL,
       params_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await runD1(db, `
+    CREATE TABLE IF NOT EXISTS trellis_operator_controls (
+      id TEXT PRIMARY KEY,
+      scope TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      reason TEXT,
+      actor TEXT,
       updated_at TEXT NOT NULL
     )
   `);
@@ -2036,6 +2189,181 @@ async function recordWorkflowRun(
   };
 }
 
+async function recordOperatorControl(
+  env: Record<string, unknown> | undefined,
+  change: TrellisOperatorControlChange,
+) {
+  const control: TrellisOperatorControlRecord = {
+    id: operatorControlId(change.scope, change.targetId),
+    scope: change.scope,
+    targetId: change.targetId,
+    status: change.status,
+    reason: change.reason ?? null,
+    actor: change.actor ?? null,
+    updatedAt: new Date().toISOString(),
+  };
+  return {
+    control,
+    persistence: await persistOperatorControl(env, control, change.traceId),
+    queue: await enqueueOperatorControl(env, control, change.traceId),
+  };
+}
+
+async function persistOperatorControl(
+  env: Record<string, unknown> | undefined,
+  control: TrellisOperatorControlRecord,
+  traceId?: string,
+) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      enabled: false,
+      tables: [],
+    };
+  }
+
+  await ensureD1Schema(db);
+  const now = control.updatedAt ?? new Date().toISOString();
+  const signalId = `operator:${control.id}`;
+  const resolvedTraceId = traceId ?? `trace_operator_${normalizeIdPart(control.id)}`;
+  await runD1(db, `
+    INSERT OR REPLACE INTO trellis_operator_controls
+      (id, scope, target_id, status, reason, actor, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [
+    control.id,
+    control.scope,
+    control.targetId,
+    control.status,
+    control.reason ?? null,
+    control.actor ?? null,
+    now,
+  ]);
+  await runD1(db, `
+    INSERT OR REPLACE INTO trellis_audit_events
+      (id, signal_id, workflow, type, message, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `, [
+    `evt_operator_${normalizeIdPart(control.id)}_${normalizeIdPart(control.status)}`,
+    signalId,
+    "operator-control",
+    `operator_control.${control.status}`,
+    operatorControlMessage(control),
+    now,
+  ]);
+  await insertTraceEvent(db, {
+    id: `trace_event_operator_${normalizeIdPart(control.id)}_${normalizeIdPart(control.status)}`,
+    traceId: resolvedTraceId,
+    signalId,
+    workflow: "operator-control",
+    span: `operator:${control.scope}`,
+    type: `operator_control.${control.status}`,
+    message: operatorControlMessage(control),
+    payload: {
+      id: control.id,
+      scope: control.scope,
+      targetId: control.targetId,
+      status: control.status,
+      reason: control.reason ?? null,
+      actor: control.actor ?? null,
+    },
+  });
+
+  return {
+    enabled: true,
+    tables: ["trellis_operator_controls", "trellis_audit_events", "trellis_trace_events"],
+  };
+}
+
+async function enqueueOperatorControl(
+  env: Record<string, unknown> | undefined,
+  control: TrellisOperatorControlRecord,
+  traceId?: string,
+) {
+  const queue = env?.TRELLIS_EVENTS as TrellisQueue | undefined;
+  if (!queue?.send) {
+    return {
+      enabled: false,
+    };
+  }
+
+  await queue.send({
+    type: "trellis.operator.control.changed",
+    traceId: traceId ?? `trace_operator_${normalizeIdPart(control.id)}`,
+    control,
+  });
+  return {
+    enabled: true,
+    messages: 1,
+  };
+}
+
+function operatorControlMessage(control: TrellisOperatorControlRecord) {
+  if (control.scope === "global") {
+    return `${control.status === "enabled" ? "Enabled" : "Disabled"} Trellis global kill switch.`;
+  }
+  return `${control.status === "paused" ? "Paused" : "Resumed"} ${control.scope} ${control.targetId}.`;
+}
+
+async function readOperatorControls(
+  env: Record<string, unknown> | undefined,
+  signal?: Pick<TrellisSignal, "id" | "threadId" | "campaignId"> | TrellisSignalRecord | null,
+) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      enabled: false,
+      globalKillSwitch: null,
+      campaign: null,
+      thread: null,
+      blocked: false,
+      reasons: [],
+    };
+  }
+
+  await ensureD1Schema(db);
+  const globalKillSwitch = await readOperatorControl(db, operatorControlId("global", "kill_switch"));
+  const campaign = signal?.campaignId
+    ? await readOperatorControl(db, operatorControlId("campaign", signal.campaignId))
+    : null;
+  const thread = signal?.threadId
+    ? await readOperatorControl(db, operatorControlId("thread", signal.threadId))
+    : null;
+  const reasons = [
+    globalKillSwitch?.status === "enabled" ? (globalKillSwitch.reason ?? "global kill switch enabled") : null,
+    campaign?.status === "paused" ? (campaign.reason ?? "campaign is paused") : null,
+    thread?.status === "paused" ? (thread.reason ?? "thread is paused") : null,
+  ].filter((reason): reason is string => Boolean(reason));
+
+  return {
+    enabled: true,
+    globalKillSwitch,
+    campaign,
+    thread,
+    blocked: reasons.length > 0,
+    reasons,
+  };
+}
+
+async function readOperatorControl(db: TrellisD1Database, id: string) {
+  return await db.prepare(`
+    SELECT
+      id,
+      scope,
+      target_id AS targetId,
+      status,
+      reason,
+      actor,
+      updated_at AS updatedAt
+    FROM trellis_operator_controls
+    WHERE id = ?
+  `).bind(id).first<TrellisOperatorControlRecord>();
+}
+
+function operatorControlId(scope: TrellisOperatorControlScope, targetId: string) {
+  return `${scope}:${targetId}`;
+}
+
 async function dispatchWorkflow(env: Record<string, unknown> | undefined, run: TrellisRuntimeResult) {
   const workflow = env?.PROSPECT_WORKFLOW as TrellisWorkflowBinding | undefined;
   if (!workflow?.create) {
@@ -2046,6 +2374,34 @@ async function dispatchWorkflow(env: Record<string, unknown> | undefined, run: T
 
   const workflowName = run.startedWorkflows[0]?.name ?? "prospect";
   const id = `trellis_${normalizeIdPart(run.signal.id)}_${normalizeIdPart(workflowName)}`;
+  const controls = await readOperatorControls(env, run.signal);
+  if (controls.blocked) {
+    const persistence = await recordWorkflowRun(env, {
+      id,
+      traceId: traceIdForSignal(run.signal),
+      signalId: run.signal.id,
+      workflow: workflowName,
+      status: "paused",
+      params: {
+        traceId: traceIdForSignal(run.signal),
+        signal: run.signal,
+        workflow: workflowName,
+        controls,
+        reason: controls.reasons.join("; "),
+      },
+    });
+    return {
+      enabled: true,
+      ok: true,
+      blocked: true,
+      workflow: workflowName,
+      instanceId: id,
+      status: "paused",
+      reason: controls.reasons.join("; "),
+      controls,
+      persistence,
+    };
+  }
   try {
     const instance = await workflow.create({
       id,
@@ -2429,6 +2785,21 @@ async function executeProviderAction(
     };
   }
 
+  const context = await readProviderActionContext(db, action, execution.input ?? {});
+  const controls = await readOperatorControls(env, context.signal);
+  if (controls.blocked) {
+    return {
+      status: 423,
+      body: {
+        ok: false,
+        error: "operator_control_active",
+        detail: controls.reasons.join("; "),
+        providerAction: action,
+        controls,
+      },
+    };
+  }
+
   if (config.safety?.noSends !== false) {
     return {
       status: 409,
@@ -2453,7 +2824,6 @@ async function executeProviderAction(
     };
   }
 
-  const context = await readProviderActionContext(db, action, execution.input ?? {});
   try {
     const result = await dispatchProviderAction(env, context);
     const transition = await recordProviderActionTransition(env, {
@@ -2606,6 +2976,7 @@ async function readProviderActionContext(
       id,
       workspace_id AS workspaceId,
       thread_id AS threadId,
+      campaign_id AS campaignId,
       payload_json AS payloadJson
     FROM trellis_signals
     WHERE id = ?
@@ -2620,6 +2991,7 @@ async function readProviderActionContext(
           traceId: action.traceId,
           workspaceId: String(signal.workspaceId),
           threadId: String(signal.threadId),
+          campaignId: readString(signal.campaignId) ?? null,
           payload: parseRecordJson(signal.payloadJson),
         }
       : null,
@@ -2729,7 +3101,7 @@ async function executeAgentMailSend(
   }
 
   const baseUrl = readString(env?.AGENTMAIL_BASE_URL) ?? "https://api.agentmail.to";
-  const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/v0/inboxes/${encodeURIComponent(inboxId)}/messages/send`, {
+  const response = await runtimeFetch(env, `${baseUrl.replace(/\/+$/, "")}/v0/inboxes/${encodeURIComponent(inboxId)}/messages/send`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -2796,7 +3168,7 @@ async function executeAgentMailReply(
   }
 
   const baseUrl = readString(env?.AGENTMAIL_BASE_URL) ?? "https://api.agentmail.to";
-  const response = await fetch(
+  const response = await runtimeFetch(env,
     `${baseUrl.replace(/\/+$/, "")}/v0/inboxes/${encodeURIComponent(inboxId)}/messages/${encodeURIComponent(messageId)}/${replyAll ? "reply-all" : "reply"}`,
     {
       method: "POST",
@@ -3218,6 +3590,13 @@ function mapFirecrawlSearchResult(value: unknown, source: "web" | "news") {
   };
 }
 
+function runtimeFetch(env: Record<string, unknown> | undefined, input: Request | string | URL, init?: RequestInit) {
+  const fetcher = typeof env?.TRELLIS_FETCH === "function"
+    ? env.TRELLIS_FETCH as typeof fetch
+    : fetch;
+  return fetcher(input, init);
+}
+
 function readFirstString(
   primary: Record<string, unknown>,
   secondary: Record<string, unknown>,
@@ -3282,6 +3661,7 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
       enabled: false,
       counts: null,
       packs,
+      controls: await readOperatorControls(env),
     };
   }
 
@@ -3294,10 +3674,12 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
       approvals: await countD1Rows(db, "trellis_approvals"),
       providerActions: await countD1Rows(db, "trellis_provider_actions"),
       workflowRuns: await countD1Rows(db, "trellis_workflow_runs"),
+      operatorControls: await countD1Rows(db, "trellis_operator_controls"),
       traceEvents: await countD1Rows(db, "trellis_trace_events"),
       auditEvents: await countD1Rows(db, "trellis_audit_events"),
     },
     packs,
+    controls: await readOperatorControls(env),
   };
 }
 
@@ -3441,10 +3823,12 @@ function renderDashboard(
     approvals: 0,
     providerActions: 0,
     workflowRuns: 0,
+    operatorControls: 0,
     traceEvents: 0,
     auditEvents: 0,
   };
   const packs = snapshot.packs;
+  const controls = snapshot.controls;
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -3463,6 +3847,9 @@ function renderDashboard(
         <dt>Approvals</dt><dd>${counts.approvals}</dd>
         <dt>Provider Actions</dt><dd>${counts.providerActions}</dd>
         <dt>Workflow Runs</dt><dd>${counts.workflowRuns}</dd>
+        <dt>Operator Controls</dt><dd>${counts.operatorControls}</dd>
+        <dt>Kill Switch</dt><dd>${controls.globalKillSwitch?.status === "enabled" ? "enabled" : "disabled"}</dd>
+        <dt>Active Control Blocks</dt><dd>${controls.reasons.join("; ") || "none"}</dd>
         <dt>Trace Events</dt><dd>${counts.traceEvents}</dd>
         <dt>Audit Events</dt><dd>${counts.auditEvents}</dd>
         <dt>Knowledge Files</dt><dd>${packs.knowledge?.manifest?.files ?? 0}</dd>

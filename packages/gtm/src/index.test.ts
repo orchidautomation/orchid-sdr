@@ -572,6 +572,198 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
+  it("enforces operator kill switch and pause controls before workflow dispatch and provider execution", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      email: agentmail(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound({ noSends: false }),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    const fakeQueue = createFakeQueue();
+    const fakeWorkflow = {
+      create: vi.fn(async (options: Record<string, unknown>) => ({ id: options.id })),
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      id: "msg_control_1",
+      thread_id: "thr_control_agentmail",
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    const env = {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_EVENTS: fakeQueue,
+      PROSPECT_WORKFLOW: fakeWorkflow,
+      AGENTMAIL_API_KEY: "am_control",
+      AGENTMAIL_BASE_URL: "https://agentmail.test",
+      TRELLIS_FETCH: fetchMock,
+    };
+
+    const enableKill = await runtime.worker.fetch(new Request("https://example.com/operator/kill-switch/enable", {
+      method: "POST",
+      body: JSON.stringify({
+        actor: "ops@example.com",
+        reason: "incident response",
+      }),
+    }), env);
+    await expect(enableKill.json()).resolves.toMatchObject({
+      ok: true,
+      control: {
+        id: "global:kill_switch",
+        status: "enabled",
+        reason: "incident response",
+      },
+      persistence: {
+        enabled: true,
+      },
+      queue: {
+        enabled: true,
+        messages: 1,
+      },
+    });
+
+    const webhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_control",
+        workspaceId: "wrk_control",
+        threadId: "thr_control",
+        campaignId: "cmp_control",
+        inboxId: "inbox_control",
+        to: "buyer@example.com",
+        subject: "Control test",
+        bodyText: "Control body",
+      }),
+    }), env);
+    await expect(webhook.json()).resolves.toMatchObject({
+      ok: true,
+      workflowDispatch: {
+        enabled: true,
+        ok: true,
+        blocked: true,
+        status: "paused",
+        reason: "incident response",
+        controls: {
+          blocked: true,
+          reasons: ["incident response"],
+        },
+      },
+    });
+    expect(fakeWorkflow.create).not.toHaveBeenCalled();
+
+    await runtime.worker.fetch(new Request("https://example.com/approvals/approval_draft_sig_control_email_send/approve", {
+      method: "POST",
+      body: JSON.stringify({
+        signalId: "sig_control",
+        draftId: "draft_sig_control",
+        action: "email.send",
+        actor: "ops@example.com",
+      }),
+    }), env);
+    const blockedExecution = await runtime.worker.fetch(new Request("https://example.com/provider-actions/provider_action_approval_draft_sig_control_email_send/execute", {
+      method: "POST",
+      body: JSON.stringify({
+        actor: "agentmail-worker",
+      }),
+    }), env);
+    expect(blockedExecution.status).toBe(423);
+    await expect(blockedExecution.json()).resolves.toMatchObject({
+      ok: false,
+      error: "operator_control_active",
+      detail: "incident response",
+      controls: {
+        blocked: true,
+      },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await runtime.worker.fetch(new Request("https://example.com/operator/kill-switch/disable", {
+      method: "POST",
+      body: JSON.stringify({
+        actor: "ops@example.com",
+        reason: "incident resolved",
+      }),
+    }), env);
+    const pauseCampaign = await runtime.worker.fetch(new Request("https://example.com/operator/campaigns/cmp_control/pause", {
+      method: "POST",
+      body: JSON.stringify({ reason: "campaign review" }),
+    }), env);
+    await expect(pauseCampaign.json()).resolves.toMatchObject({
+      ok: true,
+      control: {
+        id: "campaign:cmp_control",
+        status: "paused",
+      },
+    });
+    const pausedExecution = await runtime.worker.fetch(new Request("https://example.com/provider-actions/provider_action_approval_draft_sig_control_email_send/execute", {
+      method: "POST",
+      body: JSON.stringify({ actor: "agentmail-worker" }),
+    }), env);
+    expect(pausedExecution.status).toBe(423);
+    await expect(pausedExecution.json()).resolves.toMatchObject({
+      detail: "campaign review",
+    });
+
+    await runtime.worker.fetch(new Request("https://example.com/operator/campaigns/cmp_control/resume", {
+      method: "POST",
+      body: JSON.stringify({ reason: "review complete" }),
+    }), env);
+    const execution = await runtime.worker.fetch(new Request("https://example.com/provider-actions/provider_action_approval_draft_sig_control_email_send/execute", {
+      method: "POST",
+      body: JSON.stringify({ actor: "agentmail-worker" }),
+    }), env);
+    expect(execution.status).toBe(200);
+    await expect(execution.json()).resolves.toMatchObject({
+      ok: true,
+      providerAction: {
+        id: "provider_action_approval_draft_sig_control_email_send",
+        status: "completed",
+      },
+      execution: {
+        provider: "agentmail",
+        operation: "email.send",
+        externalId: "msg_control_1",
+        externalThreadId: "thr_control_agentmail",
+      },
+    });
+
+    const controls = await runtime.worker.fetch(new Request("https://example.com/operator/controls"), env);
+    await expect(controls.json()).resolves.toMatchObject({
+      ok: true,
+      controls: {
+        enabled: true,
+        blocked: false,
+        globalKillSwitch: {
+          status: "disabled",
+        },
+      },
+    });
+    const mcp = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), env);
+    await expect(mcp.json()).resolves.toMatchObject({
+      tools: expect.arrayContaining([
+        "trellis.operator.controls",
+        "trellis.operator.killSwitch.enable",
+        "trellis.workflow.pause",
+        "trellis.workflow.resume",
+      ]),
+      snapshot: {
+        counts: {
+          operatorControls: 2,
+        },
+      },
+    });
+  });
+
   it("accepts AgentMail reply webhooks as first-class v3 signals", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
@@ -1604,6 +1796,7 @@ function createFakeD1() {
   const signals = new Map<string, Record<string, unknown>>();
   const drafts = new Map<string, Record<string, unknown>>();
   const providerActions = new Map<string, Record<string, unknown>>();
+  const operatorControls = new Map<string, Record<string, unknown>>();
   return {
     statements,
     prepare(sql: string) {
@@ -1653,6 +1846,17 @@ function createFakeD1() {
                   updatedAt: bindings[9],
                 });
               }
+              if (normalized.includes("INSERT OR REPLACE INTO trellis_operator_controls")) {
+                operatorControls.set(String(bindings[0]), {
+                  id: bindings[0],
+                  scope: bindings[1],
+                  targetId: bindings[2],
+                  status: bindings[3],
+                  reason: bindings[4],
+                  actor: bindings[5],
+                  updatedAt: bindings[6],
+                });
+              }
               if (normalized.includes("UPDATE trellis_provider_actions SET status = ?")) {
                 const row = providerActions.get(String(bindings[2]));
                 if (row) {
@@ -1667,6 +1871,9 @@ function createFakeD1() {
               const match = normalized.match(/^SELECT COUNT\(\*\) AS count FROM (\w+)$/i);
               if (match?.[1]) {
                 const tableName = match[1];
+                if (tableName === "trellis_operator_controls") {
+                  return { count: operatorControls.size };
+                }
                 const count = statements.filter((statement) =>
                   statement.sql.includes(`INSERT OR REPLACE INTO ${tableName}`),
                 ).length;
@@ -1680,6 +1887,9 @@ function createFakeD1() {
               }
               if (normalized.includes("FROM trellis_signals WHERE id = ?")) {
                 return signals.get(String(bindings[0])) ?? null;
+              }
+              if (normalized.includes("FROM trellis_operator_controls WHERE id = ?")) {
+                return operatorControls.get(String(bindings[0])) ?? null;
               }
               return null;
             },
