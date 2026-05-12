@@ -224,6 +224,67 @@ describe("trellis init v3 scaffold", () => {
       expect(deployResult.providers.attio).toMatchObject({ connected: false, status: "not_connected" });
       expect(deployResult.providers.agentmail).toMatchObject({ connected: false, status: "not_connected" });
       expect(deployResult.providers.firecrawl).toMatchObject({ connected: false, status: "not_connected" });
+
+      const connectedProviders = [
+        ["attio", "ATTIO_API_KEY"],
+        ["agentmail", "AGENTMAIL_API_KEY"],
+        ["firecrawl", "FIRECRAWL_API_KEY"],
+      ] as const;
+      for (const [provider, requiredEnv] of connectedProviders) {
+        const connectResult = JSON.parse(runCli(repoRoot, [
+          "connect",
+          provider,
+          "--json",
+        ], targetDir)) as {
+          mode: string;
+          manifest: {
+            path: string;
+            status: string;
+            missingRequiredEnv: string[];
+          };
+        };
+        expect(connectResult.mode).toBe("v3-provider");
+        expect(connectResult.manifest.status).toBe("waiting_for_env");
+        expect(connectResult.manifest.missingRequiredEnv).toContain(requiredEnv);
+
+        const manifest = JSON.parse(readFileSync(connectResult.manifest.path, "utf8")) as {
+          id: string;
+          noSecretsStored: boolean;
+          requiredEnv: string[];
+          missingRequiredEnv: string[];
+          status: string;
+        };
+        expect(manifest).toMatchObject({
+          id: provider,
+          noSecretsStored: true,
+          status: "waiting_for_env",
+        });
+        expect(manifest.requiredEnv).toContain(requiredEnv);
+        expect(manifest.missingRequiredEnv).toContain(requiredEnv);
+        expect(JSON.stringify(manifest)).not.toContain("apiKey");
+      }
+
+      const connectedDoctorResult = JSON.parse(runCli(repoRoot, [
+        "doctor",
+        "--json",
+      ], targetDir)) as {
+        providers: Record<string, { connected: boolean; status: string; missingRequiredEnv: string[] }>;
+      };
+      expect(connectedDoctorResult.providers.attio).toMatchObject({
+        connected: true,
+        status: "waiting_for_env",
+        missingRequiredEnv: ["ATTIO_API_KEY"],
+      });
+      expect(connectedDoctorResult.providers.agentmail).toMatchObject({
+        connected: true,
+        status: "waiting_for_env",
+        missingRequiredEnv: ["AGENTMAIL_API_KEY"],
+      });
+      expect(connectedDoctorResult.providers.firecrawl).toMatchObject({
+        connected: true,
+        status: "waiting_for_env",
+        missingRequiredEnv: ["FIRECRAWL_API_KEY"],
+      });
     } finally {
       rmSync(targetDir, { recursive: true, force: true });
     }
@@ -231,12 +292,26 @@ describe("trellis init v3 scaffold", () => {
 });
 
 function runCli(repoRoot: string, args: string[], cwd: string) {
+  const env = { ...process.env };
+  for (const name of [
+    "ATTIO_API_KEY",
+    "AGENTMAIL_API_KEY",
+    "FIRECRAWL_API_KEY",
+    "LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_SECRET_KEY",
+    "BRAINTRUST_API_KEY",
+    "BRAINTRUST_PROJECT_ID",
+  ]) {
+    delete env[name];
+  }
+
   return execFileSync(process.execPath, [
     path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs"),
     path.join(repoRoot, "packages", "trellis-cli", "src", "cli.ts"),
     ...args,
   ], {
     cwd,
+    env,
     encoding: "utf8",
   });
 }
