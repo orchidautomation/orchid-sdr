@@ -1475,6 +1475,14 @@ describe("@trellis/gtm v3 API", () => {
         method: "POST",
         headers: expect.objectContaining({
           authorization: "Bearer am_test",
+          "x-trellis-trace-id": "trace_sig_execute",
+          "x-trellis-provider-action-id": "provider_action_approval_draft_sig_execute_email_send",
+          "x-trellis-signal-id": "sig_execute",
+          "x-trellis-draft-id": "draft_sig_execute",
+          "x-trellis-workflow": "prospect",
+          "x-trellis-prospect-id": "prospect_sig_execute",
+          "x-trellis-thread-id": "thr_execute",
+          "x-trellis-workspace-id": "wrk_execute",
         }),
       });
       expect(JSON.parse(String(init?.body))).toEqual({
@@ -1510,6 +1518,113 @@ describe("@trellis/gtm v3 API", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("passes Trellis context through bound provider executors", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound({ noSends: false }),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    const executorFetch = vi.fn(async (request: Request) => {
+      expect(request.headers.get("x-trellis-trace-id")).toBe("trace_sig_bound");
+      expect(request.headers.get("x-trellis-provider-action-id")).toBe("provider_action_approval_draft_sig_bound_email_send");
+      expect(request.headers.get("x-trellis-signal-id")).toBe("sig_bound");
+      expect(request.headers.get("x-trellis-draft-id")).toBe("draft_sig_bound");
+      expect(request.headers.get("x-trellis-workflow")).toBe("prospect");
+      expect(request.headers.get("x-trellis-prospect-id")).toBe("prospect_sig_bound");
+      expect(request.headers.get("x-trellis-thread-id")).toBe("thr_bound");
+      expect(request.headers.get("x-trellis-workspace-id")).toBe("wrk_bound");
+
+      await expect(request.json()).resolves.toMatchObject({
+        action: {
+          id: "provider_action_approval_draft_sig_bound_email_send",
+          signalId: "sig_bound",
+          draftId: "draft_sig_bound",
+        },
+        signal: {
+          id: "sig_bound",
+          workspaceId: "wrk_bound",
+          threadId: "thr_bound",
+        },
+        prospect: {
+          id: "prospect_sig_bound",
+          status: "needs_review",
+        },
+      });
+
+      return new Response(JSON.stringify({
+        ok: true,
+        provider: "agentmail",
+        operation: "email.send",
+        externalId: "bound_msg_1",
+        externalThreadId: "bound_thread_1",
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const env = {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_PROVIDER_EXECUTOR: {
+        fetch: executorFetch,
+      },
+    };
+
+    await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_bound",
+        workspaceId: "wrk_bound",
+        threadId: "thr_bound",
+        provider: "test",
+        source: "unit.test",
+      }),
+    }), env);
+    await runtime.worker.fetch(new Request("https://example.com/approvals/approval_draft_sig_bound_email_send/approve", {
+      method: "POST",
+      body: JSON.stringify({
+        signalId: "sig_bound",
+        draftId: "draft_sig_bound",
+        action: "email.send",
+        actor: "operator@example.com",
+      }),
+    }), env);
+    const execution = await runtime.worker.fetch(new Request("https://example.com/provider-actions/provider_action_approval_draft_sig_bound_email_send/execute", {
+      method: "POST",
+      body: JSON.stringify({
+        actor: "executor-binding",
+      }),
+    }), env);
+
+    expect(executorFetch).toHaveBeenCalledTimes(1);
+    await expect(execution.json()).resolves.toMatchObject({
+      ok: true,
+      execution: {
+        ok: true,
+        provider: "agentmail",
+        operation: "email.send",
+        externalId: "bound_msg_1",
+        externalThreadId: "bound_thread_1",
+      },
+      providerAction: {
+        id: "provider_action_approval_draft_sig_bound_email_send",
+        status: "completed",
+      },
+    });
   });
 
   it("executes approved AgentMail replies through the built-in v3 provider executor", async () => {
@@ -1613,6 +1728,13 @@ describe("@trellis/gtm v3 API", () => {
         method: "POST",
         headers: expect.objectContaining({
           authorization: "Bearer am_reply",
+          "x-trellis-trace-id": "trace_sig_reply",
+          "x-trellis-provider-action-id": "provider_action_approval_reply_sig_reply_mail_reply",
+          "x-trellis-signal-id": "sig_reply",
+          "x-trellis-workflow": "reply",
+          "x-trellis-prospect-id": "prospect_sig_reply",
+          "x-trellis-thread-id": "thr_reply",
+          "x-trellis-workspace-id": "wrk_reply",
         }),
       });
       expect(JSON.parse(String(init?.body))).toEqual({
@@ -1725,12 +1847,21 @@ describe("@trellis/gtm v3 API", () => {
       method: "POST",
       headers: expect.objectContaining({
         "x-trellis-handoff-secret": "handoff-secret",
+        "x-trellis-trace-id": "trace_sig_handoff",
+        "x-trellis-provider-action-id": "provider_action_approval_reply_sig_handoff_handoff_webhook",
+        "x-trellis-signal-id": "sig_handoff",
+        "x-trellis-workflow": "reply",
+        "x-trellis-prospect-id": "prospect_sig_handoff",
+        "x-trellis-thread-id": "thr_handoff",
+        "x-trellis-workspace-id": "wrk_handoff",
       }),
     });
     expect(JSON.parse(String(init?.body))).toMatchObject({
       type: "trellis.handoff.requested",
       providerActionId: "provider_action_approval_reply_sig_handoff_handoff_webhook",
       signalId: "sig_handoff",
+      workflow: "reply",
+      prospectId: "prospect_sig_handoff",
       threadId: "thr_handoff",
       workspaceId: "wrk_handoff",
       destination: "sales",
@@ -1863,6 +1994,14 @@ describe("@trellis/gtm v3 API", () => {
       method: "PUT",
       headers: expect.objectContaining({
         authorization: "Bearer attio_test",
+        "x-trellis-trace-id": "trace_sig_attio",
+        "x-trellis-provider-action-id": "provider_action_approval_draft_sig_attio_crm_update",
+        "x-trellis-signal-id": "sig_attio",
+        "x-trellis-draft-id": "draft_sig_attio",
+        "x-trellis-workflow": "prospect",
+        "x-trellis-prospect-id": "prospect_sig_attio",
+        "x-trellis-thread-id": "thr_attio",
+        "x-trellis-workspace-id": "wrk_attio",
       }),
     });
     expect(JSON.parse(String(companyInit?.body))).toEqual({
@@ -1878,6 +2017,14 @@ describe("@trellis/gtm v3 API", () => {
       method: "PUT",
       headers: expect.objectContaining({
         authorization: "Bearer attio_test",
+        "x-trellis-trace-id": "trace_sig_attio",
+        "x-trellis-provider-action-id": "provider_action_approval_draft_sig_attio_crm_update",
+        "x-trellis-signal-id": "sig_attio",
+        "x-trellis-draft-id": "draft_sig_attio",
+        "x-trellis-workflow": "prospect",
+        "x-trellis-prospect-id": "prospect_sig_attio",
+        "x-trellis-thread-id": "thr_attio",
+        "x-trellis-workspace-id": "wrk_attio",
       }),
     });
     expect(JSON.parse(String(personInit?.body))).toEqual({
@@ -2004,6 +2151,17 @@ describe("@trellis/gtm v3 API", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0] as unknown as [string | URL | Request, RequestInit];
       expect(String(url)).toBe("https://agentmail.test/v0/inboxes/inbox_queue/messages/send");
+      expect(init).toMatchObject({
+        headers: expect.objectContaining({
+          "x-trellis-trace-id": "trace_sig_queue",
+          "x-trellis-provider-action-id": "provider_action_approval_draft_sig_queue_email_send",
+          "x-trellis-signal-id": "sig_queue",
+          "x-trellis-workflow": "prospect",
+          "x-trellis-prospect-id": "prospect_sig_queue",
+          "x-trellis-thread-id": "thr_queue",
+          "x-trellis-workspace-id": "wrk_queue",
+        }),
+      });
       expect(JSON.parse(String(init?.body))).toEqual({
         to: ["queue-buyer@example.com"],
         subject: "Queue hello",
@@ -2614,6 +2772,9 @@ function createFakeD1() {
               }
               if (normalized.includes("FROM trellis_signals WHERE id = ?")) {
                 return signals.get(String(bindings[0])) ?? null;
+              }
+              if (normalized.includes("FROM trellis_prospects WHERE signal_id = ?")) {
+                return sortRows(prospects).find((row) => row.signalId === bindings[0]) ?? null;
               }
               if (normalized.includes("FROM trellis_operator_controls WHERE id = ?")) {
                 return operatorControls.get(String(bindings[0])) ?? null;

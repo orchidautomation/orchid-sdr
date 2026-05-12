@@ -357,6 +357,10 @@ interface TrellisDraftRecord {
   body: string;
 }
 
+interface TrellisProspectRecord extends TrellisProspect {
+  updatedAt?: string | null;
+}
+
 interface TrellisSignalRecord {
   id: string;
   traceId: string;
@@ -370,6 +374,7 @@ interface TrellisProviderExecutionContext {
   action: TrellisProviderActionRecord;
   draft: TrellisDraftRecord | null;
   signal: TrellisSignalRecord | null;
+  prospect: TrellisProspectRecord | null;
   input: Record<string, unknown>;
 }
 
@@ -4152,6 +4157,19 @@ async function readProviderActionContext(
     FROM trellis_signals
     WHERE id = ?
   `).bind(action.signalId).first<Record<string, unknown>>();
+  const prospect = await db.prepare(`
+    SELECT
+      id,
+      signal_id AS signalId,
+      workspace_id AS workspaceId,
+      thread_id AS threadId,
+      status,
+      updated_at AS updatedAt
+    FROM trellis_prospects
+    WHERE signal_id = ?
+    ORDER BY updated_at DESC
+    LIMIT 1
+  `).bind(action.signalId).first<TrellisProspectRecord>();
 
   return {
     action,
@@ -4164,6 +4182,16 @@ async function readProviderActionContext(
           threadId: String(signal.threadId),
           campaignId: readString(signal.campaignId) ?? null,
           payload: parseRecordJson(signal.payloadJson),
+        }
+      : null,
+    prospect: prospect
+      ? {
+          id: prospect.id,
+          signalId: prospect.signalId,
+          workspaceId: prospect.workspaceId,
+          threadId: prospect.threadId,
+          status: prospect.status,
+          updatedAt: prospect.updatedAt,
         }
       : null,
     input,
@@ -4221,7 +4249,10 @@ async function dispatchWithBoundExecutor(
   if (typeof executor.fetch === "function") {
     const response = await executor.fetch(new Request("https://trellis.local/provider-actions/execute", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...trellisProviderHeaders(context),
+      },
       body: JSON.stringify(context),
     }));
     if (!response.ok) {
@@ -4242,6 +4273,54 @@ async function dispatchWithBoundExecutor(
     };
   }
   return null;
+}
+
+function trellisProviderHeaders(context: TrellisProviderExecutionContext) {
+  const metadata = trellisProviderMetadata(context);
+  const headers: Record<string, string> = {};
+  addHeaderIfString(headers, "x-trellis-trace-id", metadata.traceId);
+  addHeaderIfString(headers, "x-trellis-provider-action-id", metadata.providerActionId);
+  addHeaderIfString(headers, "x-trellis-signal-id", metadata.signalId);
+  addHeaderIfString(headers, "x-trellis-draft-id", metadata.draftId);
+  addHeaderIfString(headers, "x-trellis-workflow", metadata.workflow);
+  addHeaderIfString(headers, "x-trellis-prospect-id", metadata.prospectId);
+  addHeaderIfString(headers, "x-trellis-thread-id", metadata.threadId);
+  addHeaderIfString(headers, "x-trellis-workspace-id", metadata.workspaceId);
+  addHeaderIfString(headers, "x-trellis-campaign-id", metadata.campaignId);
+  return headers;
+}
+
+function trellisProviderMetadata(context: TrellisProviderExecutionContext) {
+  return {
+    traceId: context.action.traceId,
+    providerActionId: context.action.id,
+    signalId: context.action.signalId,
+    draftId: context.action.draftId,
+    workflow: workflowForProviderAction(context),
+    prospectId: context.prospect?.id ?? (context.signal ? `prospect_${context.signal.id}` : undefined),
+    threadId: context.signal?.threadId ?? context.prospect?.threadId,
+    workspaceId: context.signal?.workspaceId ?? context.prospect?.workspaceId,
+    campaignId: context.signal?.campaignId ?? undefined,
+  };
+}
+
+function workflowForProviderAction(context: TrellisProviderExecutionContext) {
+  if (
+    context.action.operation === "mail.reply"
+    || context.action.operation === "email.reply"
+    || context.action.approvalId.includes("_reply_")
+    || context.action.draftId?.startsWith("reply_")
+  ) {
+    return "reply";
+  }
+  return "prospect";
+}
+
+function addHeaderIfString(headers: Record<string, string>, name: string, value: string | null | undefined) {
+  const headerValue = readString(value);
+  if (headerValue) {
+    headers[name] = headerValue;
+  }
 }
 
 async function executeAgentMailSend(
@@ -4277,7 +4356,7 @@ async function executeAgentMailSend(
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
-      "x-trellis-trace-id": context.action.traceId,
+      ...trellisProviderHeaders(context),
     },
     body: JSON.stringify({
       to: [to],
@@ -4346,7 +4425,7 @@ async function executeAgentMailReply(
       headers: {
         "content-type": "application/json",
         authorization: `Bearer ${apiKey}`,
-        "x-trellis-trace-id": context.action.traceId,
+        ...trellisProviderHeaders(context),
       },
       body: JSON.stringify({
         text: bodyText,
@@ -4412,12 +4491,13 @@ async function executeAttioCrmUpdate(
   }
 
   const baseUrl = (readString(env?.ATTIO_BASE_URL) ?? "https://api.attio.com/v2").replace(/\/+$/, "");
+  const providerHeaders = trellisProviderHeaders(context);
   const company = companyRecordId && hasCompanyUpdate
     ? await attioRequest(env, apiKey, baseUrl, `/objects/companies/records/${encodeURIComponent(companyRecordId)}`, "PATCH", {
         data: {
           values: buildAttioCompanyValues(companyName, companyDomain),
         },
-      })
+      }, providerHeaders)
     : hasCompanyUpdate
       ? await attioRequest(env, apiKey, baseUrl, companyDomain
           ? "/objects/companies/records?matching_attribute=domains"
@@ -4425,7 +4505,7 @@ async function executeAttioCrmUpdate(
             data: {
               values: buildAttioCompanyValues(companyName, companyDomain),
             },
-          })
+          }, providerHeaders)
       : null;
   const companyRef = company
     ? mapAttioRecordReference(company)
@@ -4447,12 +4527,12 @@ async function executeAttioCrmUpdate(
     ? personRecordId
       ? await attioRequest(env, apiKey, baseUrl, `/objects/people/records/${encodeURIComponent(personRecordId)}`, "PATCH", {
           data: { values: personValues },
-        })
+        }, providerHeaders)
       : await attioRequest(env, apiKey, baseUrl, email
           ? "/objects/people/records?matching_attribute=email_addresses"
           : "/objects/people/records", email ? "PUT" : "POST", {
             data: { values: personValues },
-          })
+          }, providerHeaders)
     : null;
   const personRef = person ? mapAttioRecordReference(person) : null;
 
@@ -4488,13 +4568,18 @@ async function executeHandoffWebhook(
     ?? context.draft?.body
     ?? "Trellis handoff requested.";
   const destination = readFirstString(input, signalPayload, ["destination", "channel", "team"]) ?? "sales";
+  const metadata = trellisProviderMetadata(context);
   const payload = {
     type: "trellis.handoff.requested",
     traceId: context.action.traceId,
     providerActionId: context.action.id,
     signalId: context.action.signalId,
+    draftId: metadata.draftId ?? null,
+    workflow: metadata.workflow,
+    prospectId: metadata.prospectId ?? null,
     threadId: context.signal?.threadId ?? null,
     workspaceId: context.signal?.workspaceId ?? null,
+    campaignId: metadata.campaignId ?? null,
     destination,
     reason,
     draft: context.draft,
@@ -4506,6 +4591,7 @@ async function executeHandoffWebhook(
     : fetch;
   const headers: Record<string, string> = {
     "content-type": "application/json",
+    ...trellisProviderHeaders(context),
   };
   const secret = readString(env?.HANDOFF_WEBHOOK_SECRET) ?? readString(env?.TRELLIS_HANDOFF_WEBHOOK_SECRET);
   if (secret) {
@@ -4599,6 +4685,7 @@ async function attioRequest(
   path: string,
   method: "POST" | "PUT" | "PATCH",
   body: Record<string, unknown>,
+  trellisHeaders: Record<string, string> = {},
 ) {
   const fetcher = typeof env?.TRELLIS_FETCH === "function"
     ? env.TRELLIS_FETCH as typeof fetch
@@ -4608,6 +4695,7 @@ async function attioRequest(
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
+      ...trellisHeaders,
     },
     body: JSON.stringify(body),
   });
