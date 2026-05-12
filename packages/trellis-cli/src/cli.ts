@@ -1,3 +1,4 @@
+#!/usr/bin/env tsx
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -2019,17 +2020,26 @@ function buildV3ScaffoldPackage(packageName: string) {
     },
     dependencies: {
       "@flue/sdk": "^0.5.3",
-      "@trellis/gtm": "workspace:*",
-      "@trellis/providers": "workspace:*",
+      "@trellis/gtm": resolveScaffoldDependency("gtm", "0.1.0"),
+      "@trellis/providers": resolveScaffoldDependency("providers", "0.1.0"),
       zod: "^3.25.76",
     },
     devDependencies: {
       "@cloudflare/workers-types": "^4.20260511.1",
-      "@trellis/cli": "workspace:*",
+      "@trellis/cli": resolveScaffoldDependency("trellis-cli", "0.1.0"),
+      tsx: "^4.20.6",
       typescript: "^5.8.3",
       wrangler: "^4.90.0",
     },
   };
+}
+
+function resolveScaffoldDependency(packageDirName: string, fallbackVersion: string) {
+  const packageDir = path.join(repoRoot, "packages", packageDirName);
+  if (!existsSync(path.join(packageDir, "package.json"))) {
+    return fallbackVersion;
+  }
+  return pathToFileURL(packageDir).href;
 }
 
 function renderV3Tsconfig() {
