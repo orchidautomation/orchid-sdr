@@ -708,8 +708,8 @@ trellis add observability langfuse
 
 Each connect command should:
 
-- install package
-- update config
+- write a non-secret provider manifest under `.trellis/providers/`
+- leave secrets in env, Wrangler secrets, or the dashboard
 - add env vars
 - add provider readiness check
 - add smoke test

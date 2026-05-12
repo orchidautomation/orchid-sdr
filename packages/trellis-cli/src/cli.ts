@@ -500,7 +500,7 @@ async function printAddPlan(moduleId: string | undefined) {
   }
 
   if (moduleId === "langfuse") {
-    printLangfuseConnectionGuide();
+    await printLangfuseConnectionGuide();
     return;
   }
 
@@ -549,7 +549,7 @@ Provider credentials can be connected after the first Cloudflare deploy.`);
 
   const v3Connection = resolveV3Connection(moduleId, providerArg);
   if (v3Connection) {
-    printV3ConnectionGuide(v3Connection);
+    await printV3ConnectionGuide(v3Connection);
     return;
   }
 
@@ -601,13 +601,15 @@ function resolveV3Connection(moduleId: string, provider: string | undefined) {
     : null;
 }
 
-function printV3ConnectionGuide(guide: (typeof V3_CONNECTIONS)[V3ConnectionId]) {
+async function printV3ConnectionGuide(guide: (typeof V3_CONNECTIONS)[V3ConnectionId]) {
+  const manifest = await writeV3ConnectionManifest(guide);
   if (jsonOutput) {
     emitJson({
       ok: true,
       command: "connect",
       mode: "v3-provider",
       provider: guide,
+      manifest,
       defaults: {
         firstDeployRequiresProviderCredentials: false,
         noSendsModeUntilApproved: true,
@@ -628,14 +630,18 @@ ${guide.requiredEnv.map((name) => `  - ${name}`).join("\n")}
 Optional env:
 ${guide.optionalEnv.length > 0 ? guide.optionalEnv.map((name) => `  - ${name}`).join("\n") : "  none"}
 
+Manifest:
+  - ${manifest.path}
+  - status: ${manifest.status}
+
 v3 behavior:
   - credentials are connected after the Cloudflare app boots
   - smoke mode still runs without this provider
   - outbound writes stay gated by Trellis safety until approval checks pass`);
 }
 
-function printLangfuseConnectionGuide() {
-  printV3ConnectionGuide(V3_CONNECTIONS.langfuse);
+async function printLangfuseConnectionGuide() {
+  await printV3ConnectionGuide(V3_CONNECTIONS.langfuse);
 }
 
 async function handleDocsCommand(subcommand: string | undefined, docsPath: string | undefined) {
@@ -707,6 +713,9 @@ async function handleDoctorCommand() {
   const wranglerConfigPath = findWranglerConfig(process.cwd());
   const wranglerSource = wranglerConfigPath ? readFileSync(wranglerConfigPath, "utf8") : "";
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
+  const providerReadiness = await Promise.all(
+    (["attio", "agentmail", "firecrawl"] as const).map((id) => loadV3ProviderReadiness(id)),
+  );
   const smoke = await runTrellisSmoke();
   const checks = [
     doctorCheck("cloudflare.config", Boolean(wranglerConfigPath), "warn", wranglerConfigPath
@@ -728,9 +737,9 @@ async function handleDoctorCommand() {
     ),
     doctorCheck("knowledge.pack", knowledgePack.ok, "warn", knowledgePack.detail),
     doctorCheck("skills.pack", existsSync(path.join(process.cwd(), "skills")), "warn", "skills directory should contain SKILL.md packs"),
-    doctorCheck("provider.attio", Boolean(process.env.ATTIO_API_KEY), "warn", "Attio can be connected after first deploy"),
-    doctorCheck("provider.agentmail", Boolean(process.env.AGENTMAIL_API_KEY), "warn", "AgentMail can be connected after first deploy"),
-    doctorCheck("provider.firecrawl", Boolean(process.env.FIRECRAWL_API_KEY), "warn", "Firecrawl can be connected after first deploy"),
+    ...providerReadiness.map((provider) =>
+      doctorCheck(`provider.${provider.id}`, provider.ok, "warn", provider.detail),
+    ),
     doctorCheck("smoke.workflow", smoke.ok, "fail", "safe fixture smoke workflow should pass"),
     doctorCheck("safety.noSends", smoke.noSendsMode, "fail", "no-send mode should be enabled before provider writes"),
   ];
@@ -748,6 +757,7 @@ async function handleDoctorCommand() {
         auditEvents: smoke.auditEvents.map((event) => event.type),
       },
       knowledgePack: knowledgePack.summary,
+      providers: Object.fromEntries(providerReadiness.map((provider) => [provider.id, provider.summary])),
     });
     return;
   }
@@ -805,6 +815,56 @@ function isMarkdownFile(filePath: string) {
 
 function toPosixPath(value: string) {
   return value.split(path.sep).join("/");
+}
+
+async function writeV3ConnectionManifest(guide: (typeof V3_CONNECTIONS)[V3ConnectionId]) {
+  const providerDir = path.join(process.cwd(), trellisStateDirName, "providers");
+  const manifestPath = path.join(providerDir, `${guide.id}.json`);
+  const missingRequiredEnv = guide.requiredEnv.filter((name) => !process.env[name]);
+  const manifest = {
+    version: 1,
+    id: guide.id,
+    kind: guide.kind,
+    displayName: guide.displayName,
+    connectedAt: new Date().toISOString(),
+    requiredEnv: guide.requiredEnv,
+    optionalEnv: guide.optionalEnv,
+    capabilities: guide.capabilities,
+    status: missingRequiredEnv.length === 0 ? "ready" : "waiting_for_env",
+    missingRequiredEnv,
+    noSecretsStored: true,
+  };
+  await mkdir(providerDir, { recursive: true });
+  await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  return {
+    path: manifestPath,
+    status: manifest.status,
+    missingRequiredEnv,
+  };
+}
+
+async function loadV3ProviderReadiness(id: "attio" | "agentmail" | "firecrawl") {
+  const guide = V3_CONNECTIONS[id];
+  const manifestPath = path.join(process.cwd(), trellisStateDirName, "providers", `${id}.json`);
+  const manifestExists = existsSync(manifestPath);
+  const missingRequiredEnv = guide.requiredEnv.filter((name) => !process.env[name]);
+  const ready = manifestExists && missingRequiredEnv.length === 0;
+  return {
+    id,
+    ok: ready,
+    detail: ready
+      ? `${guide.displayName} connected and required env is present`
+      : manifestExists
+        ? `${guide.displayName} connected; missing env: ${missingRequiredEnv.join(", ")}`
+        : `${guide.displayName} not connected yet; run trellis connect ${id}`,
+    summary: {
+      connected: manifestExists,
+      manifestPath: manifestExists ? manifestPath : null,
+      status: ready ? "ready" : (manifestExists ? "waiting_for_env" : "not_connected"),
+      missingRequiredEnv,
+      capabilities: guide.capabilities,
+    },
+  };
 }
 
 async function loadKnowledgePackManifest(cwd: string) {

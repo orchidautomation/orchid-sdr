@@ -197,6 +197,7 @@ v3 parity:
 - `trellis connect attio`
 - `trellis connect agentmail`
 - `trellis connect firecrawl`
+- `trellis connect` writes non-secret provider manifests under `.trellis/providers/`
 - provider readiness checks are generated
 - provider side effects are approval-gated
 - provider calls carry trace/workflow/prospect ids
