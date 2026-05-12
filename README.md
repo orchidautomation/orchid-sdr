@@ -9,6 +9,7 @@ It is not trying to be a universal agent framework. The v3 direction is one cura
 ```bash
 trellis init acme-sdr
 trellis deploy
+trellis doctor
 trellis smoke
 trellis connect attio
 trellis connect agentmail
@@ -92,6 +93,7 @@ Legacy composition commands remain available only for migration work with explic
 npm run typecheck
 npm test
 npm run trellis -- help
+npm run trellis -- doctor --json
 npm run trellis -- smoke --json
 npm run trellis -- deploy --json
 ```

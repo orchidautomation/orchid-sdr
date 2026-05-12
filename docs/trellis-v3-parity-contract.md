@@ -19,6 +19,7 @@ The v3 happy path is:
 ```bash
 trellis init acme-sdr
 trellis deploy
+trellis doctor
 trellis smoke
 trellis connect attio
 trellis connect agentmail
@@ -260,14 +261,15 @@ Legacy to remove after replacement:
 
 1. Create v3 public API packages: `@trellis/gtm`, `@trellis/providers`.
 2. Add Cloudflare-first CLI shape: `deploy`, `connect`, `docs add`, `smoke`.
-3. Build a Cloudflare app shell that boots with only Cloudflare credentials.
-4. Implement R2-backed knowledge/skill pack loading.
-5. Implement `app.signal`, `app.context`, `app.skill`, and `app.workflow`.
-6. Port normalized signal ingest to Workers + Queues + D1.
-7. Port prospect lifecycle to Cloudflare Agents + Workflows.
-8. Port MCP/dashboard to D1 projections and agent snapshots.
-9. Port provider connections with readiness checks and approval gates.
-10. Delete or quarantine old Rivet/Vercel/Convex-first surfaces once parity is proven.
+3. Add v3 reliability checks through `doctor`.
+4. Build a Cloudflare app shell that boots with only Cloudflare credentials.
+5. Implement R2-backed knowledge/skill pack loading.
+6. Implement `app.signal`, `app.context`, `app.skill`, and `app.workflow`.
+7. Port normalized signal ingest to Workers + Queues + D1.
+8. Port prospect lifecycle to Cloudflare Agents + Workflows.
+9. Port MCP/dashboard to D1 projections and agent snapshots.
+10. Port provider connections with readiness checks and approval gates.
+11. Delete or quarantine old Rivet/Vercel/Convex-first surfaces once parity is proven.
 
 ## Completion Definition
 

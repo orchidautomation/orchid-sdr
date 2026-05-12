@@ -144,6 +144,9 @@ async function main() {
       case "docs":
         await handleDocsCommand(arg, providerArg);
         break;
+      case "doctor":
+        await handleDoctorCommand();
+        break;
       case "smoke":
         await handleSmokeCommand(arg);
         break;
@@ -191,6 +194,7 @@ function printHelp() {
 
   npm run trellis -- connect <business-provider>
   npm run trellis -- docs add <path>
+  npm run trellis -- doctor
   npm run trellis -- smoke
   npm run trellis -- deploy
   npm run trellis -- init <target-dir> [--name my-app]
@@ -203,6 +207,7 @@ Examples:
   npm run trellis -- connect agentmail
   npm run trellis -- connect firecrawl
   npm run trellis -- docs add ./product-docs
+  npm run trellis -- doctor
   npm run trellis -- smoke
   npm run trellis -- deploy
   npm run trellis -- deploy --json
@@ -664,6 +669,75 @@ v3 behavior:
   - sync docs into the R2-backed pack store
   - make them available to skills through the Trellis sandbox filesystem
   - verify retrieval during trellis smoke`);
+}
+
+async function handleDoctorCommand() {
+  const wranglerConfigPath = findWranglerConfig(process.cwd());
+  const wranglerSource = wranglerConfigPath ? readFileSync(wranglerConfigPath, "utf8") : "";
+  const smoke = await runTrellisSmoke();
+  const checks = [
+    doctorCheck("cloudflare.config", Boolean(wranglerConfigPath), "warn", wranglerConfigPath
+      ? `found ${path.basename(wranglerConfigPath)}`
+      : "no Wrangler config found in this directory"),
+    doctorCheck("cloudflare.auth", Boolean(process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_ACCOUNT_ID), "warn",
+      "Cloudflare env auth is optional if wrangler login is already active"),
+    ...[
+      "TRELLIS_AGENT",
+      "TRELLIS_DB",
+      "TRELLIS_PACKS",
+      "TRELLIS_ARTIFACTS",
+      "TRELLIS_EVENTS",
+      "PROSPECT_WORKFLOW",
+      "AI",
+      "BROWSER",
+    ].map((binding) =>
+      doctorCheck(`binding.${binding}`, wranglerSource.includes(binding), "warn", `${binding} binding ${wranglerSource.includes(binding) ? "declared" : "not declared"}`),
+    ),
+    doctorCheck("knowledge.pack", existsSync(path.join(process.cwd(), "knowledge")), "warn", "knowledge directory should contain markdown GTM context"),
+    doctorCheck("skills.pack", existsSync(path.join(process.cwd(), "skills")), "warn", "skills directory should contain SKILL.md packs"),
+    doctorCheck("provider.attio", Boolean(process.env.ATTIO_API_KEY), "warn", "Attio can be connected after first deploy"),
+    doctorCheck("provider.agentmail", Boolean(process.env.AGENTMAIL_API_KEY), "warn", "AgentMail can be connected after first deploy"),
+    doctorCheck("provider.firecrawl", Boolean(process.env.FIRECRAWL_API_KEY), "warn", "Firecrawl can be connected after first deploy"),
+    doctorCheck("smoke.workflow", smoke.ok, "fail", "safe fixture smoke workflow should pass"),
+    doctorCheck("safety.noSends", smoke.noSendsMode, "fail", "no-send mode should be enabled before provider writes"),
+  ];
+  const ok = checks.every((check) => check.status !== "fail");
+
+  if (jsonOutput) {
+    emitJson({
+      ok,
+      command: "doctor",
+      mode: "v3-cloudflare-gtm",
+      checks,
+      smoke: {
+        ok: smoke.ok,
+        fixture: smoke.fixture.id,
+        auditEvents: smoke.auditEvents.map((event) => event.type),
+      },
+    });
+    return;
+  }
+
+  console.log("Trellis doctor:");
+  for (const check of checks) {
+    console.log(`  - ${check.status}: ${check.id} - ${check.detail}`);
+  }
+  if (!ok) {
+    process.exitCode = 1;
+  }
+}
+
+function doctorCheck(
+  id: string,
+  passed: boolean,
+  failureStatus: "warn" | "fail",
+  detail: string,
+) {
+  return {
+    id,
+    status: passed ? "pass" : failureStatus,
+    detail,
+  };
 }
 
 async function handleSmokeCommand(scope: string | undefined) {

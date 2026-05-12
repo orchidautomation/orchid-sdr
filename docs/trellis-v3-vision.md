@@ -17,6 +17,7 @@ Trellis v3 should feel like this:
 ```bash
 trellis init acme-sdr
 trellis deploy
+trellis doctor
 trellis smoke
 trellis connect attio
 trellis connect agentmail
@@ -767,6 +768,21 @@ Runs a real safe workflow:
 - inspect through MCP/dashboard
 
 The smoke test is part of the product.
+
+### Doctor
+
+```bash
+trellis doctor
+```
+
+Checks the generated Cloudflare app shape:
+
+- Wrangler config
+- required Cloudflare bindings
+- knowledge and skill pack folders
+- first-boot provider posture
+- safe fixture smoke workflow
+- no-send and approval defaults
 
 ## GTM As The First Vertical
 
