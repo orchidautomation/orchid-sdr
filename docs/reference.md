@@ -70,6 +70,8 @@ Operator controls live in `trellis_operator_controls`. The global kill switch an
 
 Replay controls use the existing durable records instead of asking operators to understand the queue substrate. `POST /operator/workflows/:id/replay` reads the stored workflow params from `trellis_workflow_runs`, creates a new Cloudflare Workflow instance, and records the replay. `POST /operator/provider-actions/:id/replay` moves a failed or blocked provider action back to `queued` and emits a new `trellis.provider.action.queued` message for recovery.
 
+The MCP snapshot and dashboard include compact recent D1 projections for signals, prospects, drafts, approvals, provider actions, workflow runs, audit events, trace events, and smoke runs. This backs the inspection tools with durable Trellis state instead of only showing aggregate counts.
+
 The generated Worker also exposes a Cloudflare Queues consumer through the same hidden runtime object. `trellis.provider.action.queued` messages are drained by the executor and acknowledged on handled outcomes. Provider execution failures are recorded, reset to `queued` for the Cloudflare retry attempt, and can still be requeued manually through the operator replay route after DLQ inspection.
 
 `GET /smoke` remains safe to run before provider credentials are connected. When `TRELLIS_DB` is bound, it writes a row to `trellis_smoke_runs`, appends a `smoke.pass` or `smoke.fail` trace event, and surfaces the count through MCP and the dashboard.

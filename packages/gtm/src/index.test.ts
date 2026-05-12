@@ -461,6 +461,41 @@ describe("@trellis/gtm v3 API", () => {
             objects: 1,
           },
         },
+        recent: {
+          signals: [
+            expect.objectContaining({
+              id: "sig_live",
+              payload: expect.objectContaining({
+                traceId: "trace_sig_live",
+              }),
+            }),
+          ],
+          workflowRuns: [
+            expect.objectContaining({
+              id: "trellis_sig_live_prospect",
+              status: "dispatched",
+              params: expect.objectContaining({
+                workflow: "prospect",
+              }),
+            }),
+          ],
+          providerActions: [
+            expect.objectContaining({
+              id: "provider_action_approval_draft_sig_live_email_send",
+              status: "failed",
+            }),
+          ],
+          auditEvents: expect.arrayContaining([
+            expect.objectContaining({
+              type: "provider_action.failed",
+            }),
+          ]),
+          traceEvents: expect.arrayContaining([
+            expect.objectContaining({
+              type: "provider_action.failed",
+            }),
+          ]),
+        },
       },
       tools: expect.arrayContaining(["trellis.smoke", "trellis.workflow.inspect", "trellis.approval.approve"]),
     });
@@ -484,6 +519,12 @@ describe("@trellis/gtm v3 API", () => {
     expect(dashboardHtml).toContain("<dt>Trace Events</dt><dd>8</dd>");
     expect(dashboardHtml).toContain("<dt>Knowledge Files</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Skill Files</dt><dd>1</dd>");
+    expect(dashboardHtml).toContain("Recent Workflow Runs");
+    expect(dashboardHtml).toContain("prospect:dispatched trellis_sig_live_prospect");
+    expect(dashboardHtml).toContain("Recent Provider Actions");
+    expect(dashboardHtml).toContain("agentmail:email.send failed");
+    expect(dashboardHtml).toContain("Recent Audit Events");
+    expect(dashboardHtml).toContain("provider_action.failed");
     const smokeWithHistory = await runtime.worker.fetch(new Request("https://example.com/smoke"), env);
     await expect(smokeWithHistory.json()).resolves.toMatchObject({
       ok: true,
@@ -2260,12 +2301,15 @@ function isTestRecord(value: unknown): value is Record<string, unknown> {
 function createFakeD1() {
   const statements: Array<{ sql: string; bindings: unknown[] }> = [];
   const signals = new Map<string, Record<string, unknown>>();
+  const prospects = new Map<string, Record<string, unknown>>();
   const drafts = new Map<string, Record<string, unknown>>();
+  const approvals = new Map<string, Record<string, unknown>>();
   const providerActions = new Map<string, Record<string, unknown>>();
   const operatorControls = new Map<string, Record<string, unknown>>();
   const workflowRuns = new Map<string, Record<string, unknown>>();
   const auditEvents = new Map<string, Record<string, unknown>>();
   const traceEvents = new Map<string, Record<string, unknown>>();
+  const smokeRuns = new Map<string, Record<string, unknown>>();
   return {
     statements,
     prepare(sql: string) {
@@ -2290,6 +2334,16 @@ function createFakeD1() {
                   createdAt: bindings[7],
                 });
               }
+              if (normalized.includes("INSERT OR REPLACE INTO trellis_prospects")) {
+                prospects.set(String(bindings[0]), {
+                  id: bindings[0],
+                  signalId: bindings[1],
+                  workspaceId: bindings[2],
+                  threadId: bindings[3],
+                  status: bindings[4],
+                  updatedAt: bindings[5],
+                });
+              }
               if (normalized.includes("INSERT OR REPLACE INTO trellis_drafts")) {
                 drafts.set(String(bindings[0]), {
                   id: bindings[0],
@@ -2299,6 +2353,16 @@ function createFakeD1() {
                   approvalRequiredJson: bindings[4],
                   body: bindings[5],
                   updatedAt: bindings[6],
+                });
+              }
+              if (normalized.includes("INSERT OR REPLACE INTO trellis_approvals")) {
+                approvals.set(String(bindings[0]), {
+                  id: bindings[0],
+                  draftId: bindings[1],
+                  signalId: bindings[2],
+                  action: bindings[3],
+                  status: bindings[4],
+                  updatedAt: bindings[5],
                 });
               }
               if (normalized.includes("INSERT OR REPLACE INTO trellis_provider_actions")) {
@@ -2336,6 +2400,18 @@ function createFakeD1() {
                   updatedAt: bindings[6],
                 });
               }
+              if (normalized.includes("INSERT OR REPLACE INTO trellis_smoke_runs")) {
+                smokeRuns.set(String(bindings[0]), {
+                  id: bindings[0],
+                  agent: bindings[1],
+                  status: bindings[2],
+                  fixtureId: bindings[3],
+                  traceId: bindings[4],
+                  checksJson: bindings[5],
+                  resultJson: bindings[6],
+                  createdAt: bindings[7],
+                });
+              }
               if (normalized.includes("INSERT OR REPLACE INTO trellis_audit_events")) {
                 auditEvents.set(String(bindings[0]), {
                   id: bindings[0],
@@ -2366,6 +2442,13 @@ function createFakeD1() {
                   row.updatedAt = bindings[1];
                 }
               }
+              if (normalized.includes("UPDATE trellis_approvals SET status = ?")) {
+                const row = approvals.get(String(bindings[2]));
+                if (row) {
+                  row.status = bindings[0];
+                  row.updatedAt = bindings[1];
+                }
+              }
               return { success: true };
             },
             first() {
@@ -2378,6 +2461,15 @@ function createFakeD1() {
                 }
                 if (tableName === "trellis_workflow_runs") {
                   return { count: workflowRuns.size };
+                }
+                if (tableName === "trellis_prospects") {
+                  return { count: prospects.size };
+                }
+                if (tableName === "trellis_approvals") {
+                  return { count: approvals.size };
+                }
+                if (tableName === "trellis_smoke_runs") {
+                  return { count: smokeRuns.size };
                 }
                 if (tableName === "trellis_audit_events") {
                   return { count: auditEvents.size };
@@ -2407,11 +2499,69 @@ function createFakeD1() {
               }
               return null;
             },
+            all() {
+              const normalized = sql.replace(/\s+/g, " ").trim();
+              const limit = Number(bindings[0] ?? 20);
+              const rows = rowsForSelect(normalized, {
+                signals,
+                prospects,
+                drafts,
+                approvals,
+                providerActions,
+                workflowRuns,
+                auditEvents,
+                traceEvents,
+                smokeRuns,
+              });
+              return {
+                results: rows.slice(0, Number.isFinite(limit) ? limit : 20),
+              };
+            },
           };
         },
       };
     },
   };
+}
+
+function rowsForSelect(
+  normalizedSql: string,
+  tables: Record<string, Map<string, Record<string, unknown>>>,
+) {
+  if (normalizedSql.includes("FROM trellis_signals")) {
+    return sortRows(tables.signals);
+  }
+  if (normalizedSql.includes("FROM trellis_prospects")) {
+    return sortRows(tables.prospects);
+  }
+  if (normalizedSql.includes("FROM trellis_drafts")) {
+    return sortRows(tables.drafts);
+  }
+  if (normalizedSql.includes("FROM trellis_approvals")) {
+    return sortRows(tables.approvals);
+  }
+  if (normalizedSql.includes("FROM trellis_provider_actions")) {
+    return sortRows(tables.providerActions);
+  }
+  if (normalizedSql.includes("FROM trellis_workflow_runs")) {
+    return sortRows(tables.workflowRuns);
+  }
+  if (normalizedSql.includes("FROM trellis_audit_events")) {
+    return sortRows(tables.auditEvents);
+  }
+  if (normalizedSql.includes("FROM trellis_trace_events")) {
+    return sortRows(tables.traceEvents);
+  }
+  if (normalizedSql.includes("FROM trellis_smoke_runs")) {
+    return sortRows(tables.smokeRuns);
+  }
+  return [];
+}
+
+function sortRows(rows: Map<string, Record<string, unknown>> | undefined) {
+  return Array.from(rows?.values() ?? []).sort((left, right) =>
+    String(right.updatedAt ?? right.createdAt ?? "").localeCompare(String(left.updatedAt ?? left.createdAt ?? "")),
+  );
 }
 
 function createFakeQueue() {

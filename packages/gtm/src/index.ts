@@ -235,6 +235,7 @@ interface TrellisD1Database {
     bind(...values: unknown[]): {
       run(): Promise<unknown> | unknown;
       first<T = Record<string, unknown>>(): Promise<T | null> | T | null;
+      all?<T = Record<string, unknown>>(): Promise<{ results?: T[] }> | { results?: T[] };
     };
   };
 }
@@ -4579,6 +4580,7 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
     return {
       enabled: false,
       counts: null,
+      recent: null,
       packs,
       controls: await readOperatorControls(env),
       traceExport: summarizeTraceExport(env),
@@ -4599,10 +4601,217 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
       traceEvents: await countD1Rows(db, "trellis_trace_events"),
       auditEvents: await countD1Rows(db, "trellis_audit_events"),
     },
+    recent: await readRecentRuntimeRows(db),
     packs,
     controls: await readOperatorControls(env),
     traceExport: summarizeTraceExport(env),
   };
+}
+
+async function readRecentRuntimeRows(db: TrellisD1Database) {
+  return {
+    signals: (await readD1Rows<{
+      id: string;
+      workspaceId: string;
+      threadId: string;
+      campaignId?: string | null;
+      provider?: string | null;
+      source?: string | null;
+      payloadJson?: string;
+      createdAt?: string;
+    }>(db, `
+      SELECT
+        id,
+        workspace_id AS workspaceId,
+        thread_id AS threadId,
+        campaign_id AS campaignId,
+        provider,
+        source,
+        payload_json AS payloadJson,
+        created_at AS createdAt
+      FROM trellis_signals
+      ORDER BY created_at DESC
+      LIMIT ?
+    `, [5])).map((row) => ({
+      ...row,
+      payload: parseJsonValue(row.payloadJson),
+      payloadJson: undefined,
+    })),
+    prospects: await readD1Rows(db, `
+      SELECT
+        id,
+        signal_id AS signalId,
+        workspace_id AS workspaceId,
+        thread_id AS threadId,
+        status,
+        updated_at AS updatedAt
+      FROM trellis_prospects
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `, [5]),
+    drafts: (await readD1Rows<{
+      id: string;
+      signalId: string;
+      channel: string;
+      status: string;
+      approvalRequiredJson?: string;
+      body: string;
+      updatedAt?: string;
+    }>(db, `
+      SELECT
+        id,
+        signal_id AS signalId,
+        channel,
+        status,
+        approval_required_json AS approvalRequiredJson,
+        body,
+        updated_at AS updatedAt
+      FROM trellis_drafts
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `, [5])).map((row) => ({
+      ...row,
+      approvalRequiredFor: parseJsonValue(row.approvalRequiredJson),
+      approvalRequiredJson: undefined,
+    })),
+    approvals: await readD1Rows(db, `
+      SELECT
+        id,
+        draft_id AS draftId,
+        signal_id AS signalId,
+        action,
+        status,
+        updated_at AS updatedAt
+      FROM trellis_approvals
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `, [10]),
+    providerActions: await readD1Rows(db, `
+      SELECT
+        id,
+        approval_id AS approvalId,
+        signal_id AS signalId,
+        draft_id AS draftId,
+        provider,
+        operation,
+        status,
+        trace_id AS traceId,
+        updated_at AS updatedAt
+      FROM trellis_provider_actions
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `, [10]),
+    workflowRuns: (await readD1Rows<{
+      id: string;
+      signalId: string;
+      workflow: string;
+      status: string;
+      paramsJson?: string;
+      updatedAt?: string;
+    }>(db, `
+      SELECT
+        id,
+        signal_id AS signalId,
+        workflow,
+        status,
+        params_json AS paramsJson,
+        updated_at AS updatedAt
+      FROM trellis_workflow_runs
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `, [10])).map((row) => ({
+      ...row,
+      params: parseJsonValue(row.paramsJson),
+      paramsJson: undefined,
+    })),
+    auditEvents: await readD1Rows(db, `
+      SELECT
+        id,
+        signal_id AS signalId,
+        workflow,
+        type,
+        message,
+        created_at AS createdAt
+      FROM trellis_audit_events
+      ORDER BY created_at DESC
+      LIMIT ?
+    `, [20]),
+    traceEvents: (await readD1Rows<{
+      id: string;
+      traceId: string;
+      signalId?: string | null;
+      workflow?: string | null;
+      span: string;
+      type: string;
+      message: string;
+      payloadJson?: string;
+      createdAt?: string;
+    }>(db, `
+      SELECT
+        id,
+        trace_id AS traceId,
+        signal_id AS signalId,
+        workflow,
+        span,
+        type,
+        message,
+        payload_json AS payloadJson,
+        created_at AS createdAt
+      FROM trellis_trace_events
+      ORDER BY created_at DESC
+      LIMIT ?
+    `, [20])).map((row) => ({
+      ...row,
+      payload: parseJsonValue(row.payloadJson),
+      payloadJson: undefined,
+    })),
+    smokeRuns: (await readD1Rows<{
+      id: string;
+      agent: string;
+      status: string;
+      fixtureId: string;
+      traceId: string;
+      checksJson?: string;
+      resultJson?: string;
+      createdAt?: string;
+    }>(db, `
+      SELECT
+        id,
+        agent,
+        status,
+        fixture_id AS fixtureId,
+        trace_id AS traceId,
+        checks_json AS checksJson,
+        result_json AS resultJson,
+        created_at AS createdAt
+      FROM trellis_smoke_runs
+      ORDER BY created_at DESC
+      LIMIT ?
+    `, [5])).map((row) => ({
+      ...row,
+      checks: parseJsonValue(row.checksJson),
+      result: parseJsonValue(row.resultJson),
+      checksJson: undefined,
+      resultJson: undefined,
+    })),
+  };
+}
+
+async function readD1Rows<T = Record<string, unknown>>(
+  db: TrellisD1Database,
+  sql: string,
+  bindings: unknown[] = [],
+): Promise<T[]> {
+  try {
+    const statement = db.prepare(sql).bind(...bindings);
+    if (typeof statement.all !== "function") {
+      return [];
+    }
+    const result = await statement.all<T>();
+    return Array.isArray(result.results) ? result.results : [];
+  } catch {
+    return [];
+  }
 }
 
 async function countD1Rows(db: TrellisD1Database, tableName: string) {
@@ -4611,6 +4820,17 @@ async function countD1Rows(db: TrellisD1Database, tableName: string) {
     return Number(row?.count ?? 0);
   } catch {
     return 0;
+  }
+}
+
+function parseJsonValue(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value ?? null;
+  }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
   }
 }
 
@@ -4753,6 +4973,7 @@ function renderDashboard(
   const packs = snapshot.packs;
   const controls = snapshot.controls;
   const traceExport = snapshot.traceExport;
+  const recent = snapshot.recent;
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -4781,7 +5002,43 @@ function renderDashboard(
         <dt>Knowledge Files</dt><dd>${packs.knowledge?.manifest?.files ?? 0}</dd>
         <dt>Skill Files</dt><dd>${packs.skills?.objects ?? 0}</dd>
       </dl>
+      <section>
+        <h2>Recent Workflow Runs</h2>
+        ${renderRecentRows(recent?.workflowRuns, (row) => `${readString(row.workflow) ?? "workflow"}:${readString(row.status) ?? "unknown"} ${readString(row.id) ?? ""}`)}
+      </section>
+      <section>
+        <h2>Recent Provider Actions</h2>
+        ${renderRecentRows(recent?.providerActions, (row) => `${readString(row.provider) ?? "provider"}:${readString(row.operation) ?? "operation"} ${readString(row.status) ?? "unknown"}`)}
+      </section>
+      <section>
+        <h2>Recent Audit Events</h2>
+        ${renderRecentRows(recent?.auditEvents, (row) => `${readString(row.type) ?? "audit"} ${readString(row.message) ?? ""}`)}
+      </section>
+      <section>
+        <h2>Recent Trace Events</h2>
+        ${renderRecentRows(recent?.traceEvents, (row) => `${readString(row.span) ?? "trace"}:${readString(row.type) ?? "event"}`)}
+      </section>
     </main>
   </body>
 </html>`;
+}
+
+function renderRecentRows(
+  rows: unknown,
+  label: (row: Record<string, unknown>) => string,
+) {
+  const records = Array.isArray(rows) ? rows.filter(isRecord).slice(0, 5) : [];
+  if (records.length === 0) {
+    return "<p>none</p>";
+  }
+  return `<ol>${records.map((row) => `<li>${escapeHtml(label(row))}</li>`).join("")}</ol>`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
 }
