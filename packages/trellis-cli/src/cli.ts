@@ -715,8 +715,10 @@ async function handleDoctorCommand() {
   const wranglerConfigPath = findWranglerConfig(process.cwd());
   const wranglerSource = wranglerConfigPath ? readFileSync(wranglerConfigPath, "utf8") : "";
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
+  const skillPack = await loadSkillPack(process.cwd());
   const providerReadiness = await loadAllV3ProviderReadiness();
   const smoke = await runTrellisSmoke();
+  const packsBucketName = wranglerConfigPath ? readR2BucketName(wranglerConfigPath, "TRELLIS_PACKS") : null;
   const checks = [
     doctorCheck("cloudflare.config", Boolean(wranglerConfigPath), "warn", wranglerConfigPath
       ? `found ${path.basename(wranglerConfigPath)}`
@@ -735,8 +737,11 @@ async function handleDoctorCommand() {
     ].map((binding) =>
       doctorCheck(`binding.${binding}`, wranglerSource.includes(binding), "warn", `${binding} binding ${wranglerSource.includes(binding) ? "declared" : "not declared"}`),
     ),
+    doctorCheck("r2.packsBucket", Boolean(packsBucketName), "warn", packsBucketName
+      ? `TRELLIS_PACKS bucket_name is ${packsBucketName}`
+      : "TRELLIS_PACKS needs bucket_name for deploy pack sync"),
     doctorCheck("knowledge.pack", knowledgePack.ok, "warn", knowledgePack.detail),
-    doctorCheck("skills.pack", existsSync(path.join(process.cwd(), "skills")), "warn", "skills directory should contain SKILL.md packs"),
+    doctorCheck("skills.pack", skillPack.ok, "warn", skillPack.detail),
     ...providerReadiness.map((provider) =>
       doctorCheck(`provider.${provider.id}`, provider.ok, "warn", provider.detail),
     ),
@@ -757,6 +762,7 @@ async function handleDoctorCommand() {
         auditEvents: smoke.auditEvents.map((event) => event.type),
       },
       knowledgePack: knowledgePack.summary,
+      skillPack: skillPack.summary,
       providers: Object.fromEntries(providerReadiness.map((provider) => [provider.id, provider.summary])),
     });
     return;
@@ -922,6 +928,75 @@ async function loadKnowledgePackManifest(cwd: string) {
       },
     };
   }
+}
+
+async function loadSkillPack(cwd: string) {
+  const skillsDir = path.join(cwd, "skills");
+  if (!existsSync(skillsDir)) {
+    return {
+      ok: false,
+      detail: "no skills directory found",
+      summary: null,
+    };
+  }
+
+  const files = (await collectMarkdownFiles(skillsDir))
+    .filter((filePath) => path.basename(filePath).toLowerCase() === "skill.md");
+  return {
+    ok: files.length > 0,
+    detail: files.length > 0
+      ? `skill pack has ${files.length} SKILL.md file(s)`
+      : "skills directory exists but no SKILL.md files were found",
+    summary: {
+      source: "skills",
+      target: "r2://TRELLIS_PACKS/skills",
+      files: files.map((filePath) => toPosixPath(path.relative(cwd, filePath))),
+    },
+  };
+}
+
+async function collectSkillPackFilePaths(cwd: string) {
+  const skillsDir = path.join(cwd, "skills");
+  if (!existsSync(skillsDir)) {
+    return [];
+  }
+  return (await collectMarkdownFiles(skillsDir))
+    .filter((filePath) => path.basename(filePath).toLowerCase() === "skill.md");
+}
+
+async function readKnowledgeManifestForSync(cwd: string) {
+  const manifestPath = path.join(cwd, trellisStateDirName, knowledgePackManifestName);
+  if (!existsSync(manifestPath)) {
+    return null;
+  }
+  try {
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+      source?: string;
+      files?: Array<{ path: string; bytes?: number; sha256?: string }>;
+    };
+    const files = (manifest.files ?? []).filter((file) => typeof file.path === "string");
+    if (files.length === 0) {
+      return null;
+    }
+    return {
+      manifestPath,
+      source: manifest.source ?? ".",
+      files,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function objectKeyForPackFile(scope: "knowledge" | "skills", source: string | undefined, relativePath: string) {
+  let normalizedPath = toPosixPath(relativePath).replace(/^\/+/, "");
+  const sourcePrefix = source && source !== "."
+    ? `${toPosixPath(source).replace(/^\/+|\/+$/g, "")}/`
+    : "";
+  if (sourcePrefix && normalizedPath.startsWith(sourcePrefix)) {
+    normalizedPath = normalizedPath.slice(sourcePrefix.length);
+  }
+  return `${scope}/files/${normalizedPath}`;
 }
 
 async function handleSmokeCommand(scope: string | undefined) {
@@ -1132,7 +1207,9 @@ Recommended sequence:
 async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
   const wranglerConfigPath = findWranglerConfig(process.cwd());
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
+  const skillPack = await loadSkillPack(process.cwd());
   const providerReadiness = await loadAllV3ProviderReadiness();
+  const packSync = await buildCloudflarePackSyncPlan(process.cwd(), wranglerConfigPath);
   const apply = flags.apply === true || flags.write === true || (Boolean(wranglerConfigPath) && !jsonOutput && flags["dry-run"] !== true);
   const plan = {
     ok: true,
@@ -1149,6 +1226,7 @@ async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
       "Workflows",
       "D1 database",
       "R2 knowledge and artifact buckets",
+      "R2 pack sync for knowledge and skills",
       "Queues and dead-letter queues",
       "AI Gateway route",
       "Trellis MCP and dashboard routes",
@@ -1159,6 +1237,8 @@ async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
       smokeMode: true,
     },
     knowledgePack: knowledgePack.summary,
+    skillPack: skillPack.summary,
+    packSync: packSync.summary,
     providers: Object.fromEntries(providerReadiness.map((provider) => [provider.id, provider.summary])),
     next: [
       "trellis smoke",
@@ -1184,6 +1264,7 @@ Trellis v3 provisions or verifies:
   - Workflows
   - D1 database
   - R2 knowledge and artifact buckets
+  - R2 pack sync for knowledge and skills
   - Queues and dead-letter queues
   - AI Gateway route
   - Trellis MCP and dashboard routes
@@ -1205,18 +1286,142 @@ Then:
     throw new Error("Cannot deploy: no wrangler.jsonc, wrangler.json, or wrangler.toml found in the current project.");
   }
 
+  const packSyncResult = await syncCloudflarePacks(packSync, jsonOutput);
   const deploy = runCommand("npx", ["wrangler", "deploy"], {
     stdio: jsonOutput ? "pipe" : "inherit",
   });
   if (jsonOutput) {
     emitJson({
       ...plan,
+      packSync: packSyncResult,
       deploy,
     });
   }
   if (deploy.status !== 0) {
     throw new Error(`wrangler deploy failed with exit code ${deploy.status}`);
   }
+}
+
+async function buildCloudflarePackSyncPlan(cwd: string, wranglerConfigPath: string | null) {
+  const bucketName = wranglerConfigPath ? readR2BucketName(wranglerConfigPath, "TRELLIS_PACKS") : null;
+  const entries: Array<{
+    scope: "knowledge" | "skills";
+    filePath: string;
+    objectKey: string;
+    bytes: number;
+    sha256: string;
+  }> = [];
+
+  const knowledgeManifest = await readKnowledgeManifestForSync(cwd);
+  if (knowledgeManifest) {
+    const manifestContents = await readFile(knowledgeManifest.manifestPath);
+    entries.push({
+      scope: "knowledge",
+      filePath: knowledgeManifest.manifestPath,
+      objectKey: "knowledge/manifest.json",
+      bytes: manifestContents.byteLength,
+      sha256: createHash("sha256").update(manifestContents).digest("hex"),
+    });
+    for (const file of knowledgeManifest.files) {
+      const filePath = path.join(cwd, file.path);
+      if (!existsSync(filePath)) {
+        continue;
+      }
+      const contents = await readFile(filePath);
+      entries.push({
+        scope: "knowledge",
+        filePath,
+        objectKey: objectKeyForPackFile("knowledge", knowledgeManifest.source, file.path),
+        bytes: contents.byteLength,
+        sha256: createHash("sha256").update(contents).digest("hex"),
+      });
+    }
+  }
+
+  for (const filePath of await collectSkillPackFilePaths(cwd)) {
+    const contents = await readFile(filePath);
+    entries.push({
+      scope: "skills",
+      filePath,
+      objectKey: objectKeyForPackFile("skills", "skills", toPosixPath(path.relative(cwd, filePath))),
+      bytes: contents.byteLength,
+      sha256: createHash("sha256").update(contents).digest("hex"),
+    });
+  }
+
+  return {
+    bucketName,
+    entries,
+    summary: {
+      enabled: entries.length > 0,
+      bucketBinding: "TRELLIS_PACKS",
+      bucketName,
+      syncable: Boolean(bucketName) && entries.length > 0,
+      entries: entries.map((entry) => ({
+        scope: entry.scope,
+        objectKey: entry.objectKey,
+        bytes: entry.bytes,
+        sha256: entry.sha256,
+      })),
+    },
+  };
+}
+
+async function syncCloudflarePacks(
+  plan: Awaited<ReturnType<typeof buildCloudflarePackSyncPlan>>,
+  captureOutput: boolean,
+) {
+  if (plan.entries.length === 0) {
+    return {
+      enabled: false,
+      reason: "no knowledge or skill pack files found",
+      entries: [],
+    };
+  }
+  if (!plan.bucketName) {
+    return {
+      enabled: false,
+      reason: "TRELLIS_PACKS bucket_name missing from Wrangler config",
+      entries: plan.summary.entries,
+    };
+  }
+
+  if (!captureOutput) {
+    console.log(`Syncing ${plan.entries.length} Trellis pack object(s) to R2 bucket ${plan.bucketName}`);
+  }
+
+  const results = plan.entries.map((entry) => {
+    const result = runCommand("npx", [
+      "wrangler",
+      "r2",
+      "object",
+      "put",
+      `${plan.bucketName}/${entry.objectKey}`,
+      "--file",
+      entry.filePath,
+    ], {
+      stdio: captureOutput ? "pipe" : "inherit",
+    });
+    return {
+      scope: entry.scope,
+      objectKey: entry.objectKey,
+      status: result.status,
+      command: result.command,
+      args: result.args,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      error: result.error,
+    };
+  });
+  const failed = results.find((result) => result.status !== 0);
+  if (failed) {
+    throw new Error(`wrangler r2 object put failed for ${failed.objectKey} with exit code ${failed.status}`);
+  }
+  return {
+    enabled: true,
+    bucketName: plan.bucketName,
+    entries: results,
+  };
 }
 
 async function handleMcpCommand(subcommand: string | undefined, flags: Record<string, string | boolean>) {
@@ -1265,6 +1470,7 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
     `cd ${targetDir}`,
     "npm install",
     "wrangler login",
+    "trellis docs add ./knowledge",
     "trellis deploy",
     "trellis smoke",
     "trellis connect attio",
@@ -1383,10 +1589,12 @@ function renderV3WranglerConfig(workerName: string) {
   ],
   "r2_buckets": [
     {
-      "binding": "TRELLIS_PACKS"
+      "binding": "TRELLIS_PACKS",
+      "bucket_name": "${workerName}-packs"
     },
     {
-      "binding": "TRELLIS_ARTIFACTS"
+      "binding": "TRELLIS_ARTIFACTS",
+      "bucket_name": "${workerName}-artifacts"
     }
   ],
   "queues": {
@@ -1507,6 +1715,7 @@ Trellis v3 GTM agent scaffold.
 \`\`\`bash
 npm install
 wrangler login
+trellis docs add ./knowledge
 trellis deploy
 trellis smoke
 \`\`\`
@@ -1520,7 +1729,7 @@ trellis connect firecrawl
 trellis docs add ./product-docs
 \`\`\`
 
-Outbound writes stay in no-send mode until approval gates are configured.
+Deploy syncs the verified knowledge manifest, markdown files, and tracked \`SKILL.md\` files into the \`TRELLIS_PACKS\` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
 `;
 }
 
@@ -2062,6 +2271,41 @@ function findWranglerConfig(cwd: string) {
     }
   }
   return null;
+}
+
+function readR2BucketName(configPath: string, binding: string) {
+  const source = readFileSync(configPath, "utf8");
+  if (configPath.endsWith(".toml")) {
+    const bucketBlockPattern = /\[\[r2_buckets\]\]([\s\S]*?)(?=\n\[\[|\n\[|$)/g;
+    for (const match of source.matchAll(bucketBlockPattern)) {
+      const block = match[1] ?? "";
+      const bindingMatch = block.match(/binding\s*=\s*["']([^"']+)["']/);
+      if (bindingMatch?.[1] !== binding) {
+        continue;
+      }
+      return block.match(/bucket_name\s*=\s*["']([^"']+)["']/)?.[1] ?? null;
+    }
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(stripJsonComments(source)) as {
+      r2_buckets?: Array<{ binding?: string; bucket_name?: string }>;
+    };
+    return parsed.r2_buckets?.find((bucket) => bucket.binding === binding)?.bucket_name ?? null;
+  } catch {
+    const bindingIndex = source.indexOf(`"binding": "${binding}"`);
+    if (bindingIndex === -1) {
+      return null;
+    }
+    return source.slice(bindingIndex).match(/"bucket_name"\s*:\s*"([^"]+)"/)?.[1] ?? null;
+  }
+}
+
+function stripJsonComments(source: string) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
 }
 
 function runCommand(

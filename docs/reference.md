@@ -72,6 +72,12 @@ trellis docs add ./knowledge
 
 to create the local manifest that deploy can verify and upload into the Cloudflare-backed pack store.
 
+`trellis deploy` syncs:
+
+- `.trellis/knowledge-pack.json` to `knowledge/manifest.json`
+- verified knowledge markdown to `knowledge/files/*`
+- tracked `skills/**/SKILL.md` files to `skills/files/*`
+
 ## Provider Manifests
 
 Provider connection manifests live under `.trellis/providers/`. They are intentionally non-secret.

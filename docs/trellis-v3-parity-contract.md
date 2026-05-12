@@ -121,7 +121,8 @@ v3 parity:
 - Trellis mounts knowledge and skills into the Flue/just-bash filesystem
 - `app.skill(...)` is the public API
 - skills can be versioned and traced
-- `trellis docs add <path>` writes `.trellis/knowledge-pack.json` with markdown file hashes as the local verification and R2 upload plan
+- `trellis docs add <path>` writes `.trellis/knowledge-pack.json` with markdown file hashes as the local verification plan
+- `trellis deploy` syncs the knowledge manifest, markdown files, and tracked `SKILL.md` files to `TRELLIS_PACKS`
 
 Legacy to remove after replacement:
 
@@ -268,7 +269,7 @@ Legacy to remove after replacement:
 2. Add Cloudflare-first CLI shape: `deploy`, `connect`, `docs add`, `smoke`.
 3. Add v3 reliability checks through `doctor`.
 4. Build a Cloudflare app shell that boots with only Cloudflare credentials.
-5. Implement R2-backed knowledge/skill pack loading.
+5. Implement R2-backed knowledge/skill pack loading in the runtime.
 6. Implement `app.signal`, `app.context`, `app.skill`, and `app.workflow`.
 7. Port normalized signal ingest to Workers + Queues + D1.
 8. Port prospect lifecycle to Cloudflare Agents + Workflows.

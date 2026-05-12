@@ -21,7 +21,7 @@ The first deploy should require only Cloudflare auth. CRM, email, research, and 
 
 `trellis connect` writes non-secret provider manifests under `.trellis/providers/` so readiness can be checked without storing credentials.
 
-`trellis docs add` writes `.trellis/knowledge-pack.json` with markdown file hashes so the pack can be verified locally and uploaded into `TRELLIS_PACKS`.
+`trellis docs add` writes `.trellis/knowledge-pack.json` with markdown file hashes so the pack can be verified locally. `trellis deploy` syncs the knowledge manifest, markdown files, and tracked `SKILL.md` files into `TRELLIS_PACKS`.
 
 ## What Trellis Owns
 

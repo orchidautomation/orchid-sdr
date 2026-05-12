@@ -65,7 +65,7 @@ Keep product truth in markdown:
 npm run trellis -- docs add ./knowledge
 ```
 
-This writes `.trellis/knowledge-pack.json` with file paths, sizes, and hashes. Deploy uses that manifest as the R2-backed pack plan.
+This writes `.trellis/knowledge-pack.json` with file paths, sizes, and hashes. Deploy uses that manifest plus tracked `skills/**/SKILL.md` files as the R2-backed pack sync plan.
 
 ## 5. Verify Before Providers
 
