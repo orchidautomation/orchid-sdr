@@ -273,7 +273,7 @@ Legacy to remove after replacement:
 1. Create v3 public API packages: `@trellis/gtm`, `@trellis/providers`.
 2. Add Cloudflare-first CLI shape: `deploy`, `connect`, `docs add`, `smoke`.
 3. Add v3 reliability checks through `doctor`.
-4. Build a Cloudflare app shell that boots with only Cloudflare credentials.
+4. Build a Cloudflare app shell that boots with only Cloudflare credentials, including first-run D1/R2/Queue provisioning from the generated Trellis config.
 5. Implement R2-backed knowledge/skill pack loading in the runtime.
 6. Implement `app.signal`, `app.context`, `app.skill`, and `app.workflow`.
 7. Port normalized signal ingest to Workers + Queues + D1.

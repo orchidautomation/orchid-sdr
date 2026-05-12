@@ -125,6 +125,69 @@ const REQUIRED_V3_PROVIDER_IDS = ["attio", "agentmail", "firecrawl"] as const;
 const OPTIONAL_V3_PROVIDER_IDS = ["langfuse"] as const;
 let activeConfigPromise: Promise<AiSdrConfig> | undefined;
 
+type CloudflareResourceConfig = {
+  configPath: string | null;
+  format: "json" | "toml" | "missing";
+  d1Databases: Array<{
+    binding: string | null;
+    databaseName: string | null;
+    databaseId: string | null;
+  }>;
+  r2Buckets: Array<{
+    binding: string | null;
+    bucketName: string | null;
+  }>;
+  queueProducers: Array<{
+    binding: string | null;
+    queue: string | null;
+  }>;
+  queueConsumers: Array<{
+    queue: string | null;
+    deadLetterQueue: string | null;
+  }>;
+  workflows: Array<{
+    binding: string | null;
+    name: string | null;
+    className: string | null;
+  }>;
+};
+
+type CloudflareProvisioningPlan = {
+  config: CloudflareResourceConfig;
+  d1: {
+    binding: "TRELLIS_DB";
+    databaseName: string | null;
+    databaseId: string | null;
+    ready: boolean;
+    autoResolvable: boolean;
+    commands: string[];
+  };
+  r2Buckets: Array<{
+    binding: "TRELLIS_PACKS" | "TRELLIS_ARTIFACTS";
+    bucketName: string | null;
+    ready: boolean;
+    commands: string[];
+  }>;
+  queue: {
+    binding: "TRELLIS_EVENTS";
+    queueName: string | null;
+    deadLetterQueueName: string | null;
+    ready: boolean;
+    commands: string[];
+  };
+  summary: {
+    configPath: string | null;
+    readyForDeploy: boolean;
+    autoProvisionable: boolean;
+    resources: Array<{
+      id: string;
+      ready: boolean;
+      detail: string;
+      commands: string[];
+    }>;
+  };
+};
+
 await main();
 
 async function main() {
@@ -135,12 +198,14 @@ async function main() {
         printHelp();
         break;
       case "modules":
+        requireLegacyCommand("modules", "Use `trellis connect <provider>` and `trellis docs add <path>` in v3.");
         await listModules();
         break;
       case "add":
         await printAddPlan(arg);
         break;
       case "check":
+        requireLegacyCommand("check", "Use `trellis doctor` for the v3 reliability check.");
         await printCompositionCheck();
         break;
       case "connect":
@@ -159,9 +224,11 @@ async function main() {
         await handleDeployCommand(arg, cliFlags);
         break;
       case "admin":
+        requireLegacyCommand("admin", "The v3 operator surface is the generated dashboard and MCP routes.");
         await handleAdminCommand(arg, cliFlags);
         break;
       case "discovery":
+        requireLegacyCommand("discovery", "The v3 path ingests signals through Cloudflare webhooks and queues.");
         await handleDiscoveryCommand(arg, providerArg, cliFlags);
         break;
       case "mcp":
@@ -224,6 +291,13 @@ Cloudflare is the default deploy target.
 Business providers are connected after first boot.
 Use --json when a plugin or coding agent is orchestrating the setup.
 Legacy composition commands still exist behind explicit --legacy for migration work, but they are not part of the v3 happy path.`);
+}
+
+function requireLegacyCommand(commandName: string, replacement: string) {
+  if (cliFlags.legacy === true) {
+    return;
+  }
+  throw new Error(`trellis ${commandName} is legacy composition tooling. ${replacement} Re-run with --legacy only while maintaining the old reference app.`);
 }
 
 async function handleAdminCommand(subcommand: string | undefined, flags: Record<string, string | boolean>) {
@@ -714,11 +788,12 @@ v3 behavior:
 async function handleDoctorCommand() {
   const wranglerConfigPath = findWranglerConfig(process.cwd());
   const wranglerSource = wranglerConfigPath ? readFileSync(wranglerConfigPath, "utf8") : "";
+  const cloudflareResources = readCloudflareResourceConfig(wranglerConfigPath);
+  const provisioning = buildCloudflareProvisioningPlan(cloudflareResources);
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
   const skillPack = await loadSkillPack(process.cwd());
   const providerReadiness = await loadAllV3ProviderReadiness();
   const smoke = await runTrellisSmoke();
-  const packsBucketName = wranglerConfigPath ? readR2BucketName(wranglerConfigPath, "TRELLIS_PACKS") : null;
   const checks = [
     doctorCheck("cloudflare.config", Boolean(wranglerConfigPath), "warn", wranglerConfigPath
       ? `found ${path.basename(wranglerConfigPath)}`
@@ -737,9 +812,9 @@ async function handleDoctorCommand() {
     ].map((binding) =>
       doctorCheck(`binding.${binding}`, wranglerSource.includes(binding), "warn", `${binding} binding ${wranglerSource.includes(binding) ? "declared" : "not declared"}`),
     ),
-    doctorCheck("r2.packsBucket", Boolean(packsBucketName), "warn", packsBucketName
-      ? `TRELLIS_PACKS bucket_name is ${packsBucketName}`
-      : "TRELLIS_PACKS needs bucket_name for deploy pack sync"),
+    ...provisioning.summary.resources.map((resource) =>
+      doctorCheck(`cloudflare.${resource.id}`, resource.ready, "warn", resource.detail),
+    ),
     doctorCheck("knowledge.pack", knowledgePack.ok, "warn", knowledgePack.detail),
     doctorCheck("skills.pack", skillPack.ok, "warn", skillPack.detail),
     ...providerReadiness.map((provider) =>
@@ -764,6 +839,7 @@ async function handleDoctorCommand() {
       knowledgePack: knowledgePack.summary,
       skillPack: skillPack.summary,
       providers: Object.fromEntries(providerReadiness.map((provider) => [provider.id, provider.summary])),
+      cloudflare: provisioning.summary,
     });
     return;
   }
@@ -1206,6 +1282,8 @@ Recommended sequence:
 
 async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
   const wranglerConfigPath = findWranglerConfig(process.cwd());
+  const cloudflareResources = readCloudflareResourceConfig(wranglerConfigPath);
+  const provisioning = buildCloudflareProvisioningPlan(cloudflareResources);
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
   const skillPack = await loadSkillPack(process.cwd());
   const providerReadiness = await loadAllV3ProviderReadiness();
@@ -1238,6 +1316,7 @@ async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
     },
     knowledgePack: knowledgePack.summary,
     skillPack: skillPack.summary,
+    cloudflare: provisioning.summary,
     packSync: packSync.summary,
     providers: Object.fromEntries(providerReadiness.map((provider) => [provider.id, provider.summary])),
     next: [
@@ -1262,7 +1341,7 @@ Trellis v3 provisions or verifies:
   - Workers app
   - Durable Objects / Cloudflare Agents bindings
   - Workflows
-  - D1 database
+  - D1 database and Wrangler database_id
   - R2 knowledge and artifact buckets
   - R2 pack sync for knowledge and skills
   - Queues and dead-letter queues
@@ -1286,6 +1365,8 @@ Then:
     throw new Error("Cannot deploy: no wrangler.jsonc, wrangler.json, or wrangler.toml found in the current project.");
   }
 
+  const provisioningResult = await applyCloudflareProvisioning(provisioning, jsonOutput);
+  const verifiedProvisioning = buildCloudflareProvisioningPlan(readCloudflareResourceConfig(wranglerConfigPath));
   const packSyncResult = await syncCloudflarePacks(packSync, jsonOutput);
   const deploy = runCommand("npx", ["wrangler", "deploy"], {
     stdio: jsonOutput ? "pipe" : "inherit",
@@ -1293,6 +1374,10 @@ Then:
   if (jsonOutput) {
     emitJson({
       ...plan,
+      cloudflare: {
+        ...verifiedProvisioning.summary,
+        result: provisioningResult,
+      },
       packSync: packSyncResult,
       deploy,
     });
@@ -1300,6 +1385,259 @@ Then:
   if (deploy.status !== 0) {
     throw new Error(`wrangler deploy failed with exit code ${deploy.status}`);
   }
+}
+
+function buildCloudflareProvisioningPlan(config: CloudflareResourceConfig): CloudflareProvisioningPlan {
+  const d1 = config.d1Databases.find((database) => database.binding === "TRELLIS_DB");
+  const packsBucket = config.r2Buckets.find((bucket) => bucket.binding === "TRELLIS_PACKS");
+  const artifactsBucket = config.r2Buckets.find((bucket) => bucket.binding === "TRELLIS_ARTIFACTS");
+  const eventsQueue = config.queueProducers.find((queue) => queue.binding === "TRELLIS_EVENTS");
+  const eventsConsumer = config.queueConsumers.find((consumer) => consumer.queue === eventsQueue?.queue);
+  const d1AutoResolvable = Boolean(config.configPath && config.format === "json" && d1?.databaseName);
+  const d1Ready = Boolean(d1?.databaseName && d1.databaseId);
+  const r2Buckets = [
+    {
+      binding: "TRELLIS_PACKS" as const,
+      bucketName: packsBucket?.bucketName ?? null,
+      ready: Boolean(packsBucket?.bucketName),
+      commands: packsBucket?.bucketName ? ["npx", "wrangler", "r2", "bucket", "create", packsBucket.bucketName] : [],
+    },
+    {
+      binding: "TRELLIS_ARTIFACTS" as const,
+      bucketName: artifactsBucket?.bucketName ?? null,
+      ready: Boolean(artifactsBucket?.bucketName),
+      commands: artifactsBucket?.bucketName ? ["npx", "wrangler", "r2", "bucket", "create", artifactsBucket.bucketName] : [],
+    },
+  ];
+  const queue = {
+    binding: "TRELLIS_EVENTS" as const,
+    queueName: eventsQueue?.queue ?? null,
+    deadLetterQueueName: eventsConsumer?.deadLetterQueue ?? null,
+    ready: Boolean(eventsQueue?.queue && eventsConsumer?.deadLetterQueue),
+    commands: [
+      ...(eventsQueue?.queue ? [["npx", "wrangler", "queues", "create", eventsQueue.queue].join(" ")] : []),
+      ...(eventsConsumer?.deadLetterQueue ? [["npx", "wrangler", "queues", "create", eventsConsumer.deadLetterQueue].join(" ")] : []),
+    ],
+  };
+  const resources = [
+    {
+      id: "d1.database",
+      ready: d1Ready,
+      detail: d1Ready
+        ? `TRELLIS_DB database ${d1?.databaseName} has database_id ${d1?.databaseId}`
+        : d1?.databaseName
+          ? `TRELLIS_DB database_id missing for ${d1.databaseName}; trellis deploy will resolve or create it`
+          : "TRELLIS_DB needs database_name and database_id",
+      commands: d1?.databaseName
+        ? [
+            ["npx", "wrangler", "d1", "list", "--json"].join(" "),
+            ["npx", "wrangler", "d1", "create", d1.databaseName].join(" "),
+          ]
+        : [],
+    },
+    ...r2Buckets.map((bucket) => ({
+      id: `r2.${bucket.binding === "TRELLIS_PACKS" ? "packsBucket" : "artifactsBucket"}`,
+      ready: bucket.ready,
+      detail: bucket.bucketName
+        ? `${bucket.binding} bucket_name is ${bucket.bucketName}`
+        : `${bucket.binding} needs bucket_name`,
+      commands: bucket.commands.length > 0 ? [bucket.commands.join(" ")] : [],
+    })),
+    {
+      id: "queue.events",
+      ready: queue.ready,
+      detail: queue.queueName && queue.deadLetterQueueName
+        ? `TRELLIS_EVENTS queue is ${queue.queueName} with DLQ ${queue.deadLetterQueueName}`
+        : queue.queueName
+          ? `TRELLIS_EVENTS queue ${queue.queueName} needs a dead_letter_queue`
+          : "TRELLIS_EVENTS needs a queue name",
+      commands: queue.commands,
+    },
+  ];
+  const configured = Boolean(config.configPath);
+  const autoProvisionable = configured
+    && Boolean(d1?.databaseName)
+    && (d1Ready || d1AutoResolvable)
+    && r2Buckets.every((bucket) => bucket.ready)
+    && queue.ready;
+
+  return {
+    config,
+    d1: {
+      binding: "TRELLIS_DB",
+      databaseName: d1?.databaseName ?? null,
+      databaseId: d1?.databaseId ?? null,
+      ready: d1Ready,
+      autoResolvable: d1AutoResolvable,
+      commands: d1?.databaseName
+        ? ["npx", "wrangler", "d1", "create", d1.databaseName]
+        : [],
+    },
+    r2Buckets,
+    queue,
+    summary: {
+      configPath: config.configPath,
+      readyForDeploy: configured && resources.every((resource) => resource.ready),
+      autoProvisionable,
+      resources,
+    },
+  };
+}
+
+async function applyCloudflareProvisioning(
+  plan: CloudflareProvisioningPlan,
+  captureOutput: boolean,
+) {
+  if (!plan.summary.autoProvisionable) {
+    throw new Error([
+      "Cloudflare resources are not provisionable from the current Wrangler config.",
+      ...plan.summary.resources
+        .filter((resource) => !resource.ready)
+        .map((resource) => `- ${resource.id}: ${resource.detail}`),
+    ].join("\n"));
+  }
+
+  const results: Array<Record<string, unknown>> = [];
+  if (!captureOutput) {
+    console.log("Verifying Trellis Cloudflare resources");
+  }
+
+  if (!plan.d1.ready) {
+    const d1Result = ensureCloudflareD1Database(plan);
+    results.push(d1Result);
+    if (!captureOutput) {
+      console.log(`  - D1: ${d1Result.status} ${d1Result.databaseName}`);
+    }
+  }
+
+  for (const bucket of plan.r2Buckets) {
+    if (!bucket.bucketName) {
+      continue;
+    }
+    const bucketResult = createCloudflareResourceIfNeeded({
+      id: `r2.${bucket.binding}`,
+      command: ["npx", "wrangler", "r2", "bucket", "create", bucket.bucketName],
+      alreadyExistsPattern: /already exists|already owned|bucket with this name/i,
+    });
+    results.push(bucketResult);
+    if (!captureOutput) {
+      console.log(`  - R2: ${bucketResult.status} ${bucket.bucketName}`);
+    }
+  }
+
+  if (plan.queue.queueName) {
+    const queueResult = createCloudflareResourceIfNeeded({
+      id: "queue.TRELLIS_EVENTS",
+      command: ["npx", "wrangler", "queues", "create", plan.queue.queueName],
+      alreadyExistsPattern: /already exists|queue with this name/i,
+    });
+    results.push(queueResult);
+    if (!captureOutput) {
+      console.log(`  - Queue: ${queueResult.status} ${plan.queue.queueName}`);
+    }
+  }
+  if (plan.queue.deadLetterQueueName) {
+    const dlqResult = createCloudflareResourceIfNeeded({
+      id: "queue.TRELLIS_EVENTS_DLQ",
+      command: ["npx", "wrangler", "queues", "create", plan.queue.deadLetterQueueName],
+      alreadyExistsPattern: /already exists|queue with this name/i,
+    });
+    results.push(dlqResult);
+    if (!captureOutput) {
+      console.log(`  - Queue DLQ: ${dlqResult.status} ${plan.queue.deadLetterQueueName}`);
+    }
+  }
+
+  return {
+    enabled: true,
+    resources: results,
+  };
+}
+
+function ensureCloudflareD1Database(plan: CloudflareProvisioningPlan) {
+  const databaseName = plan.d1.databaseName;
+  const configPath = plan.config.configPath;
+  if (!databaseName || !configPath) {
+    throw new Error("TRELLIS_DB database_name is missing from Wrangler config.");
+  }
+  if (plan.config.format !== "json") {
+    throw new Error("Automatic D1 database_id updates require wrangler.json or wrangler.jsonc.");
+  }
+
+  const listBefore = runCommand("npx", ["wrangler", "d1", "list", "--json"], { stdio: "pipe" });
+  const existingDatabaseId = listBefore.status === 0
+    ? findD1DatabaseIdByName(listBefore.stdout, databaseName)
+    : null;
+  if (existingDatabaseId) {
+    writeD1DatabaseIdToWranglerConfig(configPath, "TRELLIS_DB", existingDatabaseId);
+    return {
+      id: "d1.TRELLIS_DB",
+      status: "resolved",
+      databaseName,
+      databaseId: existingDatabaseId,
+      command: listBefore.command,
+      args: listBefore.args,
+    };
+  }
+
+  const create = runCommand("npx", ["wrangler", "d1", "create", databaseName], { stdio: "pipe" });
+  const createdDatabaseId = parseD1DatabaseIdFromOutput(`${create.stdout ?? ""}\n${create.stderr ?? ""}`);
+  if (create.status === 0 && createdDatabaseId) {
+    writeD1DatabaseIdToWranglerConfig(configPath, "TRELLIS_DB", createdDatabaseId);
+    return {
+      id: "d1.TRELLIS_DB",
+      status: "created",
+      databaseName,
+      databaseId: createdDatabaseId,
+      command: create.command,
+      args: create.args,
+    };
+  }
+
+  const listAfter = runCommand("npx", ["wrangler", "d1", "list", "--json"], { stdio: "pipe" });
+  const listedDatabaseId = listAfter.status === 0
+    ? findD1DatabaseIdByName(listAfter.stdout, databaseName)
+    : null;
+  if (listedDatabaseId) {
+    writeD1DatabaseIdToWranglerConfig(configPath, "TRELLIS_DB", listedDatabaseId);
+    return {
+      id: "d1.TRELLIS_DB",
+      status: "resolved",
+      databaseName,
+      databaseId: listedDatabaseId,
+      command: listAfter.command,
+      args: listAfter.args,
+    };
+  }
+
+  throw new Error([
+    `Could not resolve or create D1 database ${databaseName}.`,
+    "Run `npx wrangler d1 create " + databaseName + "` and copy the database_id into wrangler.jsonc.",
+    create.stderr ?? create.stdout ?? "",
+  ].filter(Boolean).join("\n"));
+}
+
+function createCloudflareResourceIfNeeded(options: {
+  id: string;
+  command: string[];
+  alreadyExistsPattern: RegExp;
+}) {
+  const [commandName, ...args] = options.command;
+  const result = runCommand(commandName ?? "npx", args, { stdio: "pipe" });
+  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  const alreadyExists = result.status !== 0 && options.alreadyExistsPattern.test(output);
+  if (result.status !== 0 && !alreadyExists) {
+    throw new Error(`${options.command.join(" ")} failed with exit code ${result.status}\n${output}`);
+  }
+
+  return {
+    id: options.id,
+    status: result.status === 0 ? "created-or-verified" : "already-exists",
+    command: result.command,
+    args: result.args,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
 }
 
 async function buildCloudflarePackSyncPlan(cwd: string, wranglerConfigPath: string | null) {
@@ -1606,7 +1944,8 @@ function renderV3WranglerConfig(workerName: string) {
     ],
     "consumers": [
       {
-        "queue": "${workerName}-events"
+        "queue": "${workerName}-events",
+        "dead_letter_queue": "${workerName}-events-dlq"
       }
     ]
   },
@@ -2273,6 +2612,97 @@ function findWranglerConfig(cwd: string) {
   return null;
 }
 
+function readCloudflareResourceConfig(configPath: string | null): CloudflareResourceConfig {
+  if (!configPath) {
+    return emptyCloudflareResourceConfig(null, "missing");
+  }
+
+  const source = readFileSync(configPath, "utf8");
+  if (configPath.endsWith(".toml")) {
+    return {
+      configPath,
+      format: "toml",
+      d1Databases: readTomlArrayBlocks(source, "d1_databases").map((block) => ({
+        binding: readTomlValue(block, "binding"),
+        databaseName: readTomlValue(block, "database_name"),
+        databaseId: readTomlValue(block, "database_id"),
+      })),
+      r2Buckets: readTomlArrayBlocks(source, "r2_buckets").map((block) => ({
+        binding: readTomlValue(block, "binding"),
+        bucketName: readTomlValue(block, "bucket_name"),
+      })),
+      queueProducers: readTomlArrayBlocks(source, "queues.producers").map((block) => ({
+        binding: readTomlValue(block, "binding"),
+        queue: readTomlValue(block, "queue"),
+      })),
+      queueConsumers: readTomlArrayBlocks(source, "queues.consumers").map((block) => ({
+        queue: readTomlValue(block, "queue"),
+        deadLetterQueue: readTomlValue(block, "dead_letter_queue"),
+      })),
+      workflows: readTomlArrayBlocks(source, "workflows").map((block) => ({
+        binding: readTomlValue(block, "binding"),
+        name: readTomlValue(block, "name"),
+        className: readTomlValue(block, "class_name"),
+      })),
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(stripJsonComments(source)) as {
+      d1_databases?: Array<{ binding?: string; database_name?: string; database_id?: string }>;
+      r2_buckets?: Array<{ binding?: string; bucket_name?: string }>;
+      queues?: {
+        producers?: Array<{ binding?: string; queue?: string }>;
+        consumers?: Array<{ queue?: string; dead_letter_queue?: string }>;
+      };
+      workflows?: Array<{ binding?: string; name?: string; class_name?: string }>;
+    };
+    return {
+      configPath,
+      format: "json",
+      d1Databases: (parsed.d1_databases ?? []).map((database) => ({
+        binding: database.binding ?? null,
+        databaseName: database.database_name ?? null,
+        databaseId: database.database_id ?? null,
+      })),
+      r2Buckets: (parsed.r2_buckets ?? []).map((bucket) => ({
+        binding: bucket.binding ?? null,
+        bucketName: bucket.bucket_name ?? null,
+      })),
+      queueProducers: (parsed.queues?.producers ?? []).map((producer) => ({
+        binding: producer.binding ?? null,
+        queue: producer.queue ?? null,
+      })),
+      queueConsumers: (parsed.queues?.consumers ?? []).map((consumer) => ({
+        queue: consumer.queue ?? null,
+        deadLetterQueue: consumer.dead_letter_queue ?? null,
+      })),
+      workflows: (parsed.workflows ?? []).map((workflow) => ({
+        binding: workflow.binding ?? null,
+        name: workflow.name ?? null,
+        className: workflow.class_name ?? null,
+      })),
+    };
+  } catch {
+    return emptyCloudflareResourceConfig(configPath, "json");
+  }
+}
+
+function emptyCloudflareResourceConfig(
+  configPath: string | null,
+  format: CloudflareResourceConfig["format"],
+): CloudflareResourceConfig {
+  return {
+    configPath,
+    format,
+    d1Databases: [],
+    r2Buckets: [],
+    queueProducers: [],
+    queueConsumers: [],
+    workflows: [],
+  };
+}
+
 function readR2BucketName(configPath: string, binding: string) {
   const source = readFileSync(configPath, "utf8");
   if (configPath.endsWith(".toml")) {
@@ -2302,10 +2732,80 @@ function readR2BucketName(configPath: string, binding: string) {
   }
 }
 
+function readTomlArrayBlocks(source: string, tableName: string) {
+  const escapedTableName = tableName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const blockPattern = new RegExp(`\\[\\[${escapedTableName}\\]\\]([\\s\\S]*?)(?=\\n\\[\\[|\\n\\[|$)`, "g");
+  return [...source.matchAll(blockPattern)].map((match) => match[1] ?? "");
+}
+
+function readTomlValue(block: string, key: string) {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = block.match(new RegExp(`(?:^|\\n)\\s*${escapedKey}\\s*=\\s*["']([^"']+)["']`));
+  return match?.[1] ?? null;
+}
+
 function stripJsonComments(source: string) {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^\s*\/\/.*$/gm, "");
+}
+
+function findD1DatabaseIdByName(stdout: string | undefined, databaseName: string) {
+  if (!stdout) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(stdout) as unknown;
+    const databases = Array.isArray(parsed)
+      ? parsed
+      : typeof parsed === "object" && parsed !== null && "result" in parsed && Array.isArray((parsed as { result?: unknown }).result)
+        ? (parsed as { result: unknown[] }).result
+        : [];
+    for (const database of databases) {
+      if (typeof database !== "object" || database === null) {
+        continue;
+      }
+      const record = database as Record<string, unknown>;
+      const name = typeof record.name === "string"
+        ? record.name
+        : typeof record.database_name === "string"
+          ? record.database_name
+          : null;
+      const id = typeof record.uuid === "string"
+        ? record.uuid
+        : typeof record.database_id === "string"
+          ? record.database_id
+          : typeof record.id === "string"
+            ? record.id
+            : null;
+      if (name === databaseName && id) {
+        return id;
+      }
+    }
+  } catch {
+    return parseD1DatabaseIdFromOutput(stdout);
+  }
+  return null;
+}
+
+function parseD1DatabaseIdFromOutput(output: string) {
+  return output.match(/database_id\s*=\s*"([^"]+)"/)?.[1]
+    ?? output.match(/"database_id"\s*:\s*"([^"]+)"/)?.[1]
+    ?? output.match(/database_id:\s*([0-9a-f-]{20,})/i)?.[1]
+    ?? null;
+}
+
+function writeD1DatabaseIdToWranglerConfig(configPath: string, binding: string, databaseId: string) {
+  const source = readFileSync(configPath, "utf8");
+  const parsed = JSON.parse(stripJsonComments(source)) as {
+    d1_databases?: Array<{ binding?: string; database_id?: string }>;
+  };
+  const database = parsed.d1_databases?.find((entry) => entry.binding === binding);
+  if (!database) {
+    throw new Error(`${binding} D1 binding not found in ${path.basename(configPath)}`);
+  }
+  database.database_id = databaseId;
+  writeFileSync(configPath, JSON.stringify(parsed, null, 2) + "\n");
 }
 
 function runCommand(

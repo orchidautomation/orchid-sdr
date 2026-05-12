@@ -51,9 +51,9 @@ export CLOUDFLARE_API_TOKEN=<api-token>
 
 The generated app expects Cloudflare bindings for:
 
-- D1 app state
+- D1 app state, with `database_id` resolved during first deploy
 - R2 knowledge and artifact packs
-- Queues
+- Queues, including an events dead-letter queue
 - Durable Objects / Cloudflare Agents
 - AI Gateway routing
 
@@ -87,6 +87,8 @@ signal -> qualification skill -> prospect -> blocked draft -> approvals -> audit
 ```bash
 npm run trellis -- deploy
 ```
+
+Deploy is the magic path. For the generated `wrangler.jsonc`, Trellis resolves or creates the D1 database, writes the `database_id`, creates or verifies the R2 buckets, creates or verifies the events queue and dead-letter queue, syncs markdown and skills into R2, then runs `wrangler deploy`.
 
 Use JSON output when another agent or setup tool is orchestrating the flow:
 

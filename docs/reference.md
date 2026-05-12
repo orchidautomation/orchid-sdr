@@ -81,6 +81,8 @@ to create the local manifest that deploy can verify and upload into the Cloudfla
 - verified knowledge markdown to `knowledge/files/*`
 - tracked `skills/**/SKILL.md` files to `skills/files/*`
 
+For generated Cloudflare apps, deploy also provisions the first-run infrastructure it can safely own: D1 database resolution/creation, `database_id` config updates, R2 bucket creation/verification, and events queue plus dead-letter queue creation/verification.
+
 At runtime, the Worker reads `TRELLIS_PACKS` metadata and exposes pack counts through the webhook response, MCP snapshot, and dashboard.
 
 ## Provider Manifests
