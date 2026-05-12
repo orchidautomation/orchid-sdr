@@ -27,12 +27,7 @@ export interface TrellisSafetyPolicy {
   killSwitch: boolean;
 }
 
-export interface TrellisModelConfig {
-  default: string;
-  env: string;
-}
-
-const DEFAULT_TRELLIS_MODEL = "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const DEFAULT_TRELLIS_MODEL = "@cf/moonshotai/kimi-k2.6";
 
 export interface TrellisAgentConfig {
   crm?: TrellisProviderDefinition;
@@ -40,7 +35,7 @@ export interface TrellisAgentConfig {
   research?: TrellisProviderDefinition;
   observability?: TrellisProviderDefinition;
   handoff?: TrellisProviderDefinition;
-  model?: string | TrellisModelConfig;
+  model?: string;
   knowledge: string | string[];
   skills: string | string[];
   safety?: TrellisSafetyPolicy;
@@ -481,15 +476,6 @@ export const trellis = {
       noSends: input?.noSends ?? true,
       requireApproval: input?.requireApproval ?? ["email.send", "mail.reply", "crm.update", "handoff.webhook"],
       killSwitch: input?.killSwitch ?? true,
-    };
-  },
-  model(input?: string | Partial<TrellisModelConfig>): TrellisModelConfig | string {
-    if (typeof input === "string") {
-      return input;
-    }
-    return {
-      default: input?.default ?? DEFAULT_TRELLIS_MODEL,
-      env: input?.env ?? "TRELLIS_MODEL",
     };
   },
   provider(definition: TrellisProviderDefinition): TrellisProviderDefinition {
@@ -2130,8 +2116,9 @@ function createFlueHarnessRuntime(
 ): TrellisHarnessRuntime {
   let harnessPromise: Promise<FlueHarnessLike> | undefined;
   async function harness() {
+    const model = readString(env?.TRELLIS_MODEL) ?? config.model ?? DEFAULT_TRELLIS_MODEL;
     const initOptions: Record<string, unknown> = {
-      model: resolveTrellisModel(config.model, env),
+      model: normalizeFlueModelName(model),
       sandbox: env?.TRELLIS_FLUE_SANDBOX,
       tools: Array.isArray(env?.TRELLIS_MCP_TOOLS) ? env.TRELLIS_MCP_TOOLS : (tools ?? createTrellisMcpTools(env, config)),
     };
@@ -2162,17 +2149,14 @@ function createFlueHarnessRuntime(
   };
 }
 
-function resolveTrellisModel(
-  model: TrellisAgentConfig["model"],
-  env: Record<string, unknown> | undefined,
-) {
-  if (typeof model === "string" && model.trim()) {
+function normalizeFlueModelName(model: string) {
+  if (model.startsWith("cloudflare/")) {
     return model;
   }
-  if (typeof model === "object" && model !== null) {
-    return readString(env?.[model.env]) ?? model.default;
+  if (model.startsWith("@cf/") || model.startsWith("anthropic/")) {
+    return `cloudflare/${model}`;
   }
-  return readString(env?.TRELLIS_MODEL) ?? DEFAULT_TRELLIS_MODEL;
+  return model;
 }
 
 async function processRuntimeSignals(

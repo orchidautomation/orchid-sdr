@@ -9,10 +9,7 @@ describe("@trellis/gtm v3 API", () => {
       crm: attio(),
       email: agentmail(),
       research: firecrawl(),
-      model: trellis.model({
-        env: "TRELLIS_MODEL",
-        default: "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-      }),
+      model: "@cf/moonshotai/kimi-k2.6",
       knowledge: "knowledge/**/*.md",
       skills: "skills/**/SKILL.md",
       safety: trellis.safeOutbound(),
@@ -48,10 +45,7 @@ describe("@trellis/gtm v3 API", () => {
     expect(agent.config.crm?.id).toBe("attio");
     expect(agent.config.email?.id).toBe("agentmail");
     expect(agent.config.research?.id).toBe("firecrawl");
-    expect(agent.config.model).toEqual({
-      env: "TRELLIS_MODEL",
-      default: "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-    });
+    expect(agent.config.model).toBe("@cf/moonshotai/kimi-k2.6");
     expect(app.skillCalls).toHaveLength(1);
     expect(app.startedWorkflows).toHaveLength(1);
     expect(result).toMatchObject({
@@ -175,10 +169,7 @@ describe("@trellis/gtm v3 API", () => {
       crm: attio(),
       email: agentmail(),
       research: firecrawl(),
-      model: trellis.model({
-        env: "TRELLIS_MODEL",
-        default: "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-      }),
+      model: "@cf/moonshotai/kimi-k2.6",
       knowledge: "knowledge/**/*.md",
       skills: "skills/**/SKILL.md",
       safety: trellis.safeOutbound(),
@@ -2887,7 +2878,7 @@ describe("@trellis/gtm v3 API", () => {
     }), {
       TRELLIS_FLUE_CONTEXT_FACTORY: factory,
       TRELLIS_FLUE_CWD: "/workspace",
-      TRELLIS_MODEL: "cloudflare/@cf/meta/llama-3.1-8b-instruct-fast",
+      TRELLIS_MODEL: "anthropic/claude-sonnet-4.6",
       TRELLIS_PACKS: fakeR2,
     });
 
@@ -2931,7 +2922,7 @@ describe("@trellis/gtm v3 API", () => {
       ]),
     }));
     expect(flueContext.init).toHaveBeenCalledWith(expect.objectContaining({
-      model: "cloudflare/@cf/meta/llama-3.1-8b-instruct-fast",
+      model: "cloudflare/anthropic/claude-sonnet-4.6",
       cwd: "/workspace",
       tools: expect.arrayContaining([
         expect.objectContaining({ name: "trellis.health" }),
