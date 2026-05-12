@@ -242,6 +242,12 @@ type CloudflareProvisioningPlan = {
     ready: boolean;
     commands: string[];
   };
+  workflow: {
+    binding: "PROSPECT_WORKFLOW";
+    name: string | null;
+    className: string | null;
+    ready: boolean;
+  };
   summary: {
     configPath: string | null;
     readyForDeploy: boolean;
@@ -1471,6 +1477,7 @@ function buildCloudflareProvisioningPlan(config: CloudflareResourceConfig): Clou
   const artifactsBucket = config.r2Buckets.find((bucket) => bucket.binding === "TRELLIS_ARTIFACTS");
   const eventsQueue = config.queueProducers.find((queue) => queue.binding === "TRELLIS_EVENTS");
   const eventsConsumer = config.queueConsumers.find((consumer) => consumer.queue === eventsQueue?.queue);
+  const workflowBinding = config.workflows.find((workflow) => workflow.binding === "PROSPECT_WORKFLOW");
   const d1AutoResolvable = Boolean(config.configPath && config.format === "json" && d1?.databaseName);
   const d1Ready = Boolean(d1?.databaseName && d1.databaseId);
   const r2Buckets = [
@@ -1496,6 +1503,12 @@ function buildCloudflareProvisioningPlan(config: CloudflareResourceConfig): Clou
       ...(eventsQueue?.queue ? [["npx", "wrangler", "queues", "create", eventsQueue.queue].join(" ")] : []),
       ...(eventsConsumer?.deadLetterQueue ? [["npx", "wrangler", "queues", "create", eventsConsumer.deadLetterQueue].join(" ")] : []),
     ],
+  };
+  const workflow = {
+    binding: "PROSPECT_WORKFLOW" as const,
+    name: workflowBinding?.name ?? null,
+    className: workflowBinding?.className ?? null,
+    ready: Boolean(workflowBinding?.name && workflowBinding.className),
   };
   const resources = [
     {
@@ -1531,13 +1544,22 @@ function buildCloudflareProvisioningPlan(config: CloudflareResourceConfig): Clou
           : "TRELLIS_EVENTS needs a queue name",
       commands: queue.commands,
     },
+    {
+      id: "workflow.prospect",
+      ready: workflow.ready,
+      detail: workflow.ready
+        ? `PROSPECT_WORKFLOW is ${workflow.name} using ${workflow.className}`
+        : "PROSPECT_WORKFLOW needs name and class_name in Wrangler config",
+      commands: [],
+    },
   ];
   const configured = Boolean(config.configPath);
   const autoProvisionable = configured
     && Boolean(d1?.databaseName)
     && (d1Ready || d1AutoResolvable)
     && r2Buckets.every((bucket) => bucket.ready)
-    && queue.ready;
+    && queue.ready
+    && workflow.ready;
 
   return {
     config,
@@ -1553,6 +1575,7 @@ function buildCloudflareProvisioningPlan(config: CloudflareResourceConfig): Clou
     },
     r2Buckets,
     queue,
+    workflow,
     summary: {
       configPath: config.configPath,
       readyForDeploy: configured && resources.every((resource) => resource.ready),
