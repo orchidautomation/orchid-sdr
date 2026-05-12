@@ -74,7 +74,7 @@ Observed results:
 
 These are not complete enough to mark the whole objective achieved:
 
-1. Live Cloudflare verification has not been run. The verifier now checks remote health, MCP, smoke, safe signal execution, D1 persistence, provider-run state, Queue fanout, Workflow dispatch, R2 pack visibility, operator workflow replay, no-send approval gating, provider-action requeue, and the post-run MCP snapshot.
+1. Live Cloudflare verification has not been run. The verifier now checks remote health, MCP, smoke, safe signal execution, D1 persistence, provider-run state, Queue fanout, Workflow dispatch, R2 pack visibility, operator workflow replay, no-send approval gating, provider-action requeue, and the post-run MCP snapshot including approval and provider-action counts.
    Required command:
    ```bash
    trellis verify cloudflare --live --url https://<worker> --exercise-agent

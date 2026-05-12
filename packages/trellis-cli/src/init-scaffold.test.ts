@@ -394,6 +394,8 @@ describe("trellis init v3 scaffold", () => {
               signals: 1,
               providerRuns: 1,
               workflowRuns: 1,
+              approvals: 1,
+              providerActions: 1,
             },
           },
         });

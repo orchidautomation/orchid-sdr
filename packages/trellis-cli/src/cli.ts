@@ -828,8 +828,10 @@ async function verifyRemoteCloudflareRoutes(input: {
     && readCliNumber(counts?.signals) >= 1
     && readCliNumber(counts?.providerRuns) >= 1
     && readCliNumber(counts?.workflowRuns) >= 1
+    && readCliNumber(counts?.approvals) >= 1
+    && readCliNumber(counts?.providerActions) >= 1
     ? "pass"
-    : "fail", "MCP snapshot should expose persisted signal, provider-run, and workflow state after the live exercise", {
+    : "fail", "MCP snapshot should expose persisted signal, provider-run, workflow, approval, and provider-action state after the live exercise", {
     counts,
     response: summarizeRemoteEvidence(mcpAfterWebhook),
   }));
