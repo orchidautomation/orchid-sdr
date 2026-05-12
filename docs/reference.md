@@ -79,7 +79,7 @@ The generated Worker also exposes a Cloudflare Queues consumer through the same 
 
 `GET /smoke` remains safe to run before provider credentials are connected. When `TRELLIS_DB` is bound, it writes a row to `trellis_smoke_runs`, appends a `smoke.pass` or `smoke.fail` trace event, and surfaces the count through MCP and the dashboard.
 
-The Flue harness boundary receives a Trellis-generated tool catalog by default. The catalog starts with `trellis.health` and, when Firecrawl is the configured research provider, executable `research.search` and `research.extract` tools. `TRELLIS_MCP_TOOLS` can still override that catalog for advanced hosts.
+The Flue harness boundary receives a Trellis-generated tool catalog by default. The catalog starts with `trellis.health` and, when Firecrawl is the configured research provider, executable `research.search` and `research.extract` tools. When `PROSPEO_API_KEY` is configured, the catalog also exposes executable `email.enrich` for verified contact enrichment. `TRELLIS_MCP_TOOLS` can still override that catalog for advanced hosts.
 
 Signal webhooks support optional shared-secret verification through `TRELLIS_WEBHOOK_SECRET` or `SIGNAL_WEBHOOK_SECRET`. If a secret is configured, callers must send either `Authorization: Bearer <secret>`, `x-trellis-webhook-secret`, or `x-webhook-secret`.
 

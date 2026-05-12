@@ -2003,6 +2003,33 @@ function createTrellisMcpTools(
     );
   }
 
+  if (readString(env?.PROSPEO_API_KEY)) {
+    tools.push({
+      name: "email.enrich",
+      description: "Enrich a prospect with Prospeo and return a verified email when available.",
+      provider: "prospeo",
+      operation: "email.enrich",
+      inputSchema: {
+        type: "object",
+        properties: {
+          firstName: { type: "string" },
+          lastName: { type: "string" },
+          fullName: { type: "string" },
+          linkedinUrl: { type: "string" },
+          email: { type: "string" },
+          personId: { type: "string" },
+          companyName: { type: "string" },
+          companyDomain: { type: "string" },
+          companyLinkedinUrl: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+      execute(input) {
+        return executeProspeoEmailEnrich(env, input);
+      },
+    });
+  }
+
   return tools;
 }
 
@@ -5543,6 +5570,89 @@ async function firecrawlRequest(
   }
   const parsed = await response.json().catch(() => ({}));
   return isRecord(parsed) ? parsed : {};
+}
+
+async function executeProspeoEmailEnrich(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const apiKey = readString(env?.PROSPEO_API_KEY);
+  if (!apiKey) {
+    throw new Error("PROSPEO_API_KEY is not configured.");
+  }
+
+  const firstName = readFirstString(input, {}, ["firstName", "first_name"]);
+  const lastName = readFirstString(input, {}, ["lastName", "last_name"]);
+  const fullName = readFirstString(input, {}, ["fullName", "name", "personName", "contactName"]);
+  const linkedinUrl = readFirstString(input, {}, ["linkedinUrl", "linkedin", "linkedin_url"]);
+  const inputEmail = readFirstString(input, {}, ["email", "workEmail", "work_email"]);
+  const personId = readFirstString(input, {}, ["personId", "person_id"]);
+
+  const companyName = readFirstString(input, {}, ["companyName", "company", "accountName"]);
+  const companyDomain = normalizeDomain(readFirstString(input, {}, ["companyDomain", "domain", "website", "companyWebsite"]));
+  const companyLinkedinUrl = readFirstString(input, {}, ["companyLinkedinUrl", "company_linkedin_url"]);
+  const hasName = Boolean(fullName || (firstName && lastName));
+  const hasCompany = Boolean(companyName || companyDomain || companyLinkedinUrl);
+  if (!linkedinUrl && !inputEmail && !personId && !(hasName && hasCompany)) {
+    throw new Error("Prospeo enrichment requires linkedinUrl, email, personId, or a name plus company.");
+  }
+
+  const baseUrl = (readString(env?.PROSPEO_BASE_URL) ?? "https://api.prospeo.io").replace(/\/+$/, "");
+  const response = await runtimeFetch(env, `${baseUrl}/enrich-person`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-key": apiKey,
+    },
+    body: JSON.stringify({
+      only_verified_email: true,
+      data: {
+        first_name: firstName,
+        last_name: lastName,
+        full_name: fullName,
+        linkedin_url: linkedinUrl,
+        email: inputEmail,
+        person_id: personId,
+        company_name: companyName,
+        company_website: companyDomain,
+        company_linkedin_url: companyLinkedinUrl,
+      },
+    }),
+  });
+  const responseText = await response.text();
+  const json = parseRecordJson(responseText);
+  if (!response.ok) {
+    if (response.status === 400 && readString(json.error_code) === "NO_MATCH") {
+      return {
+        provider: "prospeo",
+        operation: "email.enrich",
+        found: false,
+        contact: null,
+        raw: json,
+      };
+    }
+    throw new Error(`Prospeo enrich-person failed with ${response.status}: ${responseText}`);
+  }
+
+  const person = isRecord(json.person) ? json.person : {};
+  const emailRecord = isRecord(person.email) ? person.email : {};
+  const resultEmail = readString(emailRecord.email) ?? readFirstString(json, {}, ["email", "work_email"]);
+  const status = readString(emailRecord.status);
+  const revealed = readBoolean(emailRecord.revealed);
+  const found = Boolean(resultEmail && (!status || status === "VERIFIED") && revealed !== false);
+  return {
+    provider: "prospeo",
+    operation: "email.enrich",
+    found,
+    contact: found
+      ? {
+          address: resultEmail,
+          confidence: status === "VERIFIED" ? 0.97 : 0.92,
+          source: "prospeo",
+        }
+      : null,
+    raw: json,
+  };
 }
 
 function readFirecrawlSources(value: unknown): Array<"web" | "news"> {

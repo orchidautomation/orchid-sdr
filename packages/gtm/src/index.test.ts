@@ -2642,7 +2642,7 @@ describe("@trellis/gtm v3 API", () => {
       "knowledge/files/icp.md": "# ICP\n\nUse this rule.",
       "skills/files/icp-qualification/SKILL.md": "# ICP Qualification",
     });
-    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       if (String(url).endsWith("/v2/search")) {
         return new Response(JSON.stringify({
           data: {
@@ -2653,6 +2653,29 @@ describe("@trellis/gtm v3 API", () => {
                 description: "Acme is hiring revenue operators.",
               },
             ],
+          },
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (String(url).endsWith("/enrich-person")) {
+        if (String(init?.body ?? "").includes("No Match")) {
+          return new Response(JSON.stringify({
+            error: true,
+            error_code: "NO_MATCH",
+          }), {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({
+          person: {
+            email: {
+              email: "sam@northstar.example",
+              status: "VERIFIED",
+              revealed: true,
+            },
           },
         }), {
           status: 200,
@@ -2683,6 +2706,8 @@ describe("@trellis/gtm v3 API", () => {
       TRELLIS_FETCH: fetchMock,
       FIRECRAWL_API_KEY: "fc_test",
       FIRECRAWL_BASE_URL: "https://firecrawl.test",
+      PROSPEO_API_KEY: "prospeo_test",
+      PROSPEO_BASE_URL: "https://prospeo.test",
     });
 
     await expect(webhook.json()).resolves.toMatchObject({
@@ -2704,6 +2729,7 @@ describe("@trellis/gtm v3 API", () => {
         expect.objectContaining({ name: "trellis.health" }),
         expect.objectContaining({ name: "research.search", provider: "firecrawl" }),
         expect.objectContaining({ name: "research.extract", provider: "firecrawl" }),
+        expect.objectContaining({ name: "email.enrich", provider: "prospeo" }),
       ]),
     }));
     const initOptions = flueContext.init.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -2713,6 +2739,7 @@ describe("@trellis/gtm v3 API", () => {
     }>;
     const searchTool = tools.find((tool) => tool.name === "research.search");
     const extractTool = tools.find((tool) => tool.name === "research.extract");
+    const enrichTool = tools.find((tool) => tool.name === "email.enrich");
     const searchResult = await searchTool?.execute?.({
       query: "Acme news",
       limit: 2,
@@ -2720,6 +2747,15 @@ describe("@trellis/gtm v3 API", () => {
     });
     const extractResult = await extractTool?.execute?.({
       url: "https://example.com/acme-news",
+    });
+    const enrichResult = await enrichTool?.execute?.({
+      fullName: "Sam Rivera",
+      companyName: "Northstar",
+      companyDomain: "https://northstar.example",
+    });
+    const enrichNoMatch = await enrichTool?.execute?.({
+      fullName: "No Match",
+      companyDomain: "northstar.example",
     });
     expect(searchResult).toMatchObject({
       provider: "firecrawl",
@@ -2739,9 +2775,30 @@ describe("@trellis/gtm v3 API", () => {
       url: "https://example.com/acme-news",
       markdown: "# Acme\n\nRevenue operations update.",
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(enrichResult).toMatchObject({
+      provider: "prospeo",
+      operation: "email.enrich",
+      found: true,
+      contact: {
+        address: "sam@northstar.example",
+        confidence: 0.97,
+        source: "prospeo",
+      },
+    });
+    expect(enrichNoMatch).toMatchObject({
+      provider: "prospeo",
+      operation: "email.enrich",
+      found: false,
+      contact: null,
+      raw: {
+        error_code: "NO_MATCH",
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe("https://firecrawl.test/v2/search");
     expect(String(fetchMock.mock.calls[1]?.[0])).toBe("https://firecrawl.test/v1/scrape");
+    expect(String(fetchMock.mock.calls[2]?.[0])).toBe("https://prospeo.test/enrich-person");
+    expect(String(fetchMock.mock.calls[3]?.[0])).toBe("https://prospeo.test/enrich-person");
     expect(skillCalls).toHaveLength(1);
     expect(skillCalls[0]).toMatchObject({
       sessionName: "thr_flue",
