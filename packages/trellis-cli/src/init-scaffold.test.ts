@@ -82,6 +82,8 @@ describe("trellis init v3 scaffold", () => {
       expect(flueSource).toContain("getCloudflareAIBindingApiProvider");
       expect(flueSource).toContain("getVirtualSandbox");
       expect(flueSource).toContain("TRELLIS_FLUE_CONTEXT_FACTORY");
+      expect(flueSource).toContain("TRELLIS_AI_GATEWAY_ID");
+      expect(flueSource).toContain("gateway: { id: readAiGatewayId(env) }");
       expect(flueSource).toContain("trellis_flue_sessions");
       expect(flueSource).toContain("readPackFiles(input.packs, \"knowledge\")");
       expect(flueSource).toContain("readPackFiles(input.packs, \"skills\")");
@@ -100,6 +102,7 @@ describe("trellis init v3 scaffold", () => {
       expect(envExample).toContain("ATTIO_API_KEY=");
       expect(envExample).toContain("AGENTMAIL_API_KEY=");
       expect(envExample).toContain("FIRECRAWL_API_KEY=");
+      expect(envExample).toContain("TRELLIS_AI_GATEWAY_ID=default");
       expect(envExample).toContain("TRELLIS_FOLLOW_UP_DELAY=3 days");
       expect(readme).toContain("first deploy is Cloudflare-first");
       expect(readme).toContain("Your app code stays Trellis-only in `src/agent.ts`");
@@ -172,6 +175,7 @@ describe("trellis init v3 scaffold", () => {
       expect(doctorResult.checks.find((check) => check.id === "binding.PROSPECT_WORKFLOW")?.status).toBe("pass");
       expect(doctorResult.checks.find((check) => check.id === "binding.AI")?.status).toBe("pass");
       expect(doctorResult.checks.find((check) => check.id === "binding.BROWSER")?.status).toBe("pass");
+      expect(doctorResult.checks.find((check) => check.id === "cloudflare.aiGateway")?.status).toBe("pass");
       expect(doctorResult.checks.find((check) => check.id === "cloudflare.d1.database")?.detail).toContain("trellis deploy will resolve or create it");
       expect(doctorResult.knowledgePack?.files).toBe(1);
       expect(doctorResult.skillPack?.files).toHaveLength(5);
@@ -212,6 +216,10 @@ describe("trellis init v3 scaffold", () => {
           readyForDeploy: boolean;
           resources: Array<{ id: string; ready: boolean; detail: string }>;
         };
+        aiGateway: {
+          enabled: boolean;
+          gatewayId: string;
+        };
         packSync: {
           enabled: boolean;
           syncable: boolean;
@@ -229,6 +237,10 @@ describe("trellis init v3 scaffold", () => {
       expect(deployResult.cloudflare.autoProvisionable).toBe(true);
       expect(deployResult.cloudflare.readyForDeploy).toBe(false);
       expect(deployResult.cloudflare.resources.find((resource) => resource.id === "d1.database")?.detail).toContain("trellis deploy will resolve or create it");
+      expect(deployResult.aiGateway).toMatchObject({
+        enabled: true,
+        gatewayId: "default",
+      });
       expect(deployResult.packSync.enabled).toBe(true);
       expect(deployResult.packSync.syncable).toBe(true);
       expect(deployResult.packSync.entries.map((entry) => entry.objectKey)).toEqual(expect.arrayContaining([
@@ -273,6 +285,7 @@ describe("trellis init v3 scaffold", () => {
       expect(verifyResult.checks.find((check) => check.id === "source.worker")?.status).toBe("pass");
       expect(verifyResult.checks.find((check) => check.id === "source.flueAdapter")?.status).toBe("pass");
       expect(verifyResult.checks.find((check) => check.id === "cloudflare.autoProvisionable")?.status).toBe("pass");
+      expect(verifyResult.checks.find((check) => check.id === "cloudflare.aiGateway")?.status).toBe("pass");
       expect(verifyResult.checks.find((check) => check.id === "packSync.plan")?.status).toBe("pass");
       expect(verifyResult.checks.find((check) => check.id === "smoke.local")?.status).toBe("pass");
       expect(verifyResult.checks.find((check) => check.id === "wrangler.auth")?.status).toBe("skip");

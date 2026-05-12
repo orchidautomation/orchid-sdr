@@ -470,6 +470,7 @@ v3 behavior:
 async function handleDoctorCommand() {
   const wranglerConfigPath = findWranglerConfig(process.cwd());
   const wranglerSource = wranglerConfigPath ? readFileSync(wranglerConfigPath, "utf8") : "";
+  const aiGateway = readAiGatewayReadiness(process.cwd(), wranglerSource);
   const cloudflareResources = readCloudflareResourceConfig(wranglerConfigPath);
   const provisioning = buildCloudflareProvisioningPlan(cloudflareResources);
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
@@ -498,6 +499,7 @@ async function handleDoctorCommand() {
     ...provisioning.summary.resources.map((resource) =>
       doctorCheck(`cloudflare.${resource.id}`, resource.ready, "warn", resource.detail),
     ),
+    doctorCheck("cloudflare.aiGateway", aiGateway.ok, "warn", aiGateway.detail),
     doctorCheck("knowledge.pack", knowledgePack.ok, "warn", knowledgePack.detail),
     doctorCheck("skills.pack", skillPack.ok, "warn", skillPack.detail),
     doctorCheck("observability.traceExport", true, "warn", traceExport.detail),
@@ -525,6 +527,7 @@ async function handleDoctorCommand() {
       traceExport: traceExport.summary,
       providers: Object.fromEntries(providerReadiness.map((provider) => [provider.id, provider.summary])),
       cloudflare: provisioning.summary,
+      aiGateway: aiGateway.summary,
     });
     return;
   }
@@ -940,6 +943,32 @@ function readTraceExportReadiness() {
   };
 }
 
+function readAiGatewayReadiness(cwd: string, wranglerSource: string) {
+  const fluePath = path.join(cwd, "src", "trellis-flue.ts");
+  const envExamplePath = path.join(cwd, ".env.example");
+  const flueSource = existsSync(fluePath) ? readFileSync(fluePath, "utf8") : "";
+  const envExample = existsSync(envExamplePath) ? readFileSync(envExamplePath, "utf8") : "";
+  const hasAiBinding = /\bAI\b/.test(wranglerSource);
+  const hasGatewayRegistration = flueSource.includes("getCloudflareAIBindingApiProvider")
+    && flueSource.includes("gateway:")
+    && flueSource.includes("TRELLIS_AI_GATEWAY_ID");
+  const envDocumented = envExample.includes("TRELLIS_AI_GATEWAY_ID");
+  const ok = hasAiBinding && hasGatewayRegistration && envDocumented;
+  return {
+    ok,
+    detail: ok
+      ? "Cloudflare AI binding routes through the generated Trellis AI Gateway id"
+      : "Cloudflare AI Gateway needs AI binding plus TRELLIS_AI_GATEWAY_ID in the generated Flue adapter",
+    summary: {
+      enabled: ok,
+      binding: hasAiBinding ? "AI" : null,
+      gatewayId: process.env.TRELLIS_AI_GATEWAY_ID ?? "default",
+      adapter: hasGatewayRegistration,
+      envDocumented,
+    },
+  };
+}
+
 async function loadV3ProviderReadiness(id: V3ConnectionId) {
   const guide = V3_CONNECTIONS[id];
   const manifestPath = path.join(process.cwd(), trellisStateDirName, "providers", `${id}.json`);
@@ -1146,6 +1175,7 @@ async function handleVerifyCommand(target: string | undefined, flags: Record<str
 async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
   const wranglerConfigPath = findWranglerConfig(process.cwd());
   const wranglerSource = wranglerConfigPath ? readFileSync(wranglerConfigPath, "utf8") : "";
+  const aiGateway = readAiGatewayReadiness(process.cwd(), wranglerSource);
   const cloudflareResources = readCloudflareResourceConfig(wranglerConfigPath);
   const provisioning = buildCloudflareProvisioningPlan(cloudflareResources);
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
@@ -1176,6 +1206,7 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
     ...provisioning.summary.resources.map((resource) =>
       verifyCheck(`cloudflare.${resource.id}`, resource.ready ? "pass" : "warn", resource.detail),
     ),
+    verifyCheck("cloudflare.aiGateway", aiGateway.ok ? "pass" : "warn", aiGateway.detail, aiGateway.summary),
     verifyCheck("cloudflare.autoProvisionable", provisioning.summary.autoProvisionable ? "pass" : "warn", provisioning.summary.autoProvisionable
       ? "Trellis can resolve/create first-run Cloudflare resources from this Wrangler config"
       : "Wrangler config is missing one or more resources Trellis needs before apply"),
@@ -1227,6 +1258,7 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
       auditEvents: smoke.auditEvents.map((event) => event.type),
     },
     cloudflare: provisioning.summary,
+    aiGateway: aiGateway.summary,
     packSync: packSync.summary,
     knowledgePack: knowledgePack.summary,
     skillPack: skillPack.summary,
@@ -1259,6 +1291,8 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
 
 async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
   const wranglerConfigPath = findWranglerConfig(process.cwd());
+  const wranglerSource = wranglerConfigPath ? readFileSync(wranglerConfigPath, "utf8") : "";
+  const aiGateway = readAiGatewayReadiness(process.cwd(), wranglerSource);
   const cloudflareResources = readCloudflareResourceConfig(wranglerConfigPath);
   const provisioning = buildCloudflareProvisioningPlan(cloudflareResources);
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
@@ -1296,6 +1330,7 @@ async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
     knowledgePack: knowledgePack.summary,
     skillPack: skillPack.summary,
     cloudflare: provisioning.summary,
+    aiGateway: aiGateway.summary,
     packSync: packSync.summary,
     traceExport: traceExport.summary,
     providers: Object.fromEntries(providerReadiness.map((provider) => [provider.id, provider.summary])),
@@ -2004,6 +2039,7 @@ HANDOFF_WEBHOOK_SECRET=
 # Optional model override for Flue-backed skills.
 # The default uses Cloudflare Workers AI through Cloudflare's default AI Gateway.
 TRELLIS_MODEL=
+TRELLIS_AI_GATEWAY_ID=default
 TRELLIS_FOLLOW_UP_DELAY=3 days
 
 # Optional trace export. D1 trace events, Cloudflare logs, and AI Gateway remain the default.
@@ -2098,6 +2134,7 @@ import type { TrellisFlueContextFactoryInput } from "@trellis/gtm";
 
 type TrellisEnv = Record<string, unknown> & {
   TRELLIS_DB?: D1Database;
+  TRELLIS_AI_GATEWAY_ID?: string;
   AI?: unknown;
 };
 
@@ -2124,7 +2161,7 @@ async function createTrellisFlueContext(
     registerProvider("cloudflare", {
       api: "cloudflare-ai-binding",
       binding: input.env.AI,
-      gateway: { id: "default" },
+      gateway: { id: readAiGatewayId(env) },
     } as never);
   }
 
@@ -2228,6 +2265,12 @@ function stableRunId(input: TrellisFlueContextFactoryInput) {
 
 function normalizeId(value: unknown) {
   return String(value).replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 128) || "default";
+}
+
+function readAiGatewayId(env: TrellisEnv) {
+  return typeof env.TRELLIS_AI_GATEWAY_ID === "string" && env.TRELLIS_AI_GATEWAY_ID.trim()
+    ? env.TRELLIS_AI_GATEWAY_ID.trim()
+    : "default";
 }
 
 function createTrellisSessionStore(env: TrellisEnv): SessionStore {

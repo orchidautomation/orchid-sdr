@@ -55,7 +55,7 @@ The generated app expects Cloudflare bindings for:
 - R2 knowledge and artifact packs
 - Queues, including an events dead-letter queue
 - Durable Objects / Cloudflare Agents
-- AI Gateway routing
+- AI Gateway routing through `TRELLIS_AI_GATEWAY_ID` (defaults to `default`)
 
 ## 4. Add Knowledge
 

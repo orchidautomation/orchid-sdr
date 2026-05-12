@@ -122,7 +122,7 @@ For generated Cloudflare apps, deploy also provisions the first-run infrastructu
 
 At runtime, the Worker reads `TRELLIS_PACKS`, hydrates bounded markdown contents from `knowledge/files/*` and `skills/files/*`, passes that pack context into the agent run, and exposes pack counts through the webhook response, MCP snapshot, and dashboard.
 
-`app.skill(...)` first checks for a hidden harness binding. Generated v3 apps provide `TRELLIS_FLUE_CONTEXT_FACTORY`, which builds a real `@flue/sdk` context after Trellis has parsed the signal and hydrated R2 packs. The generated adapter preloads `AGENTS.md`, `knowledge/*`, and `.agents/skills/*/SKILL.md` into Flue's virtual sandbox, registers the Cloudflare AI binding through the default AI Gateway, and stores Flue session state in `TRELLIS_DB`. Advanced hosts can still provide a structural `TRELLIS_HARNESS` or direct `TRELLIS_FLUE_CONTEXT`. If no harness is present, smoke and local tests use the deterministic safe fixture path.
+`app.skill(...)` first checks for a hidden harness binding. Generated v3 apps provide `TRELLIS_FLUE_CONTEXT_FACTORY`, which builds a real `@flue/sdk` context after Trellis has parsed the signal and hydrated R2 packs. The generated adapter preloads `AGENTS.md`, `knowledge/*`, and `.agents/skills/*/SKILL.md` into Flue's virtual sandbox, registers the Cloudflare AI binding through the configured `TRELLIS_AI_GATEWAY_ID` (default `default`), and stores Flue session state in `TRELLIS_DB`. Advanced hosts can still provide a structural `TRELLIS_HARNESS` or direct `TRELLIS_FLUE_CONTEXT`. If no harness is present, smoke and local tests use the deterministic safe fixture path.
 
 ## Provider Manifests
 

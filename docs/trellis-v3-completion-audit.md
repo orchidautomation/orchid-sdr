@@ -28,6 +28,7 @@ Reach feature parity with the existing AI SDR/reference app using the reference 
 | Hide Flue behind the generated runtime | Generated `src/trellis-flue.ts` uses `@flue/sdk/cloudflare`, `getVirtualSandbox`, Cloudflare AI binding provider, R2 pack hydration, and `TRELLIS_FLUE_CONTEXT_FACTORY`; `@trellis/gtm` accepts that hidden factory. | Source/test proven |
 | First boot only requires Cloudflare credentials | `trellis init` creates Cloudflare bindings and package scripts; `trellis deploy --json` reports `requiresProviderCredentials: false`, `noSendsMode: true`, `smokeMode: true`; provider manifests are connected later. | Local proven |
 | Cloudflare-first deploy path | `trellis deploy` defaults to Cloudflare, rejects Vercel target, provisions/verifies D1, R2, Queues/DLQ, and Workflows from generated Wrangler config, syncs packs, then runs Wrangler deploy when applied. | Local/source proven |
+| Cloudflare AI Gateway default | Generated apps document `TRELLIS_AI_GATEWAY_ID`, route Flue's Cloudflare AI binding through that gateway id, and `doctor` / `verify cloudflare` expose `cloudflare.aiGateway`. | Test proven |
 | Safe smoke workflow | `npm run trellis -- smoke --json` passes and shows fixture signal, prospect, qualification/research/copy skills, draft, approvals, no-send mode, and audit events. | Local proven |
 | Generated app first-run spine | `packages/trellis-cli/src/init-scaffold.test.ts` runs `init`, `docs add`, `doctor`, `smoke`, `deploy --json`, `verify cloudflare --json`, and `connect` flows in a generated app directory. | Test proven |
 | Markdown knowledge and skill loading | R2 pack reading and bounded hydration live in `packages/gtm/src/index.ts`; CLI pack sync is in `packages/trellis-cli/src/cli.ts`; generated Flue adapter preloads knowledge and skills into `/workspace`. | Local/source proven |
@@ -60,7 +61,7 @@ npm run trellis -- verify cloudflare --json
 
 Observed results:
 
-- `npm test`: 39 test files, 160 tests passed.
+- `npm test`: 39 test files, 161 tests passed.
 - `npm run build`: packages build passed.
 - `npm run build:all`: v3 packages plus legacy parity packages build passed.
 - `npm run typecheck`: passed.
