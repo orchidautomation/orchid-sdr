@@ -30,6 +30,7 @@ export interface TrellisAgentConfig {
   email?: TrellisProviderDefinition;
   research?: TrellisProviderDefinition;
   observability?: TrellisProviderDefinition;
+  handoff?: TrellisProviderDefinition;
   model?: string;
   knowledge: string | string[];
   skills: string | string[];
@@ -385,7 +386,7 @@ export const trellis = {
   safeOutbound(input?: Partial<TrellisSafetyPolicy>): TrellisSafetyPolicy {
     return {
       noSends: input?.noSends ?? true,
-      requireApproval: input?.requireApproval ?? ["email.send", "crm.update"],
+      requireApproval: input?.requireApproval ?? ["email.send", "mail.reply", "crm.update", "handoff.webhook"],
       killSwitch: input?.killSwitch ?? true,
     };
   },
@@ -489,12 +490,13 @@ export function createTrellisTestApp(input?: {
             threadId: signal.threadId,
             status: decision,
           });
+          const approvalRequiredFor = approvalActionsForWorkflow(name, workflowInput);
           drafts.push({
             id: `draft_${signal.id}`,
-            channel: "email",
+            channel: name === "reply" ? "reply" : "email",
             status: "blocked_pending_approval",
-            approvalRequiredFor: ["email.send", "crm.update"],
-            body: readDraftBody(workflowInput.draft) ?? "Fixture outbound draft. Not sent.",
+            approvalRequiredFor,
+            body: readWorkflowDraftBody(name, workflowInput),
           });
           auditEvents.push({
             id: `evt_${auditEvents.length + 1}`,
@@ -729,6 +731,37 @@ function readDraftBody(value: unknown) {
   return subject && body ? `Subject: ${subject}\n\n${body}` : body;
 }
 
+function readWorkflowDraftBody(name: string, workflowInput: TrellisWorkflowStartInput) {
+  if (name !== "reply") {
+    return readDraftBody(workflowInput.draft) ?? "Fixture outbound draft. Not sent.";
+  }
+
+  const reply = isRecord(workflowInput.reply) ? workflowInput.reply : {};
+  const handoff = isRecord(workflowInput.handoff) ? workflowInput.handoff : {};
+  const action = readString(reply.action) ?? "handoff";
+  const reason = readString(handoff.reason) ?? readString(reply.reason) ?? "Inbound reply needs operator review.";
+  return `Reply workflow action: ${action}\n\n${reason}`;
+}
+
+function approvalActionsForWorkflow(name: string, workflowInput: TrellisWorkflowStartInput) {
+  if (name !== "reply") {
+    return ["email.send", "crm.update"];
+  }
+
+  const reply = isRecord(workflowInput.reply) ? workflowInput.reply : {};
+  const handoff = isRecord(workflowInput.handoff) ? workflowInput.handoff : {};
+  const replyAction = readString(reply.action);
+  const shouldHandoff = readBoolean(handoff.shouldHandoff) ?? replyAction === "handoff";
+  const actions = [];
+  if (replyAction === "reply") {
+    actions.push("mail.reply");
+  }
+  if (shouldHandoff) {
+    actions.push("handoff.webhook");
+  }
+  return actions;
+}
+
 function smokeCheck(id: string, passed: boolean, detail: string): TrellisSmokeCheck {
   return {
     id,
@@ -815,8 +848,14 @@ function inferApprovalAction(approvalId: string) {
   if (approvalId.endsWith("_email_send")) {
     return "email.send";
   }
+  if (approvalId.endsWith("_mail_reply")) {
+    return "mail.reply";
+  }
   if (approvalId.endsWith("_crm_update")) {
     return "crm.update";
+  }
+  if (approvalId.endsWith("_handoff_webhook")) {
+    return "handoff.webhook";
   }
   return "provider.action";
 }
@@ -1705,6 +1744,9 @@ function providerForOperation(config: TrellisAgentConfig, operation: string) {
   if (operation.startsWith("research.")) {
     return config.research?.id ?? "research";
   }
+  if (operation.startsWith("handoff.")) {
+    return config.handoff?.id ?? "handoff";
+  }
   return "provider";
 }
 
@@ -2153,6 +2195,10 @@ async function dispatchProviderAction(
     return executeAttioCrmUpdate(env, context);
   }
 
+  if (context.action.provider === "handoff" && context.action.operation === "handoff.webhook") {
+    return executeHandoffWebhook(env, context);
+  }
+
   throw new Error(`No executor is configured for ${context.action.provider}:${context.action.operation}`);
 }
 
@@ -2420,6 +2466,63 @@ async function executeAttioCrmUpdate(
         person,
       },
     },
+  };
+}
+
+async function executeHandoffWebhook(
+  env: Record<string, unknown> | undefined,
+  context: TrellisProviderExecutionContext,
+): Promise<TrellisProviderActionExecutionResult> {
+  const webhookUrl = readString(env?.HANDOFF_WEBHOOK_URL) ?? readString(env?.TRELLIS_HANDOFF_WEBHOOK_URL);
+  if (!webhookUrl) {
+    throw new Error("HANDOFF_WEBHOOK_URL or TRELLIS_HANDOFF_WEBHOOK_URL is not configured.");
+  }
+
+  const signalPayload = context.signal?.payload ?? {};
+  const input = context.input;
+  const reason = readFirstString(input, signalPayload, ["reason", "handoffReason", "disposition"])
+    ?? context.draft?.body
+    ?? "Trellis handoff requested.";
+  const destination = readFirstString(input, signalPayload, ["destination", "channel", "team"]) ?? "sales";
+  const payload = {
+    type: "trellis.handoff.requested",
+    providerActionId: context.action.id,
+    signalId: context.action.signalId,
+    threadId: context.signal?.threadId ?? null,
+    workspaceId: context.signal?.workspaceId ?? null,
+    destination,
+    reason,
+    draft: context.draft,
+    input,
+    signal: signalPayload,
+  };
+  const fetcher = typeof env?.TRELLIS_FETCH === "function"
+    ? env.TRELLIS_FETCH as typeof fetch
+    : fetch;
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  const secret = readString(env?.HANDOFF_WEBHOOK_SECRET) ?? readString(env?.TRELLIS_HANDOFF_WEBHOOK_SECRET);
+  if (secret) {
+    headers["x-trellis-handoff-secret"] = secret;
+  }
+  const response = await fetcher(webhookUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(`Handoff webhook failed with ${response.status}: ${await response.text()}`);
+  }
+  const raw = await response.json().catch(() => ({}));
+  const record = isRecord(raw) ? raw : {};
+  return {
+    ok: true,
+    provider: "handoff",
+    operation: "handoff.webhook",
+    actionId: context.action.id,
+    externalId: readString(record.id) ?? readString(record.handoffId) ?? null,
+    raw,
   };
 }
 

@@ -38,7 +38,7 @@ describe("@trellis/gtm v3 API", () => {
     expect(agent.kind).toBe("trellis.gtm.agent");
     expect(agent.config.safety).toEqual({
       noSends: true,
-      requireApproval: ["email.send", "crm.update"],
+      requireApproval: ["email.send", "mail.reply", "crm.update", "handoff.webhook"],
       killSwitch: true,
     });
     expect(agent.config.crm?.id).toBe("attio");
@@ -98,6 +98,68 @@ describe("@trellis/gtm v3 API", () => {
       "draft.created",
     ]);
     expect(result.checks.every((check) => check.status === "pass")).toBe(true);
+  });
+
+  it("turns reply workflow decisions into approval-gated reply and handoff actions", async () => {
+    const agent = trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const context = await app.context(signal);
+      const reply = await app.skill("reply-policy", {
+        context,
+        schema: schema.replyPolicy(),
+      });
+      const handoff = await app.skill("handoff-policy", {
+        context,
+        args: { reply },
+        schema: schema.handoffPolicy(),
+      });
+
+      return app.workflow("reply").start({ signal, reply, handoff });
+    });
+    const app = createTrellisTestApp({
+      signal: {
+        id: "sig_reply_policy",
+        threadId: "agentmail_thread",
+        provider: "agentmail",
+        source: "reply.webhook",
+      },
+      skillResults: {
+        "reply-policy": {
+          classification: "positive",
+          action: "reply",
+          reason: "Buyer asked for details.",
+          confidence: 0.88,
+        },
+        "handoff-policy": {
+          shouldHandoff: true,
+          reason: "Positive buyer reply should notify sales.",
+          destination: "sales",
+          urgency: "high",
+        },
+      },
+    });
+
+    const result = await agent.handler(app);
+
+    expect(result).toMatchObject({
+      ok: true,
+      workflow: "reply",
+    });
+    expect(app.skillCalls.map((call) => call.name)).toEqual(["reply-policy", "handoff-policy"]);
+    expect(app.drafts).toEqual([
+      expect.objectContaining({
+        channel: "reply",
+        approvalRequiredFor: ["mail.reply", "handoff.webhook"],
+        body: expect.stringContaining("Positive buyer reply should notify sales."),
+      }),
+    ]);
   });
 
   it("hides the Cloudflare worker shell behind trellis.cloudflare", async () => {
@@ -771,6 +833,114 @@ describe("@trellis/gtm v3 API", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("executes approved handoff webhooks through the built-in v3 provider executor", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound({ noSends: false }),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    const fakeQueue = createFakeQueue();
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({
+        handoffId: "handoff_123",
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const env = {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_EVENTS: fakeQueue,
+      TRELLIS_FETCH: fetchMock,
+      HANDOFF_WEBHOOK_URL: "https://handoff.test/trellis",
+      HANDOFF_WEBHOOK_SECRET: "handoff-secret",
+    };
+
+    await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_handoff",
+        workspaceId: "wrk_handoff",
+        threadId: "thr_handoff",
+        provider: "agentmail",
+        source: "reply.webhook",
+        bodyText: "Can you send more detail?",
+      }),
+    }), env);
+    const approval = await runtime.worker.fetch(new Request("https://example.com/approvals/approval_reply_sig_handoff_handoff_webhook/approve", {
+      method: "POST",
+      body: JSON.stringify({
+        signalId: "sig_handoff",
+        action: "handoff.webhook",
+        actor: "operator@example.com",
+      }),
+    }), env);
+    const execution = await runtime.worker.fetch(new Request("https://example.com/provider-actions/provider_action_approval_reply_sig_handoff_handoff_webhook/execute", {
+      method: "POST",
+      body: JSON.stringify({
+        actor: "handoff-worker",
+        input: {
+          reason: "Positive reply needs sales follow-up.",
+          destination: "sales",
+        },
+      }),
+    }), env);
+
+    await expect(approval.json()).resolves.toMatchObject({
+      providerAction: {
+        id: "provider_action_approval_reply_sig_handoff_handoff_webhook",
+        provider: "handoff",
+        operation: "handoff.webhook",
+        status: "queued",
+      },
+    });
+    expect(execution.status).toBe(200);
+    await expect(execution.json()).resolves.toMatchObject({
+      ok: true,
+      providerAction: {
+        id: "provider_action_approval_reply_sig_handoff_handoff_webhook",
+        status: "completed",
+      },
+      execution: {
+        ok: true,
+        provider: "handoff",
+        operation: "handoff.webhook",
+        externalId: "handoff_123",
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string | URL | Request, RequestInit];
+    expect(String(url)).toBe("https://handoff.test/trellis");
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: expect.objectContaining({
+        "x-trellis-handoff-secret": "handoff-secret",
+      }),
+    });
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      type: "trellis.handoff.requested",
+      providerActionId: "provider_action_approval_reply_sig_handoff_handoff_webhook",
+      signalId: "sig_handoff",
+      threadId: "thr_handoff",
+      workspaceId: "wrk_handoff",
+      destination: "sales",
+      reason: "Positive reply needs sales follow-up.",
+    });
   });
 
   it("executes approved Attio CRM updates through the built-in v3 provider executor", async () => {
