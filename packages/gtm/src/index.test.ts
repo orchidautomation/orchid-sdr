@@ -325,8 +325,10 @@ describe("@trellis/gtm v3 API", () => {
       ok: true,
       accepted: true,
       mode: "processed",
+      traceId: "trace_sig_live",
       signal: {
         id: "sig_live",
+        traceId: "trace_sig_live",
         workspaceId: "wrk_live",
         threadId: "thr_live",
         idempotencyKey: "retry-sig-live",
@@ -386,6 +388,8 @@ describe("@trellis/gtm v3 API", () => {
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_provider_actions"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("CREATE TABLE IF NOT EXISTS trellis_workflow_runs"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_workflow_runs"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("CREATE TABLE IF NOT EXISTS trellis_trace_events"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_trace_events"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_audit_events"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("UPDATE trellis_approvals SET status = ?"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("UPDATE trellis_provider_actions SET status = ?"))).toBe(true);
@@ -393,6 +397,7 @@ describe("@trellis/gtm v3 API", () => {
       id: "trellis_sig_live_prospect",
       params: expect.objectContaining({
         workflow: "prospect",
+        traceId: "trace_sig_live",
         signal: expect.objectContaining({ id: "sig_live" }),
         prospectIds: ["prospect_sig_live"],
         draftIds: ["draft_sig_live"],
@@ -405,11 +410,13 @@ describe("@trellis/gtm v3 API", () => {
     expect(fakeQueue.messages).toEqual([
       expect.objectContaining({
         type: "trellis.signal.processed",
+        traceId: "trace_sig_live",
         signalId: "sig_live",
         workspaceId: "wrk_live",
       }),
       expect.objectContaining({
         type: "trellis.approval.decided",
+        traceId: "trace_sig_live",
         approvalId: "approval_draft_sig_live_email_send",
         status: "approved",
         providerActionId: "provider_action_approval_draft_sig_live_email_send",
@@ -421,11 +428,12 @@ describe("@trellis/gtm v3 API", () => {
           provider: "agentmail",
           operation: "email.send",
           status: "blocked_no_send",
-          traceId: "trace_sig_live_approval_draft_sig_live_email_send",
+          traceId: "trace_sig_live",
         }),
       }),
       expect.objectContaining({
         type: "trellis.provider.action.failed",
+        traceId: "trace_sig_live",
         providerActionId: "provider_action_approval_draft_sig_live_email_send",
         status: "failed",
       }),
@@ -441,6 +449,7 @@ describe("@trellis/gtm v3 API", () => {
           approvals: 2,
           providerActions: 1,
           workflowRuns: 1,
+          traceEvents: 8,
           auditEvents: 8,
         },
         packs: {
@@ -471,6 +480,7 @@ describe("@trellis/gtm v3 API", () => {
     expect(dashboardHtml).toContain("<dt>Approvals</dt><dd>2</dd>");
     expect(dashboardHtml).toContain("<dt>Provider Actions</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Workflow Runs</dt><dd>1</dd>");
+    expect(dashboardHtml).toContain("<dt>Trace Events</dt><dd>8</dd>");
     expect(dashboardHtml).toContain("<dt>Knowledge Files</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Skill Files</dt><dd>1</dd>");
     const workflowStep = createFakeWorkflowStep();
@@ -499,6 +509,7 @@ describe("@trellis/gtm v3 API", () => {
       ok: true,
       workflow: "prospect",
       runId: "trellis_sig_live_prospect",
+      traceId: "trace_sig_live",
       status: "waiting_for_approval",
       checkpoint: {
         next: "await_outbound_approval",
@@ -533,7 +544,7 @@ describe("@trellis/gtm v3 API", () => {
         provider: "agentmail",
         operation: "email.send",
         status: "blocked_no_send",
-        traceId: "trace_sig_live_approval_draft_sig_live_email_send",
+        traceId: "trace_sig_live",
       },
     });
     expect(providerActionExecuteBlocked.status).toBe(409);

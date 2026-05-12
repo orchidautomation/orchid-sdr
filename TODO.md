@@ -12,12 +12,11 @@ This branch is converting Trellis from a generic composition framework into the 
 ## Remaining Work
 
 1. Port the reference AI SDR behavior into `@trellis/gtm`.
-2. Replace fixture skills with Flue-backed skill execution.
-3. Upload and mount knowledge/skill packs through R2.
-4. Turn approval records into executable approve/reject actions.
-5. Add real provider side-effect adapters behind no-send and approval gates.
-6. Verify the generated Cloudflare scaffold against a real account.
-7. Keep legacy Convex/Vercel/Rivet paths behind explicit `legacy:*` scripts and migration flags.
+2. Replace fixture-only local skill behavior with the real installed Flue package/runtime in generated apps.
+3. Verify R2 pack sync and Cloudflare Workflow execution against a real Cloudflare account.
+4. Add richer operator controls for dead-letter recovery, replay, pause/resume, and kill switches.
+5. Add optional Langfuse/Braintrust trace export on top of `trellis_trace_events`.
+6. Keep legacy Convex/Vercel/Rivet paths behind explicit `legacy:*` scripts and migration flags until parity is proven.
 
 ## Verification
 

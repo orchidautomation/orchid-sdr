@@ -39,6 +39,7 @@ export interface TrellisAgentConfig {
 
 export interface TrellisSignal {
   id: string;
+  traceId?: string;
   threadId: string;
   workspaceId: string;
   campaignId?: string;
@@ -60,10 +61,12 @@ export interface TrellisWorkflowHandle {
 
 export interface TrellisAuditEvent {
   id: string;
+  traceId?: string;
   type: string;
   message: string;
   signalId?: string;
   workflow?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface TrellisDraft {
@@ -76,6 +79,7 @@ export interface TrellisDraft {
 
 export interface TrellisApproval {
   id: string;
+  traceId?: string;
   draftId: string;
   signalId: string;
   action: string;
@@ -256,6 +260,7 @@ type TrellisProviderActionTransitionStatus = "completed" | "failed";
 
 interface TrellisApprovalDecision {
   approvalId: string;
+  traceId?: string;
   signalId: string;
   status: TrellisApprovalDecisionStatus;
   action: string;
@@ -266,6 +271,7 @@ interface TrellisApprovalDecision {
 
 interface TrellisProviderActionTransition {
   providerActionId: string;
+  traceId?: string;
   signalId: string;
   status: TrellisProviderActionTransitionStatus;
   actor?: string;
@@ -294,6 +300,7 @@ interface TrellisDraftRecord {
 
 interface TrellisSignalRecord {
   id: string;
+  traceId: string;
   workspaceId: string;
   threadId: string;
   payload: Record<string, unknown>;
@@ -421,8 +428,12 @@ export function createTrellisTestApp(input?: {
   const prospects: TrellisProspect[] = [];
   const drafts: TrellisDraft[] = [];
   const auditEvents: TrellisAuditEvent[] = [];
+  const traceId = readString(input?.signal?.traceId)
+    ?? readString(input?.signal?.payload?.traceId)
+    ?? `trace_${normalizeIdPart(input?.signal?.id ?? "sig_test")}`;
   const signal: TrellisSignal = {
     id: input?.signal?.id ?? "sig_test",
+    traceId,
     threadId: input?.signal?.threadId ?? "thr_test",
     workspaceId: input?.signal?.workspaceId ?? "wrk_test",
     campaignId: input?.signal?.campaignId ?? "cmp_test",
@@ -449,9 +460,14 @@ export function createTrellisTestApp(input?: {
     signal() {
       auditEvents.push({
         id: `evt_${auditEvents.length + 1}`,
+        traceId: signal.traceId,
         type: "signal.accepted",
         message: "Accepted fixture signal.",
         signalId: signal.id,
+        metadata: {
+          provider: signal.provider,
+          source: signal.source,
+        },
       });
       return signal;
     },
@@ -471,9 +487,16 @@ export function createTrellisTestApp(input?: {
         const parsed = parseSkillOutput(harnessResult, skillInput.schema);
         auditEvents.push({
           id: `evt_${auditEvents.length + 1}`,
+          traceId: signal.traceId,
           type: "skill.completed",
           message: `Completed skill ${name}.`,
           signalId: signal.id,
+          metadata: {
+            skill: name,
+            role: skillInput.role ?? null,
+            model: skillInput.model ?? null,
+            harness: true,
+          },
         });
         return parsed;
       }
@@ -484,9 +507,16 @@ export function createTrellisTestApp(input?: {
       const parsed = parseSkillOutput(result, skillInput.schema);
       auditEvents.push({
         id: `evt_${auditEvents.length + 1}`,
+        traceId: signal.traceId,
         type: "skill.completed",
         message: `Completed skill ${name}.`,
         signalId: signal.id,
+        metadata: {
+          skill: name,
+          role: skillInput.role ?? null,
+          model: skillInput.model ?? null,
+          harness: false,
+        },
       });
       return parsed;
     },
@@ -512,17 +542,28 @@ export function createTrellisTestApp(input?: {
           });
           auditEvents.push({
             id: `evt_${auditEvents.length + 1}`,
+            traceId: signal.traceId,
             type: "workflow.started",
             message: `Started workflow ${name}.`,
             signalId: signal.id,
             workflow: name,
+            metadata: {
+              draftId: `draft_${signal.id}`,
+              approvalRequiredFor,
+            },
           });
           auditEvents.push({
             id: `evt_${auditEvents.length + 1}`,
+            traceId: signal.traceId,
             type: "draft.created",
             message: "Created draft and blocked side effects pending approval.",
             signalId: signal.id,
             workflow: name,
+            metadata: {
+              draftId: `draft_${signal.id}`,
+              channel: name === "reply" ? "reply" : "email",
+              approvalRequiredFor,
+            },
           });
           return {
             ok: true,
@@ -816,6 +857,7 @@ function createApprovalsForDrafts(signal: TrellisSignal, drafts: TrellisDraft[])
   return drafts.flatMap((draft) =>
     draft.approvalRequiredFor.map((action) => ({
       id: `approval_${draft.id}_${action.replace(/[^a-z0-9]+/gi, "_")}`,
+      traceId: traceIdForSignal(signal),
       draftId: draft.id,
       signalId: signal.id,
       action,
@@ -912,10 +954,12 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
       const params = readWorkflowEventParams(event);
       const workflow = readString(params.workflow) ?? "prospect";
       const signal = readWorkflowSignal(params.signal);
+      const traceId = readString(params.traceId) ?? traceIdForSignal(signal);
       const runId = `trellis_${normalizeIdPart(signal.id)}_${normalizeIdPart(workflow)}`;
       const started = await runWorkflowStep(step, "record workflow start", () =>
         recordWorkflowRun(this.env, {
           id: runId,
+          traceId,
           signalId: signal.id,
           workflow,
           status: "running",
@@ -924,6 +968,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
       );
       const checkpoint = await runWorkflowStep(step, "plan approval gate", () => ({
         signalId: signal.id,
+        traceId,
         workflow,
         prospectIds: readStringArray(params.prospectIds),
         draftIds: readStringArray(params.draftIds),
@@ -934,6 +979,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
       const waiting = await runWorkflowStep(step, "record approval wait", () =>
         recordWorkflowRun(this.env, {
           id: runId,
+          traceId,
           signalId: signal.id,
           workflow,
           status: "waiting_for_approval",
@@ -948,6 +994,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
         workflow,
         agent: agent.name,
         runId,
+        traceId,
         signalId: signal.id,
         status: "waiting_for_approval",
         checkpoint,
@@ -1009,6 +1056,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             ok: true,
             accepted: true,
             mode: "processed",
+            traceId: traceIdForSignal(run.signal),
             signal: run.signal,
             prospects: run.prospects,
             drafts: run.drafts,
@@ -1083,6 +1131,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             ok: true,
             accepted: true,
             mode: "processed",
+            traceId: traceIdForSignal(run.signal),
             signal: run.signal,
             prospects: run.prospects,
             drafts: run.drafts,
@@ -1107,6 +1156,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           const record = isRecord(body) ? body : {};
           const decision = await recordApprovalDecision(env, {
             approvalId: approvalDecision.approvalId,
+            traceId: readString(record.traceId) ?? readString(record.trace_id),
             signalId: readString(record.signalId) ?? `approval:${approvalDecision.approvalId}`,
             status: approvalDecision.status,
             action: readString(record.action) ?? inferApprovalAction(approvalDecision.approvalId),
@@ -1150,6 +1200,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           const record = isRecord(body) ? body : {};
           const transition = await recordProviderActionTransition(env, {
             providerActionId: providerActionTransition.providerActionId,
+            traceId: readString(record.traceId) ?? readString(record.trace_id),
             signalId: readString(record.signalId) ?? `provider-action:${providerActionTransition.providerActionId}`,
             status: providerActionTransition.status,
             actor: readString(record.actor),
@@ -1436,8 +1487,14 @@ async function readSignalFromRequest(request: Request): Promise<Partial<TrellisS
   const signalId = explicitId
     ?? (idempotencyKey ? `sig_${normalizeIdPart(idempotencyKey)}` : undefined)
     ?? `sig_${now}`;
+  const traceId = readString(request.headers.get("traceparent"))
+    ?? readString(request.headers.get("x-trellis-trace-id"))
+    ?? readString(record.traceId)
+    ?? readString(record.trace_id)
+    ?? `trace_${normalizeIdPart(signalId)}`;
   return {
     id: signalId,
+    traceId,
     threadId: readString(record.threadId) ?? `thr_${signalId}`,
     workspaceId: readString(record.workspaceId) ?? readString(record.workspace) ?? "wrk_default",
     campaignId: readString(record.campaignId) ?? readString(record.campaign),
@@ -1552,8 +1609,10 @@ function agentMailWebhookToSignal(
   raw: Record<string, unknown>,
 ): Partial<TrellisSignal> {
   const idPart = agentMail.providerMessageId ?? agentMail.providerThreadId ?? String(Date.now());
+  const signalId = `sig_agentmail_${normalizeIdPart(idPart)}`;
   return {
-    id: `sig_agentmail_${normalizeIdPart(idPart)}`,
+    id: signalId,
+    traceId: readString(raw.traceId) ?? readString(raw.trace_id) ?? `trace_${normalizeIdPart(signalId)}`,
     threadId: `agentmail_${normalizeIdPart(agentMail.providerThreadId ?? idPart)}`,
     workspaceId: readString(raw.workspaceId) ?? readString(raw.workspace_id) ?? "wrk_default",
     provider: "agentmail",
@@ -1593,7 +1652,10 @@ async function persistRuntimeResult(env: Record<string, unknown> | undefined, ru
     run.signal.campaignId ?? null,
     run.signal.provider ?? null,
     run.signal.source ?? null,
-    JSON.stringify(run.signal.payload ?? {}),
+    JSON.stringify({
+      traceId: traceIdForSignal(run.signal),
+      ...(run.signal.payload ?? {}),
+    }),
     new Date().toISOString(),
   ]);
 
@@ -1656,11 +1718,21 @@ async function persistRuntimeResult(env: Record<string, unknown> | undefined, ru
       event.message,
       new Date().toISOString(),
     ]);
+    await insertTraceEvent(db, {
+      id: `trace_event_${event.id}`,
+      traceId: event.traceId ?? traceIdForSignal(run.signal),
+      signalId: event.signalId ?? run.signal.id,
+      workflow: event.workflow,
+      type: event.type,
+      span: traceSpanForAuditEvent(event),
+      message: event.message,
+      payload: event.metadata ?? {},
+    });
   }
 
   return {
     enabled: true,
-    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_approvals", "trellis_provider_actions", "trellis_workflow_runs", "trellis_audit_events"],
+    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_approvals", "trellis_provider_actions", "trellis_workflow_runs", "trellis_audit_events", "trellis_trace_events"],
   };
 }
 
@@ -1742,10 +1814,53 @@ async function ensureD1Schema(db: TrellisD1Database) {
       updated_at TEXT NOT NULL
     )
   `);
+  await runD1(db, `
+    CREATE TABLE IF NOT EXISTS trellis_trace_events (
+      id TEXT PRIMARY KEY,
+      trace_id TEXT NOT NULL,
+      signal_id TEXT,
+      workflow TEXT,
+      span TEXT NOT NULL,
+      type TEXT NOT NULL,
+      message TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
 }
 
 async function runD1(db: TrellisD1Database, sql: string, bindings: unknown[] = []) {
   await db.prepare(sql).bind(...bindings).run();
+}
+
+async function insertTraceEvent(
+  db: TrellisD1Database,
+  event: {
+    id: string;
+    traceId: string;
+    signalId?: string;
+    workflow?: string;
+    span: string;
+    type: string;
+    message: string;
+    payload?: Record<string, unknown>;
+  },
+) {
+  await runD1(db, `
+    INSERT OR REPLACE INTO trellis_trace_events
+      (id, trace_id, signal_id, workflow, span, type, message, payload_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    event.id,
+    event.traceId,
+    event.signalId ?? null,
+    event.workflow ?? null,
+    event.span,
+    event.type,
+    event.message,
+    JSON.stringify(event.payload ?? {}),
+    new Date().toISOString(),
+  ]);
 }
 
 async function enqueueRuntimeEvent(env: Record<string, unknown> | undefined, run: TrellisRuntimeResult) {
@@ -1758,6 +1873,7 @@ async function enqueueRuntimeEvent(env: Record<string, unknown> | undefined, run
 
   await queue.send({
     type: "trellis.signal.processed",
+    traceId: traceIdForSignal(run.signal),
     signalId: run.signal.id,
     workspaceId: run.signal.workspaceId,
     threadId: run.signal.threadId,
@@ -1790,6 +1906,7 @@ function readWorkflowSignal(value: unknown): TrellisSignal {
   const id = readString(record.id) ?? readString(record.signalId) ?? "sig_workflow";
   return {
     id,
+    traceId: readString(record.traceId) ?? readString(record.trace_id) ?? `trace_${normalizeIdPart(id)}`,
     threadId: readString(record.threadId) ?? `thr_${id}`,
     workspaceId: readString(record.workspaceId) ?? "wrk_default",
     campaignId: readString(record.campaignId),
@@ -1823,6 +1940,7 @@ async function recordWorkflowRun(
   env: Record<string, unknown> | undefined,
   record: {
     id: string;
+    traceId?: string;
     signalId: string;
     workflow: string;
     status: string;
@@ -1862,6 +1980,19 @@ async function recordWorkflowRun(
     `Workflow ${record.workflow} is ${record.status}.`,
     now,
   ]);
+  await insertTraceEvent(db, {
+    id: `trace_event_${normalizeIdPart(record.id)}_${normalizeIdPart(record.status)}`,
+    traceId: record.traceId ?? traceIdForSignalId(record.signalId),
+    signalId: record.signalId,
+    workflow: record.workflow,
+    span: `workflow:${record.workflow}`,
+    type: `workflow.${record.status}`,
+    message: `Workflow ${record.workflow} is ${record.status}.`,
+    payload: {
+      workflowRunId: record.id,
+      status: record.status,
+    },
+  });
 
   return {
     enabled: true,
@@ -1885,6 +2016,7 @@ async function dispatchWorkflow(env: Record<string, unknown> | undefined, run: T
     const instance = await workflow.create({
       id,
       params: {
+        traceId: traceIdForSignal(run.signal),
         signal: run.signal,
         workflow: workflowName,
         startedWorkflows: run.startedWorkflows,
@@ -1897,10 +2029,12 @@ async function dispatchWorkflow(env: Record<string, unknown> | undefined, run: T
     const record = isRecord(instance) ? instance : {};
     const persistence = await recordWorkflowRun(env, {
       id,
+      traceId: traceIdForSignal(run.signal),
       signalId: run.signal.id,
       workflow: workflowName,
       status: "dispatched",
       params: {
+        traceId: traceIdForSignal(run.signal),
         signal: run.signal,
         workflow: workflowName,
         startedWorkflows: run.startedWorkflows,
@@ -1920,10 +2054,12 @@ async function dispatchWorkflow(env: Record<string, unknown> | undefined, run: T
   } catch (error) {
     const persistence = await recordWorkflowRun(env, {
       id,
+      traceId: traceIdForSignal(run.signal),
       signalId: run.signal.id,
       workflow: workflowName,
       status: "dispatch_failed",
       params: {
+        traceId: traceIdForSignal(run.signal),
         signal: run.signal,
         error: error instanceof Error ? error.message : String(error),
       },
@@ -1968,7 +2104,7 @@ function createProviderActionIntent(
     provider,
     operation: decision.action,
     status,
-    traceId: `trace_${decision.signalId}_${decision.approvalId}`,
+    traceId: decision.traceId ?? traceIdForSignalId(decision.signalId),
   };
 }
 
@@ -2024,6 +2160,21 @@ async function persistApprovalDecision(
     `${decision.status === "approved" ? "Approved" : "Rejected"} approval ${decision.approvalId}.`,
     now,
   ]);
+  await insertTraceEvent(db, {
+    id: `trace_event_${decision.status}_${decision.approvalId}`,
+    traceId: decision.traceId ?? traceIdForSignalId(decision.signalId),
+    signalId: decision.signalId,
+    workflow: "approval",
+    span: "approval",
+    type: `approval.${decision.status}`,
+    message: `${decision.status === "approved" ? "Approved" : "Rejected"} approval ${decision.approvalId}.`,
+    payload: {
+      approvalId: decision.approvalId,
+      action: decision.action,
+      actor: decision.actor ?? null,
+      reason: decision.reason ?? null,
+    },
+  });
 
   if (providerAction) {
     await runD1(db, `
@@ -2054,13 +2205,29 @@ async function persistApprovalDecision(
       `${providerAction.status === "queued" ? "Queued" : "Blocked"} provider action ${providerAction.operation} for ${providerAction.provider}.`,
       now,
     ]);
+    await insertTraceEvent(db, {
+      id: `trace_event_${providerAction.status}_${providerAction.id}`,
+      traceId: providerAction.traceId,
+      signalId: providerAction.signalId,
+      workflow: "provider-action",
+      span: `provider:${providerAction.provider}`,
+      type: `provider_action.${providerAction.status}`,
+      message: `${providerAction.status === "queued" ? "Queued" : "Blocked"} provider action ${providerAction.operation} for ${providerAction.provider}.`,
+      payload: {
+        providerActionId: providerAction.id,
+        approvalId: providerAction.approvalId,
+        draftId: providerAction.draftId ?? null,
+        operation: providerAction.operation,
+        provider: providerAction.provider,
+      },
+    });
   }
 
   return {
     enabled: true,
     tables: providerAction
-      ? ["trellis_approvals", "trellis_provider_actions", "trellis_audit_events"]
-      : ["trellis_approvals", "trellis_audit_events"],
+      ? ["trellis_approvals", "trellis_provider_actions", "trellis_audit_events", "trellis_trace_events"]
+      : ["trellis_approvals", "trellis_audit_events", "trellis_trace_events"],
   };
 }
 
@@ -2079,6 +2246,7 @@ async function enqueueApprovalDecision(
   let messages = 1;
   await queue.send({
     type: "trellis.approval.decided",
+    traceId: providerAction?.traceId ?? decision.traceId ?? traceIdForSignalId(decision.signalId),
     approvalId: decision.approvalId,
     signalId: decision.signalId,
     status: decision.status,
@@ -2092,6 +2260,7 @@ async function enqueueApprovalDecision(
       type: providerAction.status === "queued"
         ? "trellis.provider.action.queued"
         : "trellis.provider.action.blocked",
+      traceId: providerAction.traceId,
       providerAction,
     });
     messages += 1;
@@ -2147,10 +2316,24 @@ async function persistProviderActionTransition(
     `${transition.status === "completed" ? "Completed" : "Failed"} provider action ${transition.providerActionId}.`,
     now,
   ]);
+  await insertTraceEvent(db, {
+    id: `trace_event_provider_action_${transition.status}_${transition.providerActionId}`,
+    traceId: transition.traceId ?? traceIdForSignalId(transition.signalId),
+    signalId: transition.signalId,
+    workflow: "provider-action",
+    span: "provider:side-effect",
+    type: `provider_action.${transition.status}`,
+    message: `${transition.status === "completed" ? "Completed" : "Failed"} provider action ${transition.providerActionId}.`,
+    payload: {
+      providerActionId: transition.providerActionId,
+      actor: transition.actor ?? null,
+      reason: transition.reason ?? null,
+    },
+  });
 
   return {
     enabled: true,
-    tables: ["trellis_provider_actions", "trellis_audit_events"],
+    tables: ["trellis_provider_actions", "trellis_audit_events", "trellis_trace_events"],
   };
 }
 
@@ -2169,6 +2352,7 @@ async function enqueueProviderActionTransition(
     type: transition.status === "completed"
       ? "trellis.provider.action.completed"
       : "trellis.provider.action.failed",
+    traceId: transition.traceId ?? traceIdForSignalId(transition.signalId),
     providerActionId: transition.providerActionId,
     signalId: transition.signalId,
     status: transition.status,
@@ -2240,6 +2424,7 @@ async function executeProviderAction(
     const result = await dispatchProviderAction(env, context);
     const transition = await recordProviderActionTransition(env, {
       providerActionId: action.id,
+      traceId: action.traceId,
       signalId: action.signalId,
       status: "completed",
       actor: execution.actor ?? "trellis-provider-executor",
@@ -2261,6 +2446,7 @@ async function executeProviderAction(
     const message = error instanceof Error ? error.message : String(error);
     const transition = await recordProviderActionTransition(env, {
       providerActionId: action.id,
+      traceId: action.traceId,
       signalId: action.signalId,
       status: "failed",
       actor: execution.actor ?? "trellis-provider-executor",
@@ -2397,6 +2583,7 @@ async function readProviderActionContext(
     signal: signal
       ? {
           id: String(signal.id),
+          traceId: action.traceId,
           workspaceId: String(signal.workspaceId),
           threadId: String(signal.threadId),
           payload: parseRecordJson(signal.payloadJson),
@@ -2513,6 +2700,7 @@ async function executeAgentMailSend(
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
+      "x-trellis-trace-id": context.action.traceId,
     },
     body: JSON.stringify({
       to: [to],
@@ -2581,6 +2769,7 @@ async function executeAgentMailReply(
       headers: {
         "content-type": "application/json",
         authorization: `Bearer ${apiKey}`,
+        "x-trellis-trace-id": context.action.traceId,
       },
       body: JSON.stringify({
         text: bodyText,
@@ -2724,6 +2913,7 @@ async function executeHandoffWebhook(
   const destination = readFirstString(input, signalPayload, ["destination", "channel", "team"]) ?? "sales";
   const payload = {
     type: "trellis.handoff.requested",
+    traceId: context.action.traceId,
     providerActionId: context.action.id,
     signalId: context.action.signalId,
     threadId: context.signal?.threadId ?? null,
@@ -3070,6 +3260,7 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
       approvals: await countD1Rows(db, "trellis_approvals"),
       providerActions: await countD1Rows(db, "trellis_provider_actions"),
       workflowRuns: await countD1Rows(db, "trellis_workflow_runs"),
+      traceEvents: await countD1Rows(db, "trellis_trace_events"),
       auditEvents: await countD1Rows(db, "trellis_audit_events"),
     },
     packs,
@@ -3172,6 +3363,28 @@ function readString(value: unknown) {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
+function traceIdForSignal(signal: Pick<TrellisSignal, "id" | "traceId" | "payload">) {
+  return readString(signal.traceId)
+    ?? readString(signal.payload?.traceId)
+    ?? readString(signal.payload?.trace_id)
+    ?? traceIdForSignalId(signal.id);
+}
+
+function traceIdForSignalId(signalId: string) {
+  return `trace_${normalizeIdPart(signalId)}`;
+}
+
+function traceSpanForAuditEvent(event: TrellisAuditEvent) {
+  const skill = readString(event.metadata?.skill);
+  if (skill) {
+    return `skill:${skill}`;
+  }
+  if (event.workflow) {
+    return `workflow:${event.workflow}`;
+  }
+  return event.type.split(".")[0] ?? "runtime";
+}
+
 function normalizeIdPart(value: string) {
   return value.trim().replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80) || "idempotent";
 }
@@ -3194,6 +3407,7 @@ function renderDashboard(
     approvals: 0,
     providerActions: 0,
     workflowRuns: 0,
+    traceEvents: 0,
     auditEvents: 0,
   };
   const packs = snapshot.packs;
@@ -3215,6 +3429,7 @@ function renderDashboard(
         <dt>Approvals</dt><dd>${counts.approvals}</dd>
         <dt>Provider Actions</dt><dd>${counts.providerActions}</dd>
         <dt>Workflow Runs</dt><dd>${counts.workflowRuns}</dd>
+        <dt>Trace Events</dt><dd>${counts.traceEvents}</dd>
         <dt>Audit Events</dt><dd>${counts.auditEvents}</dd>
         <dt>Knowledge Files</dt><dd>${packs.knowledge?.manifest?.files ?? 0}</dd>
         <dt>Skill Files</dt><dd>${packs.skills?.objects ?? 0}</dd>

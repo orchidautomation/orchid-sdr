@@ -271,7 +271,7 @@ Existing behavior:
 
 v3 parity:
 
-- trace id from webhook to final side effect
+- trace id from webhook to final side effect, with D1 `trellis_trace_events` for signal, skill/model, workflow, approval, provider intent, and provider outcome spans
 - AI Gateway logs for model calls
 - Workers logs/traces for platform events
 - D1 audit events for product history

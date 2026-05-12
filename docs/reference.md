@@ -41,9 +41,11 @@ The v3 baseline persists:
 - drafts
 - approvals
 - provider actions
+- workflow runs
 - audit events
+- trace events
 
-Those records are enough to prove the GTM control loop is observable and safe before any provider writes happen.
+Those records are enough to prove the GTM control loop is observable and safe before any provider writes happen. Trellis derives or accepts a stable `traceId` at signal ingest, carries it through workflow dispatch, approvals, provider action intents, queue messages, and side-effect execution, and records the timeline in `trellis_trace_events`.
 
 Approval decisions update D1, append an audit event, and enqueue a runtime event. Approved side effects create provider action intents. If no-send mode is still enabled, those intents are recorded as `blocked_no_send` instead of calling the provider.
 
