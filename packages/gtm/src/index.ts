@@ -246,6 +246,11 @@ interface TrellisWorkflowBinding {
   }): Promise<{ id?: string; status?(): Promise<unknown> | unknown } | unknown> | { id?: string; status?(): Promise<unknown> | unknown } | unknown;
 }
 
+interface TrellisWorkflowStep {
+  do<T>(name: string, callback: () => Promise<T> | T): Promise<T> | T;
+  sleep?(name: string, duration: string | number): Promise<unknown> | unknown;
+}
+
 type TrellisApprovalDecisionStatus = "approved" | "rejected";
 type TrellisProviderActionTransitionStatus = "completed" | "failed";
 
@@ -897,16 +902,61 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
   }
 
   class ProspectWorkflowObject {
-    constructor(private readonly env?: unknown) {}
+    private readonly env?: Record<string, unknown>;
 
-    async run() {
-      const smoke = await runTrellisSmoke({ agent });
+    constructor(env?: unknown) {
+      this.env = isRecord(env) ? env : undefined;
+    }
+
+    async run(event?: unknown, step?: unknown) {
+      const params = readWorkflowEventParams(event);
+      const workflow = readString(params.workflow) ?? "prospect";
+      const signal = readWorkflowSignal(params.signal);
+      const runId = `trellis_${normalizeIdPart(signal.id)}_${normalizeIdPart(workflow)}`;
+      const started = await runWorkflowStep(step, "record workflow start", () =>
+        recordWorkflowRun(this.env, {
+          id: runId,
+          signalId: signal.id,
+          workflow,
+          status: "running",
+          params,
+        }),
+      );
+      const checkpoint = await runWorkflowStep(step, "plan approval gate", () => ({
+        signalId: signal.id,
+        workflow,
+        prospectIds: readStringArray(params.prospectIds),
+        draftIds: readStringArray(params.draftIds),
+        approvalIds: readStringArray(params.approvalIds),
+        auditEventIds: readStringArray(params.auditEventIds),
+        next: workflow === "reply" ? "await_reply_or_handoff_approval" : "await_outbound_approval",
+      }));
+      const waiting = await runWorkflowStep(step, "record approval wait", () =>
+        recordWorkflowRun(this.env, {
+          id: runId,
+          signalId: signal.id,
+          workflow,
+          status: "waiting_for_approval",
+          params: {
+            ...params,
+            checkpoint,
+          },
+        }),
+      );
       return {
-        ok: smoke.ok,
-        workflow: "prospect",
+        ok: true,
+        workflow,
         agent: agent.name,
-        noSendsMode: smoke.noSendsMode,
-        externalWrites: smoke.externalWrites,
+        runId,
+        signalId: signal.id,
+        status: "waiting_for_approval",
+        checkpoint,
+        persistence: {
+          started,
+          waiting,
+        },
+        noSendsMode: agent.config.safety?.noSends ?? true,
+        externalWrites: false,
         env: Boolean(this.env),
       };
     }
@@ -1610,7 +1660,7 @@ async function persistRuntimeResult(env: Record<string, unknown> | undefined, ru
 
   return {
     enabled: true,
-    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_approvals", "trellis_provider_actions", "trellis_audit_events"],
+    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_approvals", "trellis_provider_actions", "trellis_workflow_runs", "trellis_audit_events"],
   };
 }
 
@@ -1682,6 +1732,16 @@ async function ensureD1Schema(db: TrellisD1Database) {
       updated_at TEXT NOT NULL
     )
   `);
+  await runD1(db, `
+    CREATE TABLE IF NOT EXISTS trellis_workflow_runs (
+      id TEXT PRIMARY KEY,
+      signal_id TEXT NOT NULL,
+      workflow TEXT NOT NULL,
+      status TEXT NOT NULL,
+      params_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
 }
 
 async function runD1(db: TrellisD1Database, sql: string, bindings: unknown[] = []) {
@@ -1712,6 +1772,105 @@ async function enqueueRuntimeEvent(env: Record<string, unknown> | undefined, run
   };
 }
 
+function readWorkflowEventParams(event: unknown): Record<string, unknown> {
+  if (!isRecord(event)) {
+    return {};
+  }
+  if (isRecord(event.params)) {
+    return event.params;
+  }
+  if (isRecord(event.payload)) {
+    return event.payload;
+  }
+  return event;
+}
+
+function readWorkflowSignal(value: unknown): TrellisSignal {
+  const record = isRecord(value) ? value : {};
+  const id = readString(record.id) ?? readString(record.signalId) ?? "sig_workflow";
+  return {
+    id,
+    threadId: readString(record.threadId) ?? `thr_${id}`,
+    workspaceId: readString(record.workspaceId) ?? "wrk_default",
+    campaignId: readString(record.campaignId),
+    idempotencyKey: readString(record.idempotencyKey),
+    provider: readString(record.provider) ?? "workflow",
+    source: readString(record.source) ?? "cloudflare.workflow",
+    payload: isRecord(record.payload) ? record.payload : record,
+  };
+}
+
+function readStringArray(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => readString(item)).filter((item): item is string => Boolean(item)) : [];
+}
+
+async function runWorkflowStep<T>(
+  step: unknown,
+  name: string,
+  callback: () => Promise<T> | T,
+): Promise<T> {
+  if (isWorkflowStep(step)) {
+    return await step.do(name, callback);
+  }
+  return await callback();
+}
+
+function isWorkflowStep(value: unknown): value is TrellisWorkflowStep {
+  return isRecord(value) && typeof value.do === "function";
+}
+
+async function recordWorkflowRun(
+  env: Record<string, unknown> | undefined,
+  record: {
+    id: string;
+    signalId: string;
+    workflow: string;
+    status: string;
+    params: Record<string, unknown>;
+  },
+) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      enabled: false,
+    };
+  }
+
+  await ensureD1Schema(db);
+  const now = new Date().toISOString();
+  await runD1(db, `
+    INSERT OR REPLACE INTO trellis_workflow_runs
+      (id, signal_id, workflow, status, params_json, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `, [
+    record.id,
+    record.signalId,
+    record.workflow,
+    record.status,
+    JSON.stringify(record.params),
+    now,
+  ]);
+  await runD1(db, `
+    INSERT OR REPLACE INTO trellis_audit_events
+      (id, signal_id, workflow, type, message, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `, [
+    `evt_${normalizeIdPart(record.id)}_${normalizeIdPart(record.status)}`,
+    record.signalId,
+    record.workflow,
+    `workflow.${record.status}`,
+    `Workflow ${record.workflow} is ${record.status}.`,
+    now,
+  ]);
+
+  return {
+    enabled: true,
+    table: "trellis_workflow_runs",
+    id: record.id,
+    status: record.status,
+  };
+}
+
 async function dispatchWorkflow(env: Record<string, unknown> | undefined, run: TrellisRuntimeResult) {
   const workflow = env?.PROSPECT_WORKFLOW as TrellisWorkflowBinding | undefined;
   if (!workflow?.create) {
@@ -1736,19 +1895,46 @@ async function dispatchWorkflow(env: Record<string, unknown> | undefined, run: T
       },
     });
     const record = isRecord(instance) ? instance : {};
+    const persistence = await recordWorkflowRun(env, {
+      id,
+      signalId: run.signal.id,
+      workflow: workflowName,
+      status: "dispatched",
+      params: {
+        signal: run.signal,
+        workflow: workflowName,
+        startedWorkflows: run.startedWorkflows,
+        prospectIds: run.prospects.map((prospect) => prospect.id),
+        draftIds: run.drafts.map((draft) => draft.id),
+        approvalIds: run.approvals.map((approval) => approval.id),
+        auditEventIds: run.auditEvents.map((event) => event.id),
+      },
+    });
     return {
       enabled: true,
       ok: true,
       workflow: workflowName,
       instanceId: readString(record.id) ?? id,
+      persistence,
     };
   } catch (error) {
+    const persistence = await recordWorkflowRun(env, {
+      id,
+      signalId: run.signal.id,
+      workflow: workflowName,
+      status: "dispatch_failed",
+      params: {
+        signal: run.signal,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
     return {
       enabled: true,
       ok: false,
       workflow: workflowName,
       instanceId: id,
       error: error instanceof Error ? error.message : String(error),
+      persistence,
     };
   }
 }
@@ -2883,6 +3069,7 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
       drafts: await countD1Rows(db, "trellis_drafts"),
       approvals: await countD1Rows(db, "trellis_approvals"),
       providerActions: await countD1Rows(db, "trellis_provider_actions"),
+      workflowRuns: await countD1Rows(db, "trellis_workflow_runs"),
       auditEvents: await countD1Rows(db, "trellis_audit_events"),
     },
     packs,
@@ -3006,6 +3193,7 @@ function renderDashboard(
     drafts: 0,
     approvals: 0,
     providerActions: 0,
+    workflowRuns: 0,
     auditEvents: 0,
   };
   const packs = snapshot.packs;
@@ -3026,6 +3214,7 @@ function renderDashboard(
         <dt>Drafts</dt><dd>${counts.drafts}</dd>
         <dt>Approvals</dt><dd>${counts.approvals}</dd>
         <dt>Provider Actions</dt><dd>${counts.providerActions}</dd>
+        <dt>Workflow Runs</dt><dd>${counts.workflowRuns}</dd>
         <dt>Audit Events</dt><dd>${counts.auditEvents}</dd>
         <dt>Knowledge Files</dt><dd>${packs.knowledge?.manifest?.files ?? 0}</dd>
         <dt>Skill Files</dt><dd>${packs.skills?.objects ?? 0}</dd>

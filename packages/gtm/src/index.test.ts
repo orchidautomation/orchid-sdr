@@ -353,6 +353,12 @@ describe("@trellis/gtm v3 API", () => {
         ok: true,
         workflow: "prospect",
         instanceId: "trellis_sig_live_prospect",
+        persistence: {
+          enabled: true,
+          table: "trellis_workflow_runs",
+          id: "trellis_sig_live_prospect",
+          status: "dispatched",
+        },
       },
       webhook: {
         verified: true,
@@ -378,6 +384,8 @@ describe("@trellis/gtm v3 API", () => {
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_approvals"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("CREATE TABLE IF NOT EXISTS trellis_provider_actions"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_provider_actions"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("CREATE TABLE IF NOT EXISTS trellis_workflow_runs"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_workflow_runs"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_audit_events"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("UPDATE trellis_approvals SET status = ?"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("UPDATE trellis_provider_actions SET status = ?"))).toBe(true);
@@ -432,7 +440,8 @@ describe("@trellis/gtm v3 API", () => {
           drafts: 1,
           approvals: 2,
           providerActions: 1,
-          auditEvents: 7,
+          workflowRuns: 1,
+          auditEvents: 8,
         },
         packs: {
           enabled: true,
@@ -461,8 +470,51 @@ describe("@trellis/gtm v3 API", () => {
     expect(dashboardHtml).toContain("<dt>Drafts</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Approvals</dt><dd>2</dd>");
     expect(dashboardHtml).toContain("<dt>Provider Actions</dt><dd>1</dd>");
+    expect(dashboardHtml).toContain("<dt>Workflow Runs</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Knowledge Files</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Skill Files</dt><dd>1</dd>");
+    const workflowStep = createFakeWorkflowStep();
+    const workflowRun = await new runtime.ProspectWorkflow(env).run({
+      params: {
+        workflow: "prospect",
+        signal: {
+          id: "sig_live",
+          workspaceId: "wrk_live",
+          threadId: "thr_live",
+        },
+        prospectIds: ["prospect_sig_live"],
+        draftIds: ["draft_sig_live"],
+        approvalIds: [
+          "approval_draft_sig_live_email_send",
+          "approval_draft_sig_live_crm_update",
+        ],
+      },
+    }, workflowStep);
+    expect(workflowStep.steps).toEqual([
+      "record workflow start",
+      "plan approval gate",
+      "record approval wait",
+    ]);
+    expect(workflowRun).toMatchObject({
+      ok: true,
+      workflow: "prospect",
+      runId: "trellis_sig_live_prospect",
+      status: "waiting_for_approval",
+      checkpoint: {
+        next: "await_outbound_approval",
+        approvalIds: [
+          "approval_draft_sig_live_email_send",
+          "approval_draft_sig_live_crm_update",
+        ],
+      },
+      persistence: {
+        waiting: {
+          enabled: true,
+          table: "trellis_workflow_runs",
+          status: "waiting_for_approval",
+        },
+      },
+    });
     await expect(approval.json()).resolves.toMatchObject({
       ok: true,
       approval: {
@@ -1525,6 +1577,17 @@ function createFakeQueue() {
     send(message: unknown) {
       messages.push(message);
       return { success: true };
+    },
+  };
+}
+
+function createFakeWorkflowStep() {
+  const steps: string[] = [];
+  return {
+    steps,
+    async do<T>(name: string, callback: () => Promise<T> | T) {
+      steps.push(name);
+      return await callback();
     },
   };
 }

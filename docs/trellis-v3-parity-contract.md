@@ -164,6 +164,7 @@ v3 parity:
 - idempotency keys can derive stable signal ids for retry-safe webhook senders
 - accepted signal is durable before downstream workflow dispatch
 - webhook runs dispatch `PROSPECT_WORKFLOW` after persistence, and dispatch failures are reported without failing ingestion
+- workflow dispatches and checkpoints are queryable in D1 via `trellis_workflow_runs`
 - Queues handle fanout/retries/dead letters
 - D1 records signal, provider run, audit event, and workflow dispatch
 
