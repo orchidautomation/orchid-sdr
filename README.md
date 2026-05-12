@@ -15,10 +15,12 @@ trellis smoke
 trellis connect attio
 trellis connect agentmail
 trellis connect firecrawl
+trellis connect apify      # optional discovery
+trellis connect prospeo    # optional enrichment
 trellis docs add ./product-docs
 ```
 
-The first deploy should require only Cloudflare auth. CRM, email, research, and optional trace providers connect after the app is alive.
+The first deploy should require only Cloudflare auth. CRM, email, research, optional discovery/enrichment, and optional trace providers connect after the app is alive.
 
 `trellis connect` writes non-secret provider manifests under `.trellis/providers/` so readiness can be checked without storing credentials.
 

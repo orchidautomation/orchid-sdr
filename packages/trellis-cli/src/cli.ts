@@ -117,6 +117,22 @@ const V3_CONNECTIONS = {
     optionalEnv: [],
     capabilities: ["research.search", "research.extract", "browser.run"],
   },
+  apify: {
+    id: "apify",
+    kind: "source",
+    displayName: "Apify",
+    requiredEnv: ["APIFY_TOKEN"],
+    optionalEnv: ["APIFY_WEBHOOK_SECRET", "APIFY_BASE_URL", "APIFY_DATASET_LIMIT"],
+    capabilities: ["signal.discovery", "webhooks.apify", "research.linkedinProfile"],
+  },
+  prospeo: {
+    id: "prospeo",
+    kind: "enrichment",
+    displayName: "Prospeo",
+    requiredEnv: ["PROSPEO_API_KEY"],
+    optionalEnv: ["PROSPEO_BASE_URL"],
+    capabilities: ["email.enrich", "research.enrich"],
+  },
   langfuse: {
     id: "langfuse",
     kind: "observability",
@@ -137,7 +153,7 @@ const V3_CONNECTIONS = {
 
 type V3ConnectionId = keyof typeof V3_CONNECTIONS;
 const REQUIRED_V3_PROVIDER_IDS = ["attio", "agentmail", "firecrawl"] as const;
-const OPTIONAL_V3_PROVIDER_IDS = ["langfuse", "braintrust"] as const;
+const OPTIONAL_V3_PROVIDER_IDS = ["apify", "prospeo", "langfuse", "braintrust"] as const;
 
 type CloudflareResourceConfig = {
   configPath: string | null;
@@ -304,7 +320,7 @@ Examples:
   npm run trellis -- verify cloudflare --json
   npm run trellis -- verify cloudflare --live --url https://your-worker.workers.dev --exercise-agent
 
-Simple labels stay short in the CLI: attio, agentmail, firecrawl, langfuse, braintrust.
+Simple labels stay short in the CLI: attio, agentmail, firecrawl, apify, prospeo, langfuse, braintrust.
 
 Init scaffolds the Trellis v3 GTM path by default.
 Cloudflare is the default deploy target.
@@ -334,6 +350,8 @@ async function handleConnectCommand(moduleId: string | undefined) {
   npm run trellis -- connect attio
   npm run trellis -- connect agentmail
   npm run trellis -- connect firecrawl
+  npm run trellis -- connect apify
+  npm run trellis -- connect prospeo
   npm run trellis -- connect langfuse
   npm run trellis -- connect braintrust
 
@@ -2134,6 +2152,12 @@ ATTIO_DEFAULT_LIST_ID=
 AGENTMAIL_API_KEY=
 AGENTMAIL_WEBHOOK_SECRET=
 FIRECRAWL_API_KEY=
+APIFY_TOKEN=
+APIFY_WEBHOOK_SECRET=
+APIFY_BASE_URL=
+APIFY_DATASET_LIMIT=
+PROSPEO_API_KEY=
+PROSPEO_BASE_URL=
 HANDOFF_WEBHOOK_URL=
 HANDOFF_WEBHOOK_SECRET=
 
@@ -2552,6 +2576,8 @@ The first deploy is Cloudflare-first and does not require Attio, AgentMail, or F
 trellis connect attio
 trellis connect agentmail
 trellis connect firecrawl
+trellis connect apify      # optional discovery source
+trellis connect prospeo    # optional email enrichment
 trellis docs add ./product-docs
 \`\`\`
 

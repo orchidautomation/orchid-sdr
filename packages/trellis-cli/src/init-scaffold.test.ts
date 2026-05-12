@@ -102,6 +102,8 @@ describe("trellis init v3 scaffold", () => {
       expect(envExample).toContain("ATTIO_API_KEY=");
       expect(envExample).toContain("AGENTMAIL_API_KEY=");
       expect(envExample).toContain("FIRECRAWL_API_KEY=");
+      expect(envExample).toContain("APIFY_TOKEN=");
+      expect(envExample).toContain("PROSPEO_API_KEY=");
       expect(envExample).toContain("TRELLIS_AI_GATEWAY_ID=default");
       expect(envExample).toContain("TRELLIS_FOLLOW_UP_DELAY=3 days");
       expect(readme).toContain("first deploy is Cloudflare-first");
@@ -303,6 +305,8 @@ describe("trellis init v3 scaffold", () => {
         ["attio", "ATTIO_API_KEY"],
         ["agentmail", "AGENTMAIL_API_KEY"],
         ["firecrawl", "FIRECRAWL_API_KEY"],
+        ["apify", "APIFY_TOKEN"],
+        ["prospeo", "PROSPEO_API_KEY"],
       ] as const;
       for (const [provider, requiredEnv] of connectedProviders) {
         const connectResult = JSON.parse(runCli(repoRoot, [
@@ -358,6 +362,16 @@ describe("trellis init v3 scaffold", () => {
         connected: true,
         status: "waiting_for_env",
         missingRequiredEnv: ["FIRECRAWL_API_KEY"],
+      });
+      expect(connectedDoctorResult.providers.apify).toMatchObject({
+        connected: true,
+        status: "waiting_for_env",
+        missingRequiredEnv: ["APIFY_TOKEN"],
+      });
+      expect(connectedDoctorResult.providers.prospeo).toMatchObject({
+        connected: true,
+        status: "waiting_for_env",
+        missingRequiredEnv: ["PROSPEO_API_KEY"],
       });
     } finally {
       rmSync(targetDir, { recursive: true, force: true });
@@ -575,6 +589,8 @@ function buildCliEnv(extraEnv: Record<string, string> = {}) {
     "ATTIO_API_KEY",
     "AGENTMAIL_API_KEY",
     "FIRECRAWL_API_KEY",
+    "APIFY_TOKEN",
+    "PROSPEO_API_KEY",
     "LANGFUSE_PUBLIC_KEY",
     "LANGFUSE_SECRET_KEY",
     "BRAINTRUST_API_KEY",

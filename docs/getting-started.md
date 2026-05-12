@@ -124,6 +124,8 @@ The default GTM provider lanes are:
 - Attio for CRM
 - AgentMail for email preview/send/replies
 - Firecrawl for research
+- Apify for optional discovery webhooks
+- Prospeo for optional email enrichment
 - Langfuse as optional trace/eval export
 
 ## Legacy Material

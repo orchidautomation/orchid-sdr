@@ -38,6 +38,33 @@ export function firecrawl(): TrellisProviderDefinition {
   });
 }
 
+export function apify(): TrellisProviderDefinition {
+  return trellis.provider({
+    id: "apify",
+    kind: "source",
+    displayName: "Apify",
+    env: [
+      { name: "APIFY_TOKEN", description: "Apify API token used to fetch discovery dataset items." },
+      { name: "APIFY_WEBHOOK_SECRET", description: "Optional shared secret for /webhooks/apify." },
+      { name: "APIFY_BASE_URL", description: "Optional Apify API base URL. Default is https://api.apify.com/v2." },
+    ],
+    capabilities: ["signal.discovery", "webhooks.apify", "research.linkedinProfile"],
+  });
+}
+
+export function prospeo(): TrellisProviderDefinition {
+  return trellis.provider({
+    id: "prospeo",
+    kind: "enrichment",
+    displayName: "Prospeo",
+    env: [
+      { name: "PROSPEO_API_KEY", description: "Prospeo API key used for contact and email enrichment." },
+      { name: "PROSPEO_BASE_URL", description: "Optional Prospeo API base URL. Default is https://api.prospeo.io." },
+    ],
+    capabilities: ["email.enrich", "research.enrich"],
+  });
+}
+
 export function langfuse(): TrellisProviderDefinition {
   return trellis.provider({
     id: "langfuse",

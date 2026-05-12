@@ -1,8 +1,10 @@
 import { z } from "zod";
 
 export type TrellisProviderKind =
+  | "source"
   | "crm"
   | "email"
+  | "enrichment"
   | "research"
   | "observability"
   | "handoff";
@@ -1167,95 +1169,77 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             }, 401);
           }
           const signals = await readSignalsFromRequest(request);
-          const packContext = await readPackContext(env);
-          const providerRun = await recordSignalProviderRunStarted(env, signals);
-          const results: Array<{
-            run: TrellisRuntimeResult;
-            persistence: Awaited<ReturnType<typeof persistRuntimeResult>>;
-            queue: Awaited<ReturnType<typeof enqueueRuntimeEvent>>;
-            workflowDispatch: Awaited<ReturnType<typeof dispatchWorkflow>>;
-          }> = [];
-          for (const signal of signals) {
-            const harness = await createRuntimeHarness(env, agent.config, {
-              signal,
-              packs: packContext,
-            });
-            const run = await runTrellisAgent(agent, {
-              signal,
-              context: {
-                packs: packContext,
-              },
-              harness,
-            });
-            const persistence = await persistRuntimeResult(env, run);
-            const queue = await enqueueRuntimeEvent(env, run);
-            const workflowDispatch = await dispatchWorkflow(env, run);
-            results.push({
-              run,
-              persistence,
-              queue,
-              workflowDispatch,
-            });
-          }
-          const completedProviderRun = await recordSignalProviderRunCompleted(env, providerRun, results);
-          if (results.length === 1) {
-            const result = results[0]!;
-            const run = result.run;
-            return jsonResponse({
-              ok: true,
-              accepted: true,
-              mode: "processed",
-              traceId: traceIdForSignal(run.signal),
-              signal: run.signal,
-              prospects: run.prospects,
-              drafts: run.drafts,
-              approvals: run.approvals,
-              auditEvents: run.auditEvents,
-              persistence: result.persistence,
-              queue: result.queue,
-              workflowDispatch: result.workflowDispatch,
-              providerRun: completedProviderRun,
-              webhook: {
-                verified: verification.enabled,
-                idempotencyKey: run.signal.idempotencyKey ?? null,
-              },
-              packs: packContext,
-              noSendsMode: agent.config.safety?.noSends ?? true,
-            }, 202);
-          }
-          return jsonResponse({
-            ok: true,
-            accepted: true,
-            mode: "processed_batch",
-            signalsReceived: results.length,
-            signals: results.map((result) => result.run.signal),
-            traceIds: results.map((result) => traceIdForSignal(result.run.signal)),
-            prospects: results.flatMap((result) => result.run.prospects),
-            drafts: results.flatMap((result) => result.run.drafts),
-            approvals: results.flatMap((result) => result.run.approvals),
-            auditEvents: results.flatMap((result) => result.run.auditEvents),
-            persistence: {
-              enabled: results.every((result) => result.persistence.enabled),
-              results: results.map((result) => result.persistence),
-            },
-            queue: {
-              enabled: results.some((result) => result.queue.enabled),
-              messages: results.reduce((total, result) => total + (readNumber(result.queue.messages) ?? 0), 0),
-              results: results.map((result) => result.queue),
-            },
-            workflowDispatch: {
-              enabled: results.some((result) => result.workflowDispatch.enabled),
-              ok: results.every((result) => result.workflowDispatch.ok !== false),
-              results: results.map((result) => result.workflowDispatch),
-            },
-            providerRun: completedProviderRun,
+          const processed = await processRuntimeSignals(agent, env, signals);
+          return jsonResponse(renderProcessedSignalResponse({
+            ...processed,
             webhook: {
               verified: verification.enabled,
               idempotencyKey: null,
             },
-            packs: packContext,
             noSendsMode: agent.config.safety?.noSends ?? true,
-          }, 202);
+          }), 202);
+        }
+
+        if (url.pathname === "/webhooks/apify" && request.method === "POST") {
+          const rawBody = await request.text();
+          const verification = verifyApifyWebhookRequest(request, env);
+          if (!verification.ok) {
+            return jsonResponse({
+              ok: false,
+              error: "unauthorized_apify_webhook",
+              detail: "Apify webhook secret was configured but not provided or did not verify.",
+            }, 401);
+          }
+          const parsed = parseJsonText(rawBody);
+          const record = isRecord(parsed) ? parsed : {};
+          const apify = await readApifyWebhook(record, request, env);
+          if (!apify.ok) {
+            return jsonResponse({
+              ok: false,
+              error: apify.error,
+              detail: apify.detail,
+              webhook: {
+                verified: verification.enabled,
+                type: "apify",
+              },
+            }, apify.status);
+          }
+          if (apify.ignored) {
+            return jsonResponse({
+              ok: true,
+              ignored: true,
+              reason: apify.reason,
+              webhook: {
+                verified: verification.enabled,
+                type: "apify",
+                eventType: apify.eventType,
+                actorRunId: apify.actorRunId,
+                datasetId: apify.datasetId,
+              },
+            });
+          }
+
+          const processed = await processRuntimeSignals(agent, env, apify.signals, {
+            apify: {
+              eventType: apify.eventType,
+              actorRunId: apify.actorRunId,
+              datasetId: apify.datasetId,
+              source: apify.source,
+              term: apify.term,
+            },
+          });
+          return jsonResponse(renderProcessedSignalResponse({
+            ...processed,
+            webhook: {
+              verified: verification.enabled,
+              type: "apify",
+              eventType: apify.eventType,
+              actorRunId: apify.actorRunId,
+              datasetId: apify.datasetId,
+              fetchedDataset: apify.fetchedDataset,
+            },
+            noSendsMode: agent.config.safety?.noSends ?? true,
+          }), 202);
         }
 
         if (url.pathname === "/webhooks/agentmail" && request.method === "POST") {
@@ -1483,6 +1467,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             "/healthz",
             "/smoke",
             "/webhooks/signals",
+            "/webhooks/apify",
             "/webhooks/agentmail",
             "/approvals/:id/approve",
             "/approvals/:id/reject",
@@ -2134,6 +2119,122 @@ function createFlueHarnessRuntime(
   };
 }
 
+async function processRuntimeSignals(
+  agent: TrellisAgentDefinition<TrellisGtmApp>,
+  env: Record<string, unknown> | undefined,
+  signals: Array<Partial<TrellisSignal>>,
+  context: Record<string, unknown> = {},
+) {
+  const packContext = await readPackContext(env);
+  const providerRun = await recordSignalProviderRunStarted(env, signals);
+  const results: Array<{
+    run: TrellisRuntimeResult;
+    persistence: Awaited<ReturnType<typeof persistRuntimeResult>>;
+    queue: Awaited<ReturnType<typeof enqueueRuntimeEvent>>;
+    workflowDispatch: Awaited<ReturnType<typeof dispatchWorkflow>>;
+  }> = [];
+  for (const signal of signals) {
+    const harness = await createRuntimeHarness(env, agent.config, {
+      signal,
+      packs: packContext,
+    });
+    const run = await runTrellisAgent(agent, {
+      signal,
+      context: {
+        packs: packContext,
+        ...context,
+      },
+      harness,
+    });
+    const persistence = await persistRuntimeResult(env, run);
+    const queue = await enqueueRuntimeEvent(env, run);
+    const workflowDispatch = await dispatchWorkflow(env, run);
+    results.push({
+      run,
+      persistence,
+      queue,
+      workflowDispatch,
+    });
+  }
+  const completedProviderRun = await recordSignalProviderRunCompleted(env, providerRun, results);
+  return {
+    packContext,
+    providerRun: completedProviderRun,
+    results,
+  };
+}
+
+function renderProcessedSignalResponse(input: {
+  packContext: unknown;
+  providerRun: Awaited<ReturnType<typeof recordSignalProviderRunCompleted>>;
+  results: Array<{
+    run: TrellisRuntimeResult;
+    persistence: Awaited<ReturnType<typeof persistRuntimeResult>>;
+    queue: Awaited<ReturnType<typeof enqueueRuntimeEvent>>;
+    workflowDispatch: Awaited<ReturnType<typeof dispatchWorkflow>>;
+  }>;
+  webhook: Record<string, unknown>;
+  noSendsMode: boolean;
+}) {
+  const { packContext, providerRun, results, webhook, noSendsMode } = input;
+  if (results.length === 1) {
+    const result = results[0]!;
+    const run = result.run;
+    return {
+      ok: true,
+      accepted: true,
+      mode: "processed",
+      traceId: traceIdForSignal(run.signal),
+      signal: run.signal,
+      prospects: run.prospects,
+      drafts: run.drafts,
+      approvals: run.approvals,
+      auditEvents: run.auditEvents,
+      persistence: result.persistence,
+      queue: result.queue,
+      workflowDispatch: result.workflowDispatch,
+      providerRun,
+      webhook: {
+        ...webhook,
+        idempotencyKey: run.signal.idempotencyKey ?? null,
+      },
+      packs: packContext,
+      noSendsMode,
+    };
+  }
+
+  return {
+    ok: true,
+    accepted: true,
+    mode: "processed_batch",
+    signalsReceived: results.length,
+    signals: results.map((result) => result.run.signal),
+    traceIds: results.map((result) => traceIdForSignal(result.run.signal)),
+    prospects: results.flatMap((result) => result.run.prospects),
+    drafts: results.flatMap((result) => result.run.drafts),
+    approvals: results.flatMap((result) => result.run.approvals),
+    auditEvents: results.flatMap((result) => result.run.auditEvents),
+    persistence: {
+      enabled: results.every((result) => result.persistence.enabled),
+      results: results.map((result) => result.persistence),
+    },
+    queue: {
+      enabled: results.some((result) => result.queue.enabled),
+      messages: results.reduce((total, result) => total + (readNumber(result.queue.messages) ?? 0), 0),
+      results: results.map((result) => result.queue),
+    },
+    workflowDispatch: {
+      enabled: results.some((result) => result.workflowDispatch.enabled),
+      ok: results.every((result) => result.workflowDispatch.ok !== false),
+      results: results.map((result) => result.workflowDispatch),
+    },
+    providerRun,
+    webhook,
+    packs: packContext,
+    noSendsMode,
+  };
+}
+
 async function readSignalsFromRequest(request: Request): Promise<Array<Partial<TrellisSignal>>> {
   const payload = await readJsonBody(request);
   const record = isRecord(payload) ? payload : {};
@@ -2161,6 +2262,212 @@ async function readSignalsFromRequest(request: Request): Promise<Array<Partial<T
       nested: Boolean(signalRecord || rawBatch),
     }),
   );
+}
+
+async function readApifyWebhook(
+  record: Record<string, unknown>,
+  request: Request,
+  env: Record<string, unknown> | undefined,
+) {
+  const resource = isRecord(record.resource) ? record.resource : {};
+  const payload = isRecord(record.payload) ? record.payload : {};
+  const eventType = readFirstString(record, resource, ["eventType", "event_type", "type"])
+    ?? readFirstString(payload, record, ["eventType", "event_type", "type"])
+    ?? "";
+  const actorRunId = readFirstString(record, resource, ["actorRunId", "actor_run_id", "runId", "run_id", "id"])
+    ?? readFirstString(payload, record, ["actorRunId", "actor_run_id", "runId", "run_id"]);
+  const datasetId = readFirstString(record, resource, ["defaultDatasetId", "defaultDataset_id", "datasetId", "dataset_id"])
+    ?? readFirstString(payload, record, ["defaultDatasetId", "defaultDataset_id", "datasetId", "dataset_id"]);
+  const source = readFirstString(record, payload, ["source"]) ?? "linkedin_public_post";
+  const campaignId = readFirstString(record, payload, ["campaignId", "campaign_id", "campaign"]);
+  const workspaceId = readFirstString(record, payload, ["workspaceId", "workspace_id", "workspace"]);
+  const term = readFirstString(record, payload, ["term", "query", "keyword", "search"]);
+
+  if (!eventType.includes("SUCCEEDED")) {
+    return {
+      ok: true as const,
+      ignored: true as const,
+      reason: `unsupported event type ${eventType || "unknown"}`,
+      eventType,
+      actorRunId,
+      datasetId,
+    };
+  }
+
+  const inlineItems = readApifyWebhookItems(record);
+  const fetched = inlineItems.length === 0 && datasetId
+    ? await fetchApifyDatasetItems(env, datasetId, source)
+    : { ok: true as const, items: inlineItems, fetchedDataset: false };
+  if (!fetched.ok) {
+    return {
+      ok: false as const,
+      status: 502,
+      error: "apify_dataset_fetch_failed",
+      detail: fetched.detail,
+    };
+  }
+
+  const rootIdempotencyKey = actorRunId ?? datasetId;
+  const root = {
+    ...record,
+    provider: "apify",
+    source,
+    externalId: actorRunId,
+    actorRunId,
+    defaultDatasetId: datasetId,
+    campaignId,
+    workspaceId,
+    term,
+  };
+  const signals = fetched.items.map((item, index) =>
+    normalizeSignalWebhookRecord({
+      request,
+      root,
+      rawSignal: normalizeApifySignalItem(item, {
+        actorRunId,
+        datasetId,
+        source,
+        campaignId,
+        workspaceId,
+        term,
+        index,
+      }),
+      index,
+      total: fetched.items.length,
+      rootIdempotencyKey,
+      nested: true,
+    }),
+  );
+
+  return {
+    ok: true as const,
+    ignored: false as const,
+    eventType,
+    actorRunId,
+    datasetId,
+    source,
+    campaignId,
+    workspaceId,
+    term,
+    fetchedDataset: fetched.fetchedDataset,
+    signals,
+  };
+}
+
+function readApifyWebhookItems(record: Record<string, unknown>) {
+  const resource = isRecord(record.resource) ? record.resource : {};
+  const payload = isRecord(record.payload) ? record.payload : {};
+  return readRecordArray(record, ["items", "signals", "datasetItems", "dataset_items"])
+    ?? readRecordArray(payload, ["items", "signals", "datasetItems", "dataset_items"])
+    ?? readRecordArray(resource, ["items", "signals", "datasetItems", "dataset_items"])
+    ?? [];
+}
+
+function readRecordArray(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (Array.isArray(value)) {
+      return value.filter(isRecord);
+    }
+  }
+  return null;
+}
+
+async function fetchApifyDatasetItems(
+  env: Record<string, unknown> | undefined,
+  datasetId: string,
+  source: string,
+) {
+  const apiToken = readString(env?.APIFY_TOKEN);
+  if (!apiToken) {
+    return {
+      ok: false as const,
+      detail: "APIFY_TOKEN is required to fetch Apify dataset items when the webhook does not include inline items.",
+    };
+  }
+
+  const baseUrl = (readString(env?.APIFY_BASE_URL) ?? "https://api.apify.com/v2").replace(/\/+$/, "");
+  const limit = readNumber(env?.APIFY_DATASET_LIMIT)
+    ?? readNumber(source === "x_public_post" ? env?.APIFY_X_DATASET_LIMIT : env?.APIFY_LINKEDIN_DATASET_LIMIT)
+    ?? 50;
+  const url = new URL(`${baseUrl}/datasets/${encodeURIComponent(datasetId)}/items`);
+  url.searchParams.set("clean", "true");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("limit", String(Math.max(1, Math.min(limit, 500))));
+
+  const response = await fetch(url, {
+    headers: {
+      authorization: `Bearer ${apiToken}`,
+    },
+  });
+  if (!response.ok) {
+    return {
+      ok: false as const,
+      detail: `Apify dataset ${datasetId} fetch failed with ${response.status}.`,
+    };
+  }
+  const json = await response.json();
+  return {
+    ok: true as const,
+    items: Array.isArray(json) ? json.filter(isRecord) : [],
+    fetchedDataset: true,
+  };
+}
+
+function normalizeApifySignalItem(
+  item: Record<string, unknown>,
+  metadata: {
+    actorRunId?: string;
+    datasetId?: string;
+    source: string;
+    campaignId?: string;
+    workspaceId?: string;
+    term?: string;
+    index: number;
+  },
+) {
+  const author = isRecord(item.author) ? item.author : {};
+  const header = isRecord(item.header) ? item.header : {};
+  const socialContent = isRecord(item.socialContent) ? item.socialContent : {};
+  const url = readFirstString(item, socialContent, ["url", "postUrl", "linkedinUrl", "sourceUrl", "link", "shareUrl"])
+    ?? `https://apify.invalid/dataset/${normalizeIdPart(metadata.datasetId ?? "inline")}/${metadata.index + 1}`;
+  const authorName = readFirstString(item, author, ["authorName", "name", "fullName", "author"])
+    ?? "Unknown";
+  const authorTitle = readFirstString(item, author, ["authorTitle", "jobTitle", "title", "headline", "info", "description"])
+    ?? readFirstString(header, {}, ["text"]);
+  const content = readFirstString(item, socialContent, ["content", "text", "postText", "description", "body", "summary"])
+    ?? "";
+  const topic = metadata.term
+    ?? readFirstString(item, {}, ["topic", "query", "keyword", "search"])
+    ?? metadata.source;
+  return {
+    ...item,
+    provider: "apify",
+    source: metadata.source,
+    externalId: metadata.actorRunId,
+    actorRunId: metadata.actorRunId,
+    datasetId: metadata.datasetId,
+    campaignId: metadata.campaignId,
+    workspaceId: metadata.workspaceId,
+    term: metadata.term,
+    sourceRef: readSignalSourceRef(metadata.source, item, metadata.index),
+    url,
+    authorName,
+    authorTitle,
+    authorCompany: readFirstString(item, author, ["authorCompany", "company", "companyName", "currentCompanyName"]),
+    companyDomain: readFirstString(item, author, ["companyDomain", "domain", "website", "companyWebsite"]),
+    topic,
+    content,
+    metadata: {
+      apify: {
+        actorRunId: metadata.actorRunId,
+        datasetId: metadata.datasetId,
+        source: metadata.source,
+        term: metadata.term,
+      },
+      raw: item,
+    },
+  };
 }
 
 function normalizeSignalWebhookRecord(input: {
@@ -2328,6 +2635,31 @@ function verifySignalWebhook(request: Request, env: Record<string, unknown> | un
   const providedSecret = bearer
     ?? readString(request.headers.get("x-trellis-webhook-secret"))
     ?? readString(request.headers.get("x-webhook-secret"));
+  return {
+    enabled: true,
+    ok: providedSecret === configuredSecret,
+  };
+}
+
+function verifyApifyWebhookRequest(request: Request, env: Record<string, unknown> | undefined) {
+  const configuredSecret = readString(env?.APIFY_WEBHOOK_SECRET)
+    ?? readString(env?.TRELLIS_WEBHOOK_SECRET)
+    ?? readString(env?.SIGNAL_WEBHOOK_SECRET);
+  if (!configuredSecret) {
+    return {
+      enabled: false,
+      ok: true,
+    };
+  }
+
+  const url = new URL(request.url);
+  const authorization = readString(request.headers.get("authorization"));
+  const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : undefined;
+  const providedSecret = bearer
+    ?? readString(request.headers.get("x-apify-webhook-secret"))
+    ?? readString(request.headers.get("x-trellis-webhook-secret"))
+    ?? readString(request.headers.get("x-webhook-secret"))
+    ?? readString(url.searchParams.get("secret"));
   return {
     enabled: true,
     ok: providedSecret === configuredSecret,

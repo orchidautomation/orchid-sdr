@@ -32,11 +32,11 @@ Reach feature parity with the existing AI SDR/reference app using the reference 
 | Safe smoke workflow | `npm run trellis -- smoke --json` passes and shows fixture signal, prospect, qualification/research/copy skills, draft, approvals, no-send mode, and audit events. | Local proven |
 | Generated app first-run spine | `packages/trellis-cli/src/init-scaffold.test.ts` runs `init`, `docs add`, `doctor`, `smoke`, `deploy --json`, `verify cloudflare --json`, and `connect` flows in a generated app directory. | Test proven |
 | Markdown knowledge and skill loading | R2 pack reading and bounded hydration live in `packages/gtm/src/index.ts`; CLI pack sync is in `packages/trellis-cli/src/cli.ts`; generated Flue adapter preloads knowledge and skills into `/workspace`. | Local/source proven |
-| Signal ingest parity | `/webhooks/signals` accepts raw records, `{ signal }`, and `{ signals: [...] }`, normalizes source payload fields, derives stable ids/source refs, persists D1 projections, queues events, and dispatches workflows. | Test proven |
+| Signal ingest parity | `/webhooks/signals` accepts raw records, `{ signal }`, and `{ signals: [...] }`; `/webhooks/apify` accepts Apify discovery completion events and inline or fetched dataset items. Both normalize source payload fields, derive stable ids/source refs, persist D1 projections, queue events, and dispatch workflows. | Test proven |
 | AgentMail reply ingest parity | `/webhooks/agentmail` verifies and normalizes `message.received` into a Trellis reply signal, then runs the reply workflow path. | Test proven |
 | Provider run visibility | `trellis_provider_runs` records inbound source runs; MCP/dashboard snapshots expose provider-run counts and recent rows. | Test proven |
 | Prospect lifecycle parity | The v3 runtime creates prospect projections, drafts, approvals, provider action intents, follow-up workflows, reply/handoff drafts, and operator-gated provider execution. | Test proven |
-| Provider connection parity | `trellis connect attio`, `agentmail`, and `firecrawl` write non-secret manifests and readiness checks; provider credentials are not boot blockers. | Test proven |
+| Provider connection parity | `trellis connect attio`, `agentmail`, and `firecrawl` write non-secret manifests and readiness checks for the default stack; optional `apify` and `prospeo` manifests cover the old discovery/enrichment lanes without becoming boot blockers. | Test proven |
 | Built-in provider executors | AgentMail `email.send`, AgentMail `mail.reply`, Attio `crm.update`, and `handoff.webhook` executor paths are covered with trace headers/context and failure handling. | Test proven |
 | MCP/dashboard parity | `/mcp/trellis`, `/dashboard`, provider-action views, operator controls, knowledge inspection, workflow replay, approval routes, and agent snapshots are covered. | Test proven |
 | Operator controls | Global kill switch, campaign/thread pause/resume, workflow replay, provider-action requeue, approval approve/reject, no-send guards, and blocked executions are covered locally. | Test proven |
@@ -61,7 +61,7 @@ npm run trellis -- verify cloudflare --json
 
 Observed results:
 
-- `npm test`: 39 test files, 161 tests passed.
+- `npm test`: 39 test files, 162 tests passed.
 - `npm run build`: packages build passed.
 - `npm run build:all`: v3 packages plus legacy parity packages build passed.
 - `npm run typecheck`: passed.

@@ -878,6 +878,149 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
+  it("accepts Apify discovery webhooks through the v3 signal path", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+    const fakeD1 = createFakeD1();
+    const fakeQueue = createFakeQueue();
+    const fakeWorkflow = {
+      create: vi.fn(async (options: Record<string, unknown>) => ({
+        id: options.id,
+      })),
+    };
+    const env = {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_EVENTS: fakeQueue,
+      PROSPECT_WORKFLOW: fakeWorkflow,
+      APIFY_WEBHOOK_SECRET: "apify-secret",
+    };
+
+    const unauthorized = await runtime.worker.fetch(new Request("https://example.com/webhooks/apify", {
+      method: "POST",
+      body: JSON.stringify({ eventType: "ACTOR.RUN.SUCCEEDED" }),
+    }), env);
+    const webhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/apify?secret=apify-secret", {
+      method: "POST",
+      body: JSON.stringify({
+        eventType: "ACTOR.RUN.SUCCEEDED",
+        actorRunId: "run_apify_1",
+        defaultDatasetId: "dataset_1",
+        source: "linkedin_public_post",
+        campaignId: "cmp_apify",
+        workspaceId: "wrk_apify",
+        term: "waterfall enrichment",
+        items: [
+          {
+            entityId: "post_1",
+            author: {
+              name: "Sam Rivera",
+              headline: "VP Sales at Northstar",
+            },
+            socialContent: {
+              shareUrl: "https://linkedin.com/feed/update/post_1",
+              text: "Looking for better outbound enrichment workflows.",
+            },
+            companyName: "Northstar",
+            companyDomain: "northstar.example",
+          },
+        ],
+      }),
+    }), env);
+    const body = await webhook.json() as Record<string, unknown>;
+
+    expect(unauthorized.status).toBe(401);
+    await expect(unauthorized.json()).resolves.toMatchObject({
+      ok: false,
+      error: "unauthorized_apify_webhook",
+    });
+    expect(webhook.status).toBe(202);
+    expect(body).toMatchObject({
+      ok: true,
+      accepted: true,
+      mode: "processed",
+      signal: {
+        id: "sig_run_apify_1",
+        workspaceId: "wrk_apify",
+        campaignId: "cmp_apify",
+        provider: "apify",
+        source: "linkedin_public_post",
+        payload: expect.objectContaining({
+          sourceRef: "post_1",
+          authorName: "Sam Rivera",
+          authorTitle: "VP Sales at Northstar",
+          authorCompany: "Northstar",
+          companyDomain: "northstar.example",
+          topic: "waterfall enrichment",
+          content: "Looking for better outbound enrichment workflows.",
+        }),
+      },
+      providerRun: {
+        enabled: true,
+        provider: "apify",
+        kind: "signal.webhook",
+        externalId: "run_apify_1",
+        status: "succeeded",
+      },
+      webhook: {
+        verified: true,
+        type: "apify",
+        eventType: "ACTOR.RUN.SUCCEEDED",
+        actorRunId: "run_apify_1",
+        datasetId: "dataset_1",
+        fetchedDataset: false,
+      },
+      queue: {
+        enabled: true,
+        messages: 1,
+      },
+      workflowDispatch: {
+        enabled: true,
+        workflow: "prospect",
+      },
+    });
+    expect(fakeWorkflow.create).toHaveBeenCalledWith({
+      id: "trellis_sig_run_apify_1_prospect",
+      params: expect.objectContaining({
+        signal: expect.objectContaining({
+          provider: "apify",
+          source: "linkedin_public_post",
+        }),
+      }),
+    });
+    expect(fakeQueue.messages).toEqual([
+      expect.objectContaining({
+        type: "trellis.signal.processed",
+        signalId: "sig_run_apify_1",
+        workspaceId: "wrk_apify",
+      }),
+    ]);
+
+    const mcp = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), env);
+    await expect(mcp.json()).resolves.toMatchObject({
+      snapshot: {
+        counts: {
+          signals: 1,
+          providerRuns: 1,
+          workflowRuns: 1,
+        },
+      },
+    });
+  });
+
   it("scopes persisted audit and trace event ids per signal", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       email: agentmail(),

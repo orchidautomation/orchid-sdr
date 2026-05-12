@@ -22,6 +22,7 @@ The generated Cloudflare app should expose:
 - `GET /healthz`
 - `GET /smoke`
 - `POST /webhooks/signals`
+- `POST /webhooks/apify`
 - `POST /webhooks/agentmail`
 - `POST /approvals/:id/approve`
 - `POST /approvals/:id/reject`
@@ -82,6 +83,8 @@ The Flue harness boundary receives a Trellis-generated tool catalog by default. 
 
 Signal webhooks support optional shared-secret verification through `TRELLIS_WEBHOOK_SECRET` or `SIGNAL_WEBHOOK_SECRET`. If a secret is configured, callers must send either `Authorization: Bearer <secret>`, `x-trellis-webhook-secret`, or `x-webhook-secret`.
 
+Apify discovery webhooks can be posted to `POST /webhooks/apify`. `ACTOR.RUN.SUCCEEDED` events with inline `items`, `signals`, or dataset metadata are normalized into Trellis signals with `provider: "apify"` and a source such as `linkedin_public_post`, then processed through the same D1, Queue, Workflow, MCP, and dashboard path as generic signal webhooks. If the webhook only includes a dataset id, Trellis fetches dataset items when `APIFY_TOKEN` is configured. If `APIFY_WEBHOOK_SECRET` is configured, Trellis accepts `?secret=...`, `Authorization: Bearer <secret>`, `x-apify-webhook-secret`, or the shared Trellis webhook secret headers.
+
 AgentMail reply webhooks can be posted to `POST /webhooks/agentmail`. `message.received` events are normalized into Trellis signals with `provider: "agentmail"` and `source: "reply.webhook"`, then processed through the same pack, harness, D1, queue, draft, approval, and audit path as generic signals. If `AGENTMAIL_WEBHOOK_SECRET` is configured, Trellis accepts either a bound `TRELLIS_AGENTMAIL_WEBHOOK_VERIFIER(rawBody, headers, secret)` verifier or a shared-secret `Authorization: Bearer <secret>` / `x-agentmail-webhook-secret` header.
 
 Signal webhooks also accept `Idempotency-Key`, `x-trellis-idempotency-key`, or `idempotencyKey` in the JSON body. If the payload does not provide a signal id, Trellis derives a stable id from that key.
@@ -133,6 +136,8 @@ Supported v3 provider IDs:
 - `attio`
 - `agentmail`
 - `firecrawl`
+- `apify`
+- `prospeo`
 - `langfuse`
 - `braintrust`
 
