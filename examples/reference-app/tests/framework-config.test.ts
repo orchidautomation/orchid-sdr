@@ -217,9 +217,8 @@ describe("AI SDR framework config helpers", () => {
     expect(resolveMcpExposure(config)).toEqual({
       toolGroups: [
         "knowledge",
-        "lead",
-        "pipeline",
-        "thread",
+        "records",
+        "workflows",
         "runtime",
         "control",
         "crm",
@@ -262,9 +261,8 @@ describe("AI SDR framework config helpers", () => {
     expect(resolveMcpExposure(config)).toEqual({
       toolGroups: [
         "knowledge",
-        "lead",
-        "pipeline",
-        "thread",
+        "records",
+        "workflows",
         "runtime",
         "control",
         "handoff",
@@ -298,9 +296,7 @@ describe("AI SDR framework config helpers", () => {
     expect(() =>
       aiSdrConfigSchema.parse({
         name: "broken",
-        knowledge: {
-          product: "knowledge/product.md",
-        },
+        knowledge: {},
       }),
     ).toThrow();
   });

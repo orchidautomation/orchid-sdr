@@ -13,7 +13,7 @@
   "scripts": {
     "postinstall": "node scripts/fix-rivetkit-engine-runner-protocol.mjs && npm run build:packages",
     "dev": "tsx watch examples/reference-app/src/index.ts",
-    "build:packages": "npm run build -w @trellis/framework && npm run build -w @trellis/default-sdr && npm run build -w @trellis/convex",
+    "build:packages": "npm run build -w @trellis/framework && npm run build -w @trellis/default-sdr && npm run build -w @trellis/convex && npm run build -w @trellis/gtm && npm run build -w @trellis/providers",
     "build": "npm run build:packages && tsup examples/reference-app/src/index.ts examples/reference-app/src/mcp/trellis-server.ts --format esm --target node22 --outDir dist --clean",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",

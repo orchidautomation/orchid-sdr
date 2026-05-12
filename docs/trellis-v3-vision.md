@@ -16,12 +16,12 @@ Trellis v3 should feel like this:
 
 ```bash
 trellis init acme-sdr
+trellis deploy
+trellis smoke
 trellis connect attio
 trellis connect agentmail
 trellis docs add ./product-docs
-trellis add observability langfuse
-trellis deploy
-trellis smoke
+trellis connect langfuse
 trellis mcp install
 ```
 
@@ -29,9 +29,13 @@ The user should not have to design the platform.
 
 They should get a known-good stack with strong defaults, visible reliability, and clean escape hatches.
 
+The first deploy should require only Cloudflare account auth. Attio, AgentMail, Firecrawl, and optional trace sinks connect after the app is alive.
+
 The rule:
 
 Compose internally. Curate externally.
+
+For the concrete parity checklist against the current AI SDR, see [Trellis v3 AI SDR Parity Contract](trellis-v3-parity-contract.md).
 
 ## The Product Boundary
 
@@ -163,6 +167,16 @@ The default product experience should be:
 trellis deploy
 ```
 
+The first successful deploy should require only Cloudflare credentials.
+
+That means:
+
+- Trellis provisions or verifies the Cloudflare app substrate.
+- The generated app boots without Attio, email, or research provider credentials.
+- Provider connections happen after deploy through `trellis connect ...` or the dashboard.
+- The app can run smoke tests in safe local/mock mode before real GTM side effects are enabled.
+- No-send mode is the default until explicit approval and provider readiness checks pass.
+
 The point is not that Trellis hides all complexity.
 
 The point is that the happy path for a correct GTM agent is short, legible, and production-shaped from the first file.
@@ -193,6 +207,39 @@ The message to GTM builders:
 Most teams can make an agent demo.
 
 Trellis gives them the missing production path: webhooks, state, retries, approval gates, provider adapters, observability, MCP, and deployment in one understandable stack.
+
+## What The Stack Makes Possible
+
+There is enough platform plumbing now to rebuild Trellis as a simpler system.
+
+The likely move:
+
+```text
+Flue       -> agent harness
+Cloudflare -> durable runtime, storage, webhooks, queues, models, sandbox
+Trellis    -> vertical pack format, GTM contracts, safety, reliability, and operator surface
+```
+
+Trellis should not own a bespoke actor runtime, sandbox broker, model gateway wrapper, blob store, queue system, email system, and observability layer unless those are the product.
+
+Most of that now exists as platform plumbing.
+
+| Plumbing Need | Best Fit | What This Unlocks |
+| --- | --- | --- |
+| Agent harness | Flue | `agents/*.ts`, sessions, roles, skills, markdown context, typed schema outputs, MCP tools. This maps cleanly to "Trellis logic lives in markdown." |
+| Markdown and skills loading | Flue + R2 + just-bash | Store `AGENTS.md`, skills, ICP docs, playbooks, and product docs in R2 or the repo. Mount them as a filesystem and let the agent use `grep`, `glob`, `read`, `rg`, `jq`, and related tools. |
+| Lightweight filesystem context | just-bash / Bash Tool | Most research, support, and data-agent workflows do not need a full container. Agents can search large file context and pull only relevant snippets into the model. |
+| Durable agent identity | Cloudflare Agents | One durable object per campaign, account, prospect, inbox, workspace, repo, or other business object. Built-in SQL, state, scheduling, WebSockets, and hibernation. |
+| Long workflows | Cloudflare Workflows | Qualification, research, approval, send, wait-for-reply, follow-up, and handoff can be durable steps with retries, sleeps, and checkpoints. |
+| Full sandboxed compute | Cloudflare Sandbox | Real Linux containers from Workers. Run Python, Node, git, background processes, file operations, terminal sessions, and code execution. Use only when just-bash is not enough. |
+| Blob and object storage | Cloudflare R2 | Store markdown packs, uploaded docs, generated artifacts, transcripts, attachments, sandbox snapshots, and logs. |
+| Relational app state | D1 or Durable Object SQLite | D1 for queryable global app state. Durable Object SQLite for per-agent/private state. Keep Trellis schemas, drop custom persistence plumbing. |
+| Queueing and webhooks | Workers + Queues | `/webhooks/*`, email handlers, background ingest, dead-letter queues, and retries. This replaces much of the current custom webhook dispatch. |
+| Model gateway | Cloudflare AI Gateway | Multi-provider routing, logs, cost and latency visibility, caching, rate limits, retries, and DLP/guardrail paths. This can replace a dedicated model gateway wrapper. |
+| Email | Cloudflare Email Service, AgentMail | Cloudflare Email can cover native Workers email paths as it matures. AgentMail remains a strong first provider for agentic outbound and inbound replies. Keep the Trellis email contract. |
+| Observability | Workers Logs + OpenTelemetry + AI Gateway logs | Solid infrastructure and model visibility. For agent trace UX and eval workflows, Trellis can optionally connect Langfuse or Braintrust. |
+| Browser and computer actions | Cloudflare Browser Run + Sandbox | Good for web automation, screenshots, PDFs, scraping, Playwright/Puppeteer/CDP, and browser-backed research. This is not a general desktop control system. |
+| Multi-agent coordination | Cloudflare Agents + Flue sessions/tasks | A coordinator agent can dispatch to sub-agents or multiple harness sessions over the same object and context. |
 
 ## Reference Stack
 
@@ -242,30 +289,21 @@ It should not know what an account, prospect, campaign, ICP, reply, opportunity,
 
 Trellis supplies that vertical meaning.
 
-In Trellis v3, a GTM step should look conceptually like:
+In Trellis v3, a GTM step should look conceptually like Trellis:
 
 ```ts
-export default async function qualifyProspect({ init, payload, env }) {
-  const sandbox = await loadTrellisPack(env, payload.workspaceId);
-  const harness = await init({
-    sandbox,
-    model: "gateway/anthropic/claude-sonnet",
-    role: "gtm-qualifier",
-  });
-
-  const session = await harness.session(payload.threadId);
-
-  return await session.skill("icp-qualification", {
-    args: payload,
-    schema: qualificationResultSchema,
+export async function qualifyProspect(app, signal) {
+  return app.skill("icp-qualification", {
+    context: await app.context(signal),
+    schema: schema.qualification(),
   });
 }
 ```
 
 That is the right division:
 
-- Flue runs the agent.
-- Trellis defines the pack, payload, schema, safety rules, and workflow meaning.
+- Flue runs the agent under the hood.
+- Trellis defines the public API, pack, payload, schema, safety rules, and workflow meaning.
 
 ## Cloudflare's Role
 
@@ -818,6 +856,8 @@ Preserve the public workflow contracts while changing the substrate.
 Make `trellis init`, `trellis connect`, `trellis docs add`, `trellis deploy`, and `trellis smoke` excellent.
 
 The CLI should generate and verify the full stack.
+
+Legacy composition commands can remain during migration only behind explicit legacy/development paths. They should not appear in the default help, scaffold, or first-run story.
 
 ### Phase 5: Package The GTM Template
 

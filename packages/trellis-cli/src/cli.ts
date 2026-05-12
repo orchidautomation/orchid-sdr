@@ -1,4 +1,5 @@
-import { cpSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -30,6 +31,7 @@ import {
   resolveInitProfile,
   resolveInitModuleIds,
 } from "../../framework/src/scaffold.js";
+import { runTrellisSmoke } from "../../gtm/src/index.js";
 import { buildClaudeCodeMcpConfig, mergeClaudeCodeMcpConfig } from "./mcp-config.js";
 
 loadProcessEnvFiles();
@@ -79,7 +81,44 @@ const DOMAIN_KITS = {
 } as const;
 
 type DomainKitId = keyof typeof DOMAIN_KITS;
-const config = await loadActiveConfig();
+
+const V3_CONNECTIONS = {
+  attio: {
+    id: "attio",
+    kind: "crm",
+    displayName: "Attio",
+    requiredEnv: ["ATTIO_API_KEY"],
+    optionalEnv: ["ATTIO_DEFAULT_LIST_ID"],
+    capabilities: ["crm.syncProspect", "crm.stagePromotion"],
+  },
+  agentmail: {
+    id: "agentmail",
+    kind: "email",
+    displayName: "AgentMail",
+    requiredEnv: ["AGENTMAIL_API_KEY"],
+    optionalEnv: ["AGENTMAIL_WEBHOOK_SECRET"],
+    capabilities: ["mail.preview", "mail.send", "mail.reply", "reply.webhook"],
+  },
+  firecrawl: {
+    id: "firecrawl",
+    kind: "research",
+    displayName: "Firecrawl",
+    requiredEnv: ["FIRECRAWL_API_KEY"],
+    optionalEnv: [],
+    capabilities: ["research.search", "research.extract", "browser.run"],
+  },
+  langfuse: {
+    id: "langfuse",
+    kind: "observability",
+    displayName: "Langfuse",
+    requiredEnv: ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"],
+    optionalEnv: [],
+    capabilities: ["trace.export", "evals.export"],
+  },
+} as const;
+
+type V3ConnectionId = keyof typeof V3_CONNECTIONS;
+let activeConfigPromise: Promise<AiSdrConfig> | undefined;
 
 await main();
 
@@ -91,19 +130,25 @@ async function main() {
         printHelp();
         break;
       case "modules":
-        listModules();
+        await listModules();
         break;
       case "add":
         await printAddPlan(arg);
         break;
       case "check":
-        printCompositionCheck();
+        await printCompositionCheck();
         break;
       case "connect":
         await handleConnectCommand(arg);
         break;
+      case "docs":
+        await handleDocsCommand(arg, providerArg);
+        break;
+      case "smoke":
+        await handleSmokeCommand(arg);
+        break;
       case "deploy":
-        handleDeployCommand(arg);
+        await handleDeployCommand(arg, cliFlags);
         break;
       case "admin":
         await handleAdminCommand(arg, cliFlags);
@@ -115,7 +160,11 @@ async function main() {
         await handleMcpCommand(arg, cliFlags);
         break;
       case "init":
-        await scaffoldProject(arg, cliFlags);
+        if (cliFlags.legacy === true || typeof cliFlags.kit === "string") {
+          await scaffoldProject(arg, cliFlags);
+        } else {
+          await scaffoldV3Project(arg, cliFlags);
+        }
         break;
       default:
         console.error(`Unknown command: ${command}`);
@@ -140,80 +189,31 @@ async function main() {
 function printHelp() {
   console.log(`trellis workspace commands:
 
-  npm run trellis -- modules
-  npm run trellis -- check
-  npm run trellis -- connect <module-id>
-  npm run trellis -- connect <capability> <provider>
-  npm run trellis -- deploy <local|vercel|self-hosted>
-  npm run trellis -- admin cleanup-stale [--apply] [--limit 50] [--stale-minutes 90]
-  npm run trellis -- discovery seed <term>
-  npm run trellis -- discovery run <term>
-  npm run trellis -- discovery tick
-  npm run trellis -- mcp claude-code [--local|--remote] [--write]
-  npm run trellis -- add <module-id>
-  npm run trellis -- add <capability> <provider>
-  npm run trellis -- add kit <sdr|meeting-prep> --apply
-  npm run trellis -- init <target-dir> [--name my-app] [--kit sdr|meeting-prep]
+  npm run trellis -- connect <business-provider>
+  npm run trellis -- docs add <path>
+  npm run trellis -- smoke
+  npm run trellis -- deploy
+  npm run trellis -- init <target-dir> [--name my-app]
   npm run trellis -- <command> --json
 
 Examples:
 
-  npm run trellis -- add crm attio
-  npm run trellis -- add crm attio --apply
-  npm run trellis -- add email agentmail
-  npm run trellis -- add source apify --apply
-  npm run trellis -- add search firecrawl
-  npm run trellis -- add extract firecrawl
-  npm run trellis -- add deep-research parallel
-  npm run trellis -- add monitor parallel
-  npm run trellis -- add enrichment prospeo
-  npm run trellis -- add state convex
-  npm run trellis -- add runtime rivet
-  npm run trellis -- add source apify
-  npm run trellis -- modules --json
-  npm run trellis -- check --json
-  npm run trellis -- discovery seed "https://www.linkedin.com/feed/update/urn:li:activity:123/"
-  npm run trellis -- discovery run "https://www.linkedin.com/feed/update/urn:li:activity:123/" --source linkedin_public_post
-  npm run trellis -- discovery tick --source linkedin_public_post
-  npm run trellis -- add model vercel-ai-gateway
-  npm run trellis -- add runtime vercel-sandbox
-  npm run trellis -- add handoff slack
-  npm run trellis -- add kit sdr --apply
-  npm run trellis -- add kit meeting-prep --apply
-  npm run trellis -- connect source apify
-  npm run trellis -- deploy vercel
-  npm run trellis -- deploy vercel --json
-  npm run trellis -- mcp claude-code --local --write
-  npm run trellis -- mcp claude-code --local --write --json
-  npm run trellis -- init ../trellis-core --name trellis-core
-  npm run trellis -- init ../trellis-sdr --name trellis-sdr --kit sdr
-  npm run trellis -- init ../meeting-prep --name meeting-prep --kit meeting-prep
-  npm run trellis -- init ../trellis-core --name trellis-core --json
-  npm run trellis -- init ../trellis-core-plus --name trellis-core-plus --with-crm --with-email
+  npm run trellis -- init ../acme-sdr --name acme-sdr
+  npm run trellis -- connect attio
+  npm run trellis -- connect agentmail
+  npm run trellis -- connect firecrawl
+  npm run trellis -- docs add ./product-docs
+  npm run trellis -- smoke
+  npm run trellis -- deploy
+  npm run trellis -- deploy --json
 
-Simple labels stay short in the CLI: search, extract, deep-research, monitor, enrichment.
-The alias "research" resolves to the full research contract family.
+Simple labels stay short in the CLI: attio, agentmail, firecrawl, langfuse.
 
-Init now always scaffolds the neutral core Trellis app unless you add a domain kit.
-Add optional lanes with explicit flags or later with add/connect commands.
-Domain kits available today:
-  sdr
-  meeting-prep
-Optional lane flags:
-  --with-discovery
-  --with-deep-research
-  --with-enrichment
-  --with-crm
-  --with-email
-  --with-handoff
-
-Capability categories available through add/connect:
-  source, search, extract, deep-research, enrichment, crm, email, handoff, state, runtime, model, mcp
-
-Init is deterministic, not an interactive wizard.
+Init scaffolds the Trellis v3 GTM path by default.
+Cloudflare is the default deploy target.
+Business providers are connected after first boot.
 Use --json when a plugin or coding agent is orchestrating the setup.
-Use add ... --apply to layer in new providers and sources after boot.
-Apply mode works on scaffold-generated workspaces.`);
+Legacy composition commands still exist behind explicit --legacy for migration work, but they are not part of the v3 happy path.`);
 }
 
 async function handleAdminCommand(subcommand: string | undefined, flags: Record<string, string | boolean>) {
@@ -364,7 +364,8 @@ async function handleDiscoveryCommand(
   }
 }
 
-function listModules() {
+async function listModules() {
+  const config = await getActiveConfig();
   const installed = new Set((config.modules ?? []).map((module: AiSdrModuleDefinition) => module.id));
   if (jsonOutput) {
     emitJson({
@@ -389,8 +390,9 @@ function listModules() {
   }
 }
 
-function printCompositionCheck() {
-  const evaluations = resolveConfiguredCompositionProfiles().map((profile: AiSdrCompositionProfileId) =>
+async function printCompositionCheck() {
+  const config = await getActiveConfig();
+  const evaluations = resolveConfiguredCompositionProfiles(config).map((profile: AiSdrCompositionProfileId) =>
     evaluateModuleComposition(config.modules ?? [], { profile }),
   );
   if (jsonOutput) {
@@ -416,7 +418,7 @@ function printCompositionCheck() {
   }
 }
 
-function resolveConfiguredCompositionProfiles() {
+function resolveConfiguredCompositionProfiles(config: AiSdrConfig) {
   const supportedProfiles = new Set(aiSdrCompositionProfileIds);
   const configured = (config.compositionTargets ?? []).filter((profile: string): profile is AiSdrCompositionProfileId =>
     supportedProfiles.has(profile as AiSdrCompositionProfileId),
@@ -439,6 +441,11 @@ async function loadActiveConfig(): Promise<AiSdrConfig> {
   return await importConfigFrom(fallbackPath);
 }
 
+async function getActiveConfig(): Promise<AiSdrConfig> {
+  activeConfigPromise ??= loadActiveConfig();
+  return activeConfigPromise;
+}
+
 async function loadBundledBaseConfig(kitIds: DomainKitId[]): Promise<AiSdrConfig> {
   const root = kitIds[0] ? DOMAIN_KITS[kitIds[0]].root : coreAppRoot;
   return await importConfigFrom(path.join(root, "trellis.config.ts"));
@@ -455,9 +462,15 @@ async function loadDiscoveryRegistry() {
 
 async function printAddPlan(moduleId: string | undefined) {
   if (!moduleId) {
-    console.error("Missing module or capability. Example: npm run trellis -- add search firecrawl");
+    console.error("Missing module or capability. In v3, use connect <provider> or docs add <path>. Legacy add requires --legacy.");
     process.exitCode = 1;
     return;
+  }
+
+  if (cliFlags.legacy !== true) {
+    throw new Error(
+      "trellis add is a legacy composition command. Use trellis connect <provider> for v3, or re-run add with --legacy while maintaining the old reference app.",
+    );
   }
 
   if (moduleId === "kit") {
@@ -478,6 +491,11 @@ async function printAddPlan(moduleId: string | undefined) {
     return;
   }
 
+  if (moduleId === "langfuse") {
+    printLangfuseConnectionGuide();
+    return;
+  }
+
   const module = findModuleForAddCommand(defaultTrellisModules(), {
     capabilityOrModule: moduleId,
     provider: providerArg,
@@ -494,44 +512,43 @@ async function printAddPlan(moduleId: string | undefined) {
     return;
   }
 
-  printPlan(module);
+  await printPlan(module);
 }
 
 async function handleConnectCommand(moduleId: string | undefined) {
   if (!moduleId) {
-    const guides = [
-      "npm run trellis -- connect source apify",
-      "npm run trellis -- connect search firecrawl",
-      "npm run trellis -- connect deep-research parallel",
-      "npm run trellis -- connect enrichment prospeo",
-      "npm run trellis -- connect crm attio",
-      "npm run trellis -- connect email agentmail",
-      "npm run trellis -- connect handoff slack",
-      "npm run trellis -- connect mcp trellis-mcp",
-    ];
+    const guides = Object.keys(V3_CONNECTIONS).map((id) => `npm run trellis -- connect ${id}`);
     if (jsonOutput) {
       emitJson({
         ok: true,
         command: "connect",
         mode: "help",
         guides,
-        notes: ["Use --apply if you also want to add the module to a scaffolded workspace first."],
+        notes: ["Provider credentials can be connected after the first Cloudflare deploy."],
       });
       return;
     }
     console.log(`Connection guides:
 
-  npm run trellis -- connect source apify
-  npm run trellis -- connect search firecrawl
-  npm run trellis -- connect deep-research parallel
-  npm run trellis -- connect enrichment prospeo
-  npm run trellis -- connect crm attio
-  npm run trellis -- connect email agentmail
-  npm run trellis -- connect handoff slack
-  npm run trellis -- connect mcp trellis-mcp
+  npm run trellis -- connect attio
+  npm run trellis -- connect agentmail
+  npm run trellis -- connect firecrawl
+  npm run trellis -- connect langfuse
 
-Use --apply if you also want to add the module to a scaffolded workspace first.`);
+Provider credentials can be connected after the first Cloudflare deploy.`);
     return;
+  }
+
+  const v3Connection = resolveV3Connection(moduleId, providerArg);
+  if (v3Connection) {
+    printV3ConnectionGuide(v3Connection);
+    return;
+  }
+
+  if (cliFlags.legacy !== true) {
+    throw new Error(
+      `Non-v3 provider/module setup is legacy. Use one of: ${Object.keys(V3_CONNECTIONS).join(", ")}. Re-run with --legacy only if you are maintaining the old reference app.`,
+    );
   }
 
   const module = findModuleForAddCommand(defaultTrellisModules(), {
@@ -553,6 +570,7 @@ Use --apply if you also want to add the module to a scaffolded workspace first.`
   }
 
   if (jsonOutput) {
+    const config = await getActiveConfig();
     const plan = buildModuleInstallPlan(module, {
       installedModuleIds: (config.modules ?? []).map((item: AiSdrModuleDefinition) => item.id),
     });
@@ -565,13 +583,141 @@ Use --apply if you also want to add the module to a scaffolded workspace first.`
     return;
   }
 
-  printConnectionGuide(module);
+  await printConnectionGuide(module);
 }
 
-function handleDeployCommand(target: string | undefined) {
-  const resolvedTarget = (target ?? "local").toLowerCase();
+function resolveV3Connection(moduleId: string, provider: string | undefined) {
+  const candidate = (provider ?? moduleId).toLowerCase();
+  return candidate in V3_CONNECTIONS
+    ? V3_CONNECTIONS[candidate as V3ConnectionId]
+    : null;
+}
+
+function printV3ConnectionGuide(guide: (typeof V3_CONNECTIONS)[V3ConnectionId]) {
+  if (jsonOutput) {
+    emitJson({
+      ok: true,
+      command: "connect",
+      mode: "v3-provider",
+      provider: guide,
+      defaults: {
+        firstDeployRequiresProviderCredentials: false,
+        noSendsModeUntilApproved: true,
+      },
+      next: [
+        `set ${guide.requiredEnv.join(", ")}`,
+        "run trellis smoke",
+        "turn off no-send mode only after approvals are configured",
+      ],
+    });
+    return;
+  }
+  console.log(`${guide.displayName} connection guide:
+
+Required env:
+${guide.requiredEnv.map((name) => `  - ${name}`).join("\n")}
+
+Optional env:
+${guide.optionalEnv.length > 0 ? guide.optionalEnv.map((name) => `  - ${name}`).join("\n") : "  none"}
+
+v3 behavior:
+  - credentials are connected after the Cloudflare app boots
+  - smoke mode still runs without this provider
+  - outbound writes stay gated by Trellis safety until approval checks pass`);
+}
+
+function printLangfuseConnectionGuide() {
+  printV3ConnectionGuide(V3_CONNECTIONS.langfuse);
+}
+
+async function handleDocsCommand(subcommand: string | undefined, docsPath: string | undefined) {
+  if (subcommand !== "add") {
+    throw new Error("Unknown docs command. Use: npm run trellis -- docs add <path>");
+  }
+  if (!docsPath) {
+    throw new Error("Missing docs path. Use: npm run trellis -- docs add ./product-docs");
+  }
+
+  const resolvedPath = path.resolve(process.cwd(), docsPath);
+  if (jsonOutput) {
+    emitJson({
+      ok: true,
+      command: "docs",
+      subcommand: "add",
+      path: docsPath,
+      resolvedPath,
+      target: "R2-backed Trellis knowledge pack",
+      next: [
+        "upload or sync docs into the Trellis knowledge pack",
+        "run trellis smoke to verify pack loading",
+      ],
+    });
+    return;
+  }
+
+  console.log(`Docs add plan:
+
+  source: ${resolvedPath}
+  target: Trellis knowledge pack
+
+v3 behavior:
+  - sync docs into the R2-backed pack store
+  - make them available to skills through the Trellis sandbox filesystem
+  - verify retrieval during trellis smoke`);
+}
+
+async function handleSmokeCommand(scope: string | undefined) {
+  const resolvedScope = scope ?? "fixture-signal";
+  const result = await runTrellisSmoke();
+  if (!result.ok) {
+    process.exitCode = 1;
+  }
+
+  if (jsonOutput) {
+    emitJson({
+      ...result,
+      command: "smoke",
+      scope: resolvedScope,
+    });
+    return;
+  }
+
+  console.log(`Trellis smoke path (${resolvedScope}):
+
+Mode:
+  - ${result.mode}
+  - external writes: ${result.externalWrites ? "enabled" : "blocked"}
+  - no-send mode: ${result.noSendsMode ? "on" : "off"}
+
+Checks:`);
+  for (const check of result.checks) {
+    console.log(`  - ${check.status}: ${check.id} - ${check.detail}`);
+  }
+  console.log(`
+Fixture:
+  - signal: ${result.fixture.id}
+  - workspace: ${result.fixture.workspaceId}
+  - thread: ${result.fixture.threadId}
+
+Result:
+  - workflows started: ${result.startedWorkflows.map((workflow) => workflow.name).join(", ") || "none"}
+  - prospects created: ${result.prospects.length}
+  - drafts created: ${result.drafts.length}
+  - audit events: ${result.auditEvents.map((event) => event.type).join(", ") || "none"}`);
+}
+
+async function handleDeployCommand(target: string | undefined, flags: Record<string, string | boolean>) {
+  const resolvedTarget = (target ?? "cloudflare").toLowerCase();
+  if (resolvedTarget !== "cloudflare" && flags.legacy !== true) {
+    throw new Error(
+      `Deploy target "${resolvedTarget}" is legacy. Trellis v3 deploys to Cloudflare by default. Re-run with --legacy only for old local/Vercel/self-hosted migration paths.`,
+    );
+  }
 
   switch (resolvedTarget) {
+    case "cloudflare":
+      await handleCloudflareDeploy(flags);
+      return;
     case "local":
       if (jsonOutput) {
         emitJson({
@@ -718,7 +864,93 @@ Recommended sequence:
   6. verify /healthz, /dashboard, and /mcp/trellis`);
       return;
     default:
-      throw new Error("Unknown deploy target. Use one of: local, vercel, self-hosted");
+      throw new Error("Unknown deploy target. Use one of: cloudflare, local, vercel, self-hosted");
+  }
+}
+
+async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
+  const wranglerConfigPath = findWranglerConfig(process.cwd());
+  const apply = flags.apply === true || flags.write === true || (Boolean(wranglerConfigPath) && !jsonOutput && flags["dry-run"] !== true);
+  const plan = {
+    ok: true,
+    command: "deploy",
+    target: "cloudflare",
+    mode: apply ? "apply" : "plan",
+    wranglerConfigPath,
+    requiredAuth: [
+      "Cloudflare account auth via wrangler login or CLOUDFLARE_API_TOKEN",
+    ],
+    provisions: [
+      "Workers app",
+      "Durable Objects / Cloudflare Agents bindings",
+      "Workflows",
+      "D1 database",
+      "R2 knowledge and artifact buckets",
+      "Queues and dead-letter queues",
+      "AI Gateway route",
+      "Trellis MCP and dashboard routes",
+    ],
+    firstBoot: {
+      requiresProviderCredentials: false,
+      noSendsMode: true,
+      smokeMode: true,
+    },
+    next: [
+      "trellis smoke",
+      "trellis connect attio",
+      "trellis connect agentmail",
+      "trellis docs add ./product-docs",
+    ],
+  };
+
+  if (!apply) {
+      if (jsonOutput) {
+        emitJson(plan);
+        return;
+      }
+      console.log(`Cloudflare deploy path:
+
+Required:
+  - Cloudflare account auth via wrangler login or CLOUDFLARE_API_TOKEN
+
+Trellis v3 provisions or verifies:
+  - Workers app
+  - Durable Objects / Cloudflare Agents bindings
+  - Workflows
+  - D1 database
+  - R2 knowledge and artifact buckets
+  - Queues and dead-letter queues
+  - AI Gateway route
+  - Trellis MCP and dashboard routes
+
+First boot:
+  - no Attio/email/research credentials required
+  - no-send mode enabled
+  - smoke mode available before real GTM side effects
+
+Then:
+  1. trellis smoke
+  2. trellis connect attio
+  3. trellis connect agentmail
+  4. trellis docs add ./product-docs`);
+      return;
+  }
+
+  if (!wranglerConfigPath) {
+    throw new Error("Cannot deploy: no wrangler.jsonc, wrangler.json, or wrangler.toml found in the current project.");
+  }
+
+  const deploy = runCommand("npx", ["wrangler", "deploy"], {
+    stdio: jsonOutput ? "pipe" : "inherit",
+  });
+  if (jsonOutput) {
+    emitJson({
+      ...plan,
+      deploy,
+    });
+  }
+  if (deploy.status !== 0) {
+    throw new Error(`wrangler deploy failed with exit code ${deploy.status}`);
   }
 }
 
@@ -731,6 +963,300 @@ async function handleMcpCommand(subcommand: string | undefined, flags: Record<st
     default:
       throw new Error("Unknown mcp command. Use: npm run trellis -- mcp claude-code [--local|--remote] [--write]");
   }
+}
+
+async function scaffoldV3Project(targetArg: string | undefined, flags: Record<string, string | boolean>) {
+  if (flags.interactive === true || flags.wizard === true) {
+    throw new Error("Interactive init is not part of Trellis v3. Run init with an explicit target and optional --name.");
+  }
+  if (!targetArg) {
+    throw new Error("Missing target directory. Example: npm run trellis -- init ../acme-sdr --name acme-sdr");
+  }
+
+  const targetDir = path.resolve(process.cwd(), targetArg);
+  const appName = String(flags.name ?? path.basename(targetDir));
+  const packageName = sanitizePackageName(appName);
+  const workerName = packageName.replace(/_/g, "-");
+
+  await ensureEmptyDirectory(targetDir);
+  await mkdir(path.join(targetDir, "src"), { recursive: true });
+  await mkdir(path.join(targetDir, "knowledge"), { recursive: true });
+  await mkdir(path.join(targetDir, "skills", "icp-qualification"), { recursive: true });
+
+  await writeFile(
+    path.join(targetDir, "package.json"),
+    JSON.stringify(buildV3ScaffoldPackage(packageName), null, 2) + "\n",
+  );
+  await writeFile(path.join(targetDir, "tsconfig.json"), renderV3Tsconfig());
+  await writeFile(path.join(targetDir, "wrangler.jsonc"), renderV3WranglerConfig(workerName));
+  await writeFile(path.join(targetDir, ".env.example"), renderV3EnvExample());
+  await writeFile(path.join(targetDir, "src", "agent.ts"), renderV3AgentSource());
+  await writeFile(path.join(targetDir, "src", "index.ts"), renderV3WorkerSource());
+  await writeFile(path.join(targetDir, "knowledge", "icp.md"), renderV3KnowledgeSeed());
+  await writeFile(path.join(targetDir, "skills", "icp-qualification", "SKILL.md"), renderV3QualificationSkill());
+  await writeFile(path.join(targetDir, "README.md"), renderV3Readme(appName));
+
+  const nextSteps = [
+    `cd ${targetDir}`,
+    "npm install",
+    "wrangler login",
+    "trellis deploy",
+    "trellis smoke",
+    "trellis connect attio",
+    "trellis connect agentmail",
+  ];
+
+  if (jsonOutput) {
+    emitJson({
+      ok: true,
+      command: "init",
+      mode: "v3-cloudflare-gtm",
+      targetDir,
+      appName,
+      packageName,
+      filesWritten: [
+        "package.json",
+        "tsconfig.json",
+        "wrangler.jsonc",
+        ".env.example",
+        "src/agent.ts",
+        "src/index.ts",
+        "knowledge/icp.md",
+        "skills/icp-qualification/SKILL.md",
+        "README.md",
+      ],
+      nextSteps,
+    });
+    return;
+  }
+
+  console.log(`Initialized ${appName} in ${targetDir}`);
+  console.log("Mode: Trellis v3 Cloudflare GTM");
+  console.log("");
+  console.log("Next steps:");
+  nextSteps.forEach((step, index) => console.log(`  ${index + 1}. ${step}`));
+}
+
+function buildV3ScaffoldPackage(packageName: string) {
+  return {
+    name: packageName,
+    version: "0.0.0",
+    private: true,
+    type: "module",
+    scripts: {
+      dev: "wrangler dev",
+      deploy: "trellis deploy",
+      smoke: "trellis smoke",
+      typecheck: "tsc --noEmit",
+      "cf:deploy": "wrangler deploy",
+      "cf:tail": "wrangler tail",
+    },
+    dependencies: {
+      "@trellis/gtm": "workspace:*",
+      "@trellis/providers": "workspace:*",
+      zod: "^3.25.76",
+    },
+    devDependencies: {
+      "@cloudflare/workers-types": "^4.20260511.1",
+      "@trellis/cli": "workspace:*",
+      typescript: "^5.8.3",
+      wrangler: "^4.90.0",
+    },
+  };
+}
+
+function renderV3Tsconfig() {
+  return JSON.stringify({
+    compilerOptions: {
+      target: "ES2022",
+      module: "ESNext",
+      moduleResolution: "Bundler",
+      strict: true,
+      skipLibCheck: true,
+      noEmit: true,
+      types: ["@cloudflare/workers-types"],
+    },
+    include: ["src/**/*.ts"],
+  }, null, 2) + "\n";
+}
+
+function renderV3WranglerConfig(workerName: string) {
+  return `{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "${workerName}",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-12",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "browser": {
+    "binding": "BROWSER"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "TRELLIS_AGENT",
+        "class_name": "TrellisAgent"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["TrellisAgent"]
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "TRELLIS_DB",
+      "database_name": "${workerName}-db"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "TRELLIS_PACKS"
+    },
+    {
+      "binding": "TRELLIS_ARTIFACTS"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "TRELLIS_EVENTS",
+        "queue": "${workerName}-events"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "${workerName}-events"
+      }
+    ]
+  },
+  "workflows": [
+    {
+      "binding": "PROSPECT_WORKFLOW",
+      "name": "${workerName}-prospect",
+      "class_name": "ProspectWorkflow"
+    }
+  ]
+}
+`;
+}
+
+function renderV3EnvExample() {
+  return `# First deploy only needs Cloudflare auth via wrangler login or CLOUDFLARE_API_TOKEN.
+CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_API_TOKEN=
+
+# Connect these after the app boots.
+ATTIO_API_KEY=
+ATTIO_DEFAULT_LIST_ID=
+AGENTMAIL_API_KEY=
+AGENTMAIL_WEBHOOK_SECRET=
+FIRECRAWL_API_KEY=
+
+# Optional trace export. Cloudflare logs and AI Gateway remain the default.
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_SECRET_KEY=
+LANGFUSE_BASE_URL=
+`;
+}
+
+function renderV3AgentSource() {
+  return `import { trellis, schema } from "@trellis/gtm";
+import { agentmail, attio, firecrawl } from "@trellis/providers";
+
+export default trellis.agent("sdr", {
+  crm: attio(),
+  email: agentmail(),
+  research: firecrawl(),
+  knowledge: "knowledge/**/*.md",
+  skills: "skills/**/SKILL.md",
+  safety: trellis.safeOutbound(),
+}, async (app) => {
+  const signal = await app.signal();
+  const qualification = await app.skill("icp-qualification", {
+    context: await app.context(signal),
+    schema: schema.qualification(),
+  });
+
+  return app.workflow("prospect").start({ signal, qualification });
+});
+`;
+}
+
+function renderV3WorkerSource() {
+  return `import { trellis } from "@trellis/gtm";
+import agent from "./agent";
+
+const runtime = trellis.cloudflare(agent);
+
+export const TrellisAgent = runtime.TrellisAgent;
+export const ProspectWorkflow = runtime.ProspectWorkflow;
+
+export default runtime.worker;
+`;
+}
+
+function renderV3KnowledgeSeed() {
+  return `# ICP
+
+Replace this with your real GTM qualification rules.
+
+- target accounts have an urgent workflow problem
+- the buyer owns GTM systems or revenue operations
+- the signal includes enough context to write a useful first draft
+`;
+}
+
+function renderV3QualificationSkill() {
+  return `# ICP Qualification
+
+Use the knowledge pack and signal context to decide whether the prospect is qualified, disqualified, or needs review.
+
+Return structured output matching the qualification schema:
+
+- decision
+- summary
+- confidence
+- matchedEvidence
+- missingEvidence
+- nextStep
+
+Do not send email or update CRM state from this skill. Draft only.
+`;
+}
+
+function renderV3Readme(appName: string) {
+  return `# ${appName}
+
+Trellis v3 GTM agent scaffold.
+
+## First Boot
+
+\`\`\`bash
+npm install
+wrangler login
+trellis deploy
+trellis smoke
+\`\`\`
+
+The first deploy is Cloudflare-first and does not require Attio, AgentMail, or Firecrawl credentials. Those are connected after the app boots:
+
+\`\`\`bash
+trellis connect attio
+trellis connect agentmail
+trellis connect firecrawl
+trellis docs add ./product-docs
+\`\`\`
+
+Outbound writes stay in no-send mode until approval gates are configured.
+`;
 }
 
 async function scaffoldProject(targetArg: string | undefined, flags: Record<string, string | boolean>) {
@@ -940,7 +1466,8 @@ function resolveModuleChoiceFlags(flags: Record<string, string | boolean>) {
   return { include, exclude };
 }
 
-function printPlan(module: AiSdrModuleDefinition) {
+async function printPlan(module: AiSdrModuleDefinition) {
+  const config = await getActiveConfig();
   const plan = buildModuleInstallPlan(module, {
     installedModuleIds: (config.modules ?? []).map((item: AiSdrModuleDefinition) => item.id),
   });
@@ -960,7 +1487,8 @@ function printPlan(module: AiSdrModuleDefinition) {
   printList("Next steps", plan.nextSteps);
 }
 
-function printConnectionGuide(module: AiSdrModuleDefinition) {
+async function printConnectionGuide(module: AiSdrModuleDefinition) {
+  const config = await getActiveConfig();
   const plan = buildModuleInstallPlan(module, {
     installedModuleIds: (config.modules ?? []).map((item: AiSdrModuleDefinition) => item.id),
   });
@@ -1259,6 +1787,39 @@ function isJsonOutput(flags: Record<string, string | boolean>) {
 
 function emitJson(value: unknown) {
   console.log(JSON.stringify(value, null, 2));
+}
+
+function findWranglerConfig(cwd: string) {
+  for (const fileName of ["wrangler.jsonc", "wrangler.json", "wrangler.toml"]) {
+    const candidate = path.join(cwd, fileName);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function runCommand(
+  commandName: string,
+  args: string[],
+  options: { stdio: "pipe" | "inherit" },
+) {
+  const result = spawnSync(commandName, args, {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: options.stdio,
+    encoding: "utf8",
+  });
+
+  return {
+    command: commandName,
+    args,
+    status: result.status ?? 1,
+    signal: result.signal,
+    stdout: typeof result.stdout === "string" && result.stdout.length > 0 ? result.stdout : undefined,
+    stderr: typeof result.stderr === "string" && result.stderr.length > 0 ? result.stderr : undefined,
+    error: result.error?.message,
+  };
 }
 
 async function ensureEmptyDirectory(targetDir: string) {
