@@ -42,6 +42,10 @@ Those records are enough to prove the GTM control loop is observable and safe be
 
 Approval decisions update D1, append an audit event, and enqueue a runtime event. Provider side effects still remain blocked until the approved action executor exists.
 
+Signal webhooks support optional shared-secret verification through `TRELLIS_WEBHOOK_SECRET` or `SIGNAL_WEBHOOK_SECRET`. If a secret is configured, callers must send either `Authorization: Bearer <secret>`, `x-trellis-webhook-secret`, or `x-webhook-secret`.
+
+Signal webhooks also accept `Idempotency-Key`, `x-trellis-idempotency-key`, or `idempotencyKey` in the JSON body. If the payload does not provide a signal id, Trellis derives a stable id from that key.
+
 ## Knowledge And Skills
 
 Knowledge lives in markdown:

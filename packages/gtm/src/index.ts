@@ -40,6 +40,7 @@ export interface TrellisSignal {
   threadId: string;
   workspaceId: string;
   campaignId?: string;
+  idempotencyKey?: string;
   provider?: string;
   source?: string;
   payload?: Record<string, unknown>;
@@ -255,6 +256,7 @@ export function createTrellisTestApp(input?: {
     threadId: input?.signal?.threadId ?? "thr_test",
     workspaceId: input?.signal?.workspaceId ?? "wrk_test",
     campaignId: input?.signal?.campaignId ?? "cmp_test",
+    idempotencyKey: input?.signal?.idempotencyKey,
     provider: input?.signal?.provider ?? "fixture",
     source: input?.signal?.source ?? "manual",
     payload: input?.signal?.payload ?? {},
@@ -589,6 +591,14 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
         }
 
         if (url.pathname === "/webhooks/signals" && request.method === "POST") {
+          const verification = verifySignalWebhook(request, env);
+          if (!verification.ok) {
+            return jsonResponse({
+              ok: false,
+              error: "unauthorized_webhook",
+              detail: "Signal webhook secret was configured but not provided.",
+            }, 401);
+          }
           const signal = await readSignalFromRequest(request);
           const run = await runTrellisAgent(agent, { signal });
           const persistence = await persistRuntimeResult(env, run);
@@ -604,6 +614,10 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             auditEvents: run.auditEvents,
             persistence,
             queue,
+            webhook: {
+              verified: verification.enabled,
+              idempotencyKey: run.signal.idempotencyKey ?? null,
+            },
             noSendsMode: agent.config.safety?.noSends ?? true,
           }, 202);
         }
@@ -698,14 +712,43 @@ async function readSignalFromRequest(request: Request): Promise<Partial<TrellisS
   const payload = await readJsonBody(request);
   const record = isRecord(payload) ? payload : {};
   const now = Date.now();
+  const idempotencyKey = readString(request.headers.get("idempotency-key"))
+    ?? readString(request.headers.get("x-trellis-idempotency-key"))
+    ?? readString(record.idempotencyKey);
+  const explicitId = readString(record.id) ?? readString(record.signalId);
+  const signalId = explicitId
+    ?? (idempotencyKey ? `sig_${normalizeIdPart(idempotencyKey)}` : undefined)
+    ?? `sig_${now}`;
   return {
-    id: readString(record.id) ?? readString(record.signalId) ?? `sig_${now}`,
-    threadId: readString(record.threadId) ?? `thr_${readString(record.id) ?? now}`,
+    id: signalId,
+    threadId: readString(record.threadId) ?? `thr_${signalId}`,
     workspaceId: readString(record.workspaceId) ?? readString(record.workspace) ?? "wrk_default",
     campaignId: readString(record.campaignId) ?? readString(record.campaign),
+    idempotencyKey,
     provider: readString(record.provider) ?? "webhook",
     source: readString(record.source) ?? "webhook.signals",
     payload: record,
+  };
+}
+
+function verifySignalWebhook(request: Request, env: Record<string, unknown> | undefined) {
+  const configuredSecret = readString(env?.TRELLIS_WEBHOOK_SECRET)
+    ?? readString(env?.SIGNAL_WEBHOOK_SECRET);
+  if (!configuredSecret) {
+    return {
+      enabled: false,
+      ok: true,
+    };
+  }
+
+  const authorization = readString(request.headers.get("authorization"));
+  const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : undefined;
+  const providedSecret = bearer
+    ?? readString(request.headers.get("x-trellis-webhook-secret"))
+    ?? readString(request.headers.get("x-webhook-secret"));
+  return {
+    enabled: true,
+    ok: providedSecret === configuredSecret,
   };
 }
 
@@ -997,6 +1040,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readString(value: unknown) {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function normalizeIdPart(value: string) {
+  return value.trim().replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80) || "idempotent";
 }
 
 function jsonResponse(body: unknown, status = 200) {

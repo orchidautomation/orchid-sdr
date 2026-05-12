@@ -101,12 +101,34 @@ describe("@trellis/gtm v3 API", () => {
     const env = {
       TRELLIS_DB: fakeD1,
       TRELLIS_EVENTS: fakeQueue,
+      TRELLIS_WEBHOOK_SECRET: "test-secret",
     };
 
     const health = await runtime.worker.fetch(new Request("https://example.com/healthz"), env);
     const smoke = await runtime.worker.fetch(new Request("https://example.com/smoke"), {});
+    const unauthorizedWebhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({ id: "sig_denied" }),
+    }), env);
+    const idempotentWebhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-secret",
+        "idempotency-key": "retry key",
+      },
+      body: JSON.stringify({
+        workspaceId: "wrk_retry",
+        threadId: "thr_retry",
+      }),
+    }), {
+      TRELLIS_WEBHOOK_SECRET: "test-secret",
+    });
     const webhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
       method: "POST",
+      headers: {
+        authorization: "Bearer test-secret",
+        "idempotency-key": "retry-sig-live",
+      },
       body: JSON.stringify({
         id: "sig_live",
         workspaceId: "wrk_live",
@@ -138,6 +160,22 @@ describe("@trellis/gtm v3 API", () => {
       ok: true,
       mode: "safe-fixture",
     });
+    expect(unauthorizedWebhook.status).toBe(401);
+    await expect(unauthorizedWebhook.json()).resolves.toMatchObject({
+      ok: false,
+      error: "unauthorized_webhook",
+    });
+    await expect(idempotentWebhook.json()).resolves.toMatchObject({
+      ok: true,
+      signal: {
+        id: "sig_retry_key",
+        idempotencyKey: "retry key",
+      },
+      webhook: {
+        verified: true,
+        idempotencyKey: "retry key",
+      },
+    });
     await expect(webhook.json()).resolves.toMatchObject({
       ok: true,
       accepted: true,
@@ -146,6 +184,7 @@ describe("@trellis/gtm v3 API", () => {
         id: "sig_live",
         workspaceId: "wrk_live",
         threadId: "thr_live",
+        idempotencyKey: "retry-sig-live",
       },
       prospects: [
         expect.objectContaining({ signalId: "sig_live" }),
@@ -163,6 +202,10 @@ describe("@trellis/gtm v3 API", () => {
       queue: {
         enabled: true,
         messages: 1,
+      },
+      webhook: {
+        verified: true,
+        idempotencyKey: "retry-sig-live",
       },
       noSendsMode: true,
     });
