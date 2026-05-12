@@ -78,6 +78,8 @@ to create the local manifest that deploy can verify and upload into the Cloudfla
 - verified knowledge markdown to `knowledge/files/*`
 - tracked `skills/**/SKILL.md` files to `skills/files/*`
 
+At runtime, the Worker reads `TRELLIS_PACKS` metadata and exposes pack counts through the webhook response, MCP snapshot, and dashboard.
+
 ## Provider Manifests
 
 Provider connection manifests live under `.trellis/providers/`. They are intentionally non-secret.

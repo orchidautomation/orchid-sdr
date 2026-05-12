@@ -123,6 +123,7 @@ v3 parity:
 - skills can be versioned and traced
 - `trellis docs add <path>` writes `.trellis/knowledge-pack.json` with markdown file hashes as the local verification plan
 - `trellis deploy` syncs the knowledge manifest, markdown files, and tracked `SKILL.md` files to `TRELLIS_PACKS`
+- webhook processing, MCP, and dashboard can inspect `TRELLIS_PACKS` metadata
 
 Legacy to remove after replacement:
 

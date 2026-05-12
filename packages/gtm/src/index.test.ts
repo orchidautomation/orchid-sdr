@@ -98,9 +98,18 @@ describe("@trellis/gtm v3 API", () => {
 
     const fakeD1 = createFakeD1();
     const fakeQueue = createFakeQueue();
+    const fakeR2 = createFakeR2({
+      "knowledge/manifest.json": JSON.stringify({
+        source: "knowledge",
+        files: [{ path: "knowledge/icp.md" }],
+      }),
+      "knowledge/files/icp.md": "# ICP",
+      "skills/files/icp-qualification/SKILL.md": "# ICP Qualification",
+    });
     const env = {
       TRELLIS_DB: fakeD1,
       TRELLIS_EVENTS: fakeQueue,
+      TRELLIS_PACKS: fakeR2,
       TRELLIS_WEBHOOK_SECRET: "test-secret",
     };
 
@@ -122,6 +131,7 @@ describe("@trellis/gtm v3 API", () => {
       }),
     }), {
       TRELLIS_WEBHOOK_SECRET: "test-secret",
+      TRELLIS_PACKS: fakeR2,
     });
     const webhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
       method: "POST",
@@ -175,6 +185,18 @@ describe("@trellis/gtm v3 API", () => {
         verified: true,
         idempotencyKey: "retry key",
       },
+      packs: {
+        enabled: true,
+        knowledge: {
+          manifest: {
+            files: 1,
+          },
+          objects: 1,
+        },
+        skills: {
+          objects: 1,
+        },
+      },
     });
     await expect(webhook.json()).resolves.toMatchObject({
       ok: true,
@@ -206,6 +228,17 @@ describe("@trellis/gtm v3 API", () => {
       webhook: {
         verified: true,
         idempotencyKey: "retry-sig-live",
+      },
+      packs: {
+        enabled: true,
+        knowledge: {
+          manifest: {
+            files: 1,
+          },
+        },
+        skills: {
+          objects: 1,
+        },
       },
       noSendsMode: true,
     });
@@ -239,6 +272,15 @@ describe("@trellis/gtm v3 API", () => {
           approvals: 2,
           auditEvents: 4,
         },
+        packs: {
+          enabled: true,
+          knowledge: {
+            objects: 1,
+          },
+          skills: {
+            objects: 1,
+          },
+        },
       },
       tools: expect.arrayContaining(["trellis.smoke", "trellis.workflow.inspect", "trellis.approval.approve"]),
     });
@@ -248,6 +290,8 @@ describe("@trellis/gtm v3 API", () => {
     expect(dashboardHtml).toContain("<dt>Prospects</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Drafts</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Approvals</dt><dd>2</dd>");
+    expect(dashboardHtml).toContain("<dt>Knowledge Files</dt><dd>1</dd>");
+    expect(dashboardHtml).toContain("<dt>Skill Files</dt><dd>1</dd>");
     await expect(approval.json()).resolves.toMatchObject({
       ok: true,
       approval: {
@@ -306,6 +350,32 @@ function createFakeQueue() {
     send(message: unknown) {
       messages.push(message);
       return { success: true };
+    },
+  };
+}
+
+function createFakeR2(objects: Record<string, string>) {
+  return {
+    get(key: string) {
+      const value = objects[key];
+      if (value === undefined) {
+        return null;
+      }
+      return {
+        text() {
+          return value;
+        },
+      };
+    },
+    list({ prefix = "" }: { prefix?: string } = {}) {
+      return {
+        objects: Object.entries(objects)
+          .filter(([key]) => key.startsWith(prefix))
+          .map(([key, value]) => ({
+            key,
+            size: Buffer.byteLength(value),
+          })),
+      };
     },
   };
 }

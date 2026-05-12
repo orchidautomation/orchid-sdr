@@ -174,6 +174,11 @@ interface TrellisQueue {
   send(message: unknown): Promise<unknown> | unknown;
 }
 
+interface TrellisR2Bucket {
+  get(key: string): Promise<{ text(): Promise<string> | string } | null> | { text(): Promise<string> | string } | null;
+  list?(options?: { prefix?: string }): Promise<{ objects?: Array<{ key: string; size?: number }> }> | { objects?: Array<{ key: string; size?: number }> };
+}
+
 type TrellisApprovalDecisionStatus = "approved" | "rejected";
 
 interface TrellisApprovalDecision {
@@ -600,7 +605,13 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             }, 401);
           }
           const signal = await readSignalFromRequest(request);
-          const run = await runTrellisAgent(agent, { signal });
+          const packContext = await readPackContext(env);
+          const run = await runTrellisAgent(agent, {
+            signal,
+            context: {
+              packs: packContext,
+            },
+          });
           const persistence = await persistRuntimeResult(env, run);
           const queue = await enqueueRuntimeEvent(env, run);
           return jsonResponse({
@@ -618,6 +629,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               verified: verification.enabled,
               idempotencyKey: run.signal.idempotencyKey ?? null,
             },
+            packs: packContext,
             noSendsMode: agent.config.safety?.noSends ?? true,
           }, 202);
         }
@@ -1006,10 +1018,12 @@ async function enqueueApprovalDecision(env: Record<string, unknown> | undefined,
 
 async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
   const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  const packs = await readPackContext(env);
   if (!db?.prepare) {
     return {
       enabled: false,
       counts: null,
+      packs,
     };
   }
 
@@ -1022,6 +1036,7 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
       approvals: await countD1Rows(db, "trellis_approvals"),
       auditEvents: await countD1Rows(db, "trellis_audit_events"),
     },
+    packs,
   };
 }
 
@@ -1031,6 +1046,54 @@ async function countD1Rows(db: TrellisD1Database, tableName: string) {
     return Number(row?.count ?? 0);
   } catch {
     return 0;
+  }
+}
+
+async function readPackContext(env: Record<string, unknown> | undefined) {
+  const bucket = env?.TRELLIS_PACKS as TrellisR2Bucket | undefined;
+  if (!bucket?.get) {
+    return {
+      enabled: false,
+      knowledge: null,
+      skills: null,
+    };
+  }
+
+  const manifestObject = await bucket.get("knowledge/manifest.json");
+  const manifestText = manifestObject ? await manifestObject.text() : undefined;
+  const manifest = parseKnowledgeManifest(manifestText);
+  const listed = bucket.list ? await bucket.list({ prefix: "" }) : null;
+  const objects = listed?.objects ?? [];
+
+  return {
+    enabled: true,
+    knowledge: {
+      manifest: manifest
+        ? {
+            source: typeof manifest.source === "string" ? manifest.source : null,
+            files: Array.isArray(manifest.files) ? manifest.files.length : 0,
+          }
+        : null,
+      objects: objects.filter((object) => object.key.startsWith("knowledge/files/")).length,
+    },
+    skills: {
+      objects: objects.filter((object) => object.key.startsWith("skills/files/")).length,
+    },
+  };
+}
+
+function parseKnowledgeManifest(value: unknown) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value) as {
+      source?: unknown;
+      files?: unknown;
+    };
+    return parsed;
+  } catch {
+    return null;
   }
 }
 
@@ -1064,6 +1127,7 @@ function renderDashboard(
     approvals: 0,
     auditEvents: 0,
   };
+  const packs = snapshot.packs;
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -1081,6 +1145,8 @@ function renderDashboard(
         <dt>Drafts</dt><dd>${counts.drafts}</dd>
         <dt>Approvals</dt><dd>${counts.approvals}</dd>
         <dt>Audit Events</dt><dd>${counts.auditEvents}</dd>
+        <dt>Knowledge Files</dt><dd>${packs.knowledge?.manifest?.files ?? 0}</dd>
+        <dt>Skill Files</dt><dd>${packs.skills?.objects ?? 0}</dd>
       </dl>
     </main>
   </body>
