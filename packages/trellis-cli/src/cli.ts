@@ -154,6 +154,12 @@ const V3_CONNECTIONS = {
 type V3ConnectionId = keyof typeof V3_CONNECTIONS;
 const REQUIRED_V3_PROVIDER_IDS = ["attio", "agentmail", "firecrawl"] as const;
 const OPTIONAL_V3_PROVIDER_IDS = ["apify", "prospeo", "langfuse", "braintrust"] as const;
+type CloudflareSecretReadiness = {
+  checked: boolean;
+  ok: boolean;
+  names: string[];
+  error?: string;
+};
 
 type CloudflareResourceConfig = {
   configPath: string | null;
@@ -412,8 +418,12 @@ Manifest:
   - ${manifest.path}
   - status: ${manifest.status}
 
+Cloudflare secrets:
+${guide.requiredEnv.map((name) => `  - npx wrangler secret put ${name}`).join("\n")}
+
 v3 behavior:
   - credentials are connected after the Cloudflare app boots
+  - deployed agents read provider credentials from Cloudflare Worker secrets
   - smoke mode still runs without this provider
   - outbound writes stay gated by Trellis safety until approval checks pass`);
 }
@@ -490,12 +500,13 @@ v3 behavior:
 async function handleDoctorCommand() {
   const wranglerConfigPath = findWranglerConfig(process.cwd());
   const wranglerSource = wranglerConfigPath ? readFileSync(wranglerConfigPath, "utf8") : "";
+  const remoteSecrets = loadCloudflareSecretReadiness();
   const aiGateway = readAiGatewayReadiness(process.cwd(), wranglerSource);
   const cloudflareResources = readCloudflareResourceConfig(wranglerConfigPath);
   const provisioning = buildCloudflareProvisioningPlan(cloudflareResources);
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
   const skillPack = await loadSkillPack(process.cwd());
-  const providerReadiness = await loadAllV3ProviderReadiness();
+  const providerReadiness = await loadAllV3ProviderReadiness({ remoteSecrets });
   const traceExport = readTraceExportReadiness();
   const smoke = await runTrellisSmoke();
   const checks = [
@@ -520,6 +531,9 @@ async function handleDoctorCommand() {
       doctorCheck(`cloudflare.${resource.id}`, resource.ready, "warn", resource.detail),
     ),
     doctorCheck("cloudflare.aiGateway", aiGateway.ok, "warn", aiGateway.detail),
+    doctorCheck("cloudflare.secrets", remoteSecrets.ok, "warn", remoteSecrets.ok
+      ? `Wrangler can inspect ${remoteSecrets.names.length} deployed Worker secret(s)`
+      : `Wrangler could not inspect deployed Worker secrets: ${remoteSecrets.error ?? "unknown error"}`),
     doctorCheck("knowledge.pack", knowledgePack.ok, "warn", knowledgePack.detail),
     doctorCheck("skills.pack", skillPack.ok, "warn", skillPack.detail),
     doctorCheck("observability.traceExport", true, "warn", traceExport.detail),
@@ -547,6 +561,12 @@ async function handleDoctorCommand() {
       traceExport: traceExport.summary,
       providers: Object.fromEntries(providerReadiness.map((provider) => [provider.id, provider.summary])),
       cloudflare: provisioning.summary,
+      cloudflareSecrets: {
+        checked: remoteSecrets.checked,
+        ok: remoteSecrets.ok,
+        names: remoteSecrets.names,
+        error: remoteSecrets.error,
+      },
       aiGateway: aiGateway.summary,
     });
     return;
@@ -954,6 +974,18 @@ function normalizeVerifyUrl(value: string | undefined) {
   }
 }
 
+function isLocalVerifyEndpoint(value: string | null | undefined) {
+  if (!value) {
+    return false;
+  }
+  try {
+    const url = new URL(value);
+    return ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function asCliRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
       ? value as Record<string, unknown>
@@ -1052,12 +1084,14 @@ async function writeV3ConnectionManifest(guide: (typeof V3_CONNECTIONS)[V3Connec
   };
 }
 
-async function loadAllV3ProviderReadiness() {
-  const required = await Promise.all(REQUIRED_V3_PROVIDER_IDS.map((id) => loadV3ProviderReadiness(id)));
+async function loadAllV3ProviderReadiness(input?: {
+  remoteSecrets?: CloudflareSecretReadiness;
+}) {
+  const required = await Promise.all(REQUIRED_V3_PROVIDER_IDS.map((id) => loadV3ProviderReadiness(id, input)));
   const optional = await Promise.all(
     OPTIONAL_V3_PROVIDER_IDS
       .filter((id) => existsSync(path.join(process.cwd(), trellisStateDirName, "providers", `${id}.json`)))
-      .map((id) => loadV3ProviderReadiness(id)),
+      .map((id) => loadV3ProviderReadiness(id, input)),
   );
   return [...required, ...optional];
 }
@@ -1113,27 +1147,79 @@ function readAiGatewayReadiness(cwd: string, wranglerSource: string) {
   };
 }
 
-async function loadV3ProviderReadiness(id: V3ConnectionId) {
+function readConfiguredProviderIds(cwd: string): V3ConnectionId[] {
+  const agentPath = path.join(cwd, "src", "agent.ts");
+  const source = existsSync(agentPath) ? readFileSync(agentPath, "utf8") : "";
+  return (Object.keys(V3_CONNECTIONS) as V3ConnectionId[])
+    .filter((id) => new RegExp(`\\b${id}\\s*\\(`).test(source));
+}
+
+async function loadV3ProviderReadiness(
+  id: V3ConnectionId,
+  input?: {
+    remoteSecrets?: CloudflareSecretReadiness;
+  },
+) {
   const guide = V3_CONNECTIONS[id];
   const manifestPath = path.join(process.cwd(), trellisStateDirName, "providers", `${id}.json`);
   const manifestExists = existsSync(manifestPath);
   const missingRequiredEnv = guide.requiredEnv.filter((name) => !process.env[name]);
-  const ready = manifestExists && missingRequiredEnv.length === 0;
+  const remoteSecrets = input?.remoteSecrets;
+  const missingRemoteSecrets = remoteSecrets?.ok
+    ? guide.requiredEnv.filter((name) => !remoteSecrets.names.includes(name))
+    : guide.requiredEnv;
+  const remoteReady = Boolean(remoteSecrets?.ok) && missingRemoteSecrets.length === 0;
+  const ready = manifestExists && missingRequiredEnv.length === 0 && remoteReady;
   return {
     id,
     ok: ready,
     detail: ready
-      ? `${guide.displayName} connected and required env is present`
+      ? `${guide.displayName} connected and required local/deployed env is present`
       : manifestExists
-        ? `${guide.displayName} connected; missing env: ${missingRequiredEnv.join(", ")}`
+        ? `${guide.displayName} connected; missing local env: ${formatMissingList(missingRequiredEnv)}; missing Cloudflare secrets: ${formatMissingList(missingRemoteSecrets)}`
         : `${guide.displayName} not connected yet; run trellis connect ${id}`,
     summary: {
       connected: manifestExists,
       manifestPath: manifestExists ? manifestPath : null,
       status: ready ? "ready" : (manifestExists ? "waiting_for_env" : "not_connected"),
       missingRequiredEnv,
+      remoteSecretsChecked: Boolean(remoteSecrets?.checked),
+      missingRemoteSecrets,
       capabilities: guide.capabilities,
     },
+  };
+}
+
+function formatMissingList(values: readonly string[]) {
+  return values.length > 0 ? values.join(", ") : "none";
+}
+
+function loadCloudflareSecretReadiness(): CloudflareSecretReadiness {
+  const result = runCommand("npx", ["wrangler", "secret", "list", "--format", "json"], { stdio: "pipe" });
+  if (result.status !== 0) {
+    return {
+      checked: true,
+      ok: false,
+      names: [],
+      error: result.stderr ?? result.error ?? "wrangler secret list failed",
+    };
+  }
+  const parsed = parseJsonText(result.stdout ?? "[]");
+  if (!Array.isArray(parsed)) {
+    return {
+      checked: true,
+      ok: false,
+      names: [],
+      error: "wrangler secret list returned unexpected output",
+    };
+  }
+  return {
+    checked: true,
+    ok: true,
+    names: parsed.flatMap((item) => {
+      const record = asCliRecord(item);
+      return typeof record?.name === "string" ? [record.name] : [];
+    }).sort((left, right) => left.localeCompare(right)),
   };
 }
 
@@ -1394,6 +1480,14 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
   const smoke = await runTrellisSmoke();
   const endpoint = normalizeVerifyUrl(readFlagString(flags, ["url", "endpoint", "origin"]) ?? process.env.TRELLIS_VERIFY_URL);
   const live = flags.live === true || Boolean(endpoint);
+  const auditRemoteSecrets = live && !isLocalVerifyEndpoint(endpoint);
+  const remoteSecrets = auditRemoteSecrets ? loadCloudflareSecretReadiness() : {
+    checked: false,
+    ok: false,
+    names: [],
+  };
+  const providerReadiness = await loadAllV3ProviderReadiness({ remoteSecrets });
+  const configuredProviders = readConfiguredProviderIds(process.cwd());
   const exerciseAgent = flags["exercise-agent"] === true || flags.signal === true;
   const webhookToken = readFlagString(flags, ["webhook-token", "token"]) ?? process.env.TRELLIS_WEBHOOK_SECRET ?? process.env.SIGNAL_WEBHOOK_SECRET;
   const attioSmoke = flags["attio-smoke"] === true || flags["provider-smoke"] === true;
@@ -1420,6 +1514,28 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
       verifyCheck(`cloudflare.${resource.id}`, resource.ready ? "pass" : "warn", resource.detail),
     ),
     verifyCheck("cloudflare.aiGateway", aiGateway.ok ? "pass" : "warn", aiGateway.detail, aiGateway.summary),
+    auditRemoteSecrets
+      ? verifyCheck("cloudflare.secrets", remoteSecrets.ok ? "pass" : "fail", remoteSecrets.ok
+        ? `Wrangler can inspect ${remoteSecrets.names.length} deployed Worker secret(s)`
+        : `Wrangler could not inspect deployed Worker secrets: ${remoteSecrets.error ?? "unknown error"}`, {
+        names: remoteSecrets.names,
+        error: remoteSecrets.error,
+      })
+      : verifyCheck("cloudflare.secrets", "skip", endpoint && isLocalVerifyEndpoint(endpoint)
+        ? "deployed Worker secret audit skipped for local verify endpoint"
+        : "deployed Worker secret audit skipped; pass --live with the deployed Worker URL"),
+    ...providerReadiness
+      .filter((provider) => configuredProviders.includes(provider.id))
+      .map((provider) => {
+        const missingRemoteSecrets = Array.isArray(provider.summary.missingRemoteSecrets)
+          ? provider.summary.missingRemoteSecrets
+          : [];
+        const failWhenMissing = auditRemoteSecrets
+          && (exerciseAgent && provider.id === "firecrawl" || attioSmoke && provider.id === "attio");
+        return verifyCheck(`provider.${provider.id}.secrets`, missingRemoteSecrets.length === 0 ? "pass" : (failWhenMissing ? "fail" : "warn"), missingRemoteSecrets.length === 0
+          ? `${provider.id} deployed Worker secret(s) present`
+          : `${provider.id} is configured but missing deployed Worker secret(s): ${missingRemoteSecrets.join(", ")}`, provider.summary);
+      }),
     verifyCheck("cloudflare.autoProvisionable", provisioning.summary.autoProvisionable ? "pass" : "warn", provisioning.summary.autoProvisionable
       ? "Trellis can resolve/create first-run Cloudflare resources from this Wrangler config"
       : "Wrangler config is missing one or more resources Trellis needs before apply"),
@@ -1479,6 +1595,13 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
     packSync: packSync.summary,
     knowledgePack: knowledgePack.summary,
     skillPack: skillPack.summary,
+    providers: Object.fromEntries(providerReadiness.map((provider) => [provider.id, provider.summary])),
+    cloudflareSecrets: {
+      checked: remoteSecrets.checked,
+      ok: remoteSecrets.ok,
+      names: remoteSecrets.names,
+      error: remoteSecrets.error,
+    },
     wranglerAuth: sanitizeCommandResult(wranglerAuth),
     next: live
       ? [
