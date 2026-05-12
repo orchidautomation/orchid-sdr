@@ -54,7 +54,7 @@ The first deploy should require only Cloudflare auth. CRM, email, research, and 
 | Filesystem context | just-bash |
 | Full sandbox | Cloudflare Sandbox when needed |
 | Browser automation | Browser Run / sandbox provider slot |
-| Observability | Workers logs, AI Gateway logs, audit events, optional Langfuse/Braintrust |
+| Observability | D1 trace events, Workers logs, AI Gateway logs, audit events, optional generic/Langfuse/Braintrust export |
 
 Generated apps install `@flue/sdk` and create a hidden Flue context factory in the Worker wrapper. `app.skill(...)` stays Trellis-only: Trellis hydrates R2 markdown packs, passes Firecrawl/Trellis MCP tools into Flue, opens the session by thread id, and validates returned `data` or JSON text with Zod.
 

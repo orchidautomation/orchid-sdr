@@ -181,15 +181,23 @@ const V3_CONNECTIONS = {
     id: "langfuse",
     kind: "observability",
     displayName: "Langfuse",
-    requiredEnv: ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"],
-    optionalEnv: [],
+    requiredEnv: ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"],
+    optionalEnv: ["LANGFUSE_BASE_URL"],
+    capabilities: ["trace.export", "evals.export"],
+  },
+  braintrust: {
+    id: "braintrust",
+    kind: "observability",
+    displayName: "Braintrust",
+    requiredEnv: ["BRAINTRUST_API_KEY", "BRAINTRUST_PROJECT_ID"],
+    optionalEnv: ["BRAINTRUST_BASE_URL"],
     capabilities: ["trace.export", "evals.export"],
   },
 } as const;
 
 type V3ConnectionId = keyof typeof V3_CONNECTIONS;
 const REQUIRED_V3_PROVIDER_IDS = ["attio", "agentmail", "firecrawl"] as const;
-const OPTIONAL_V3_PROVIDER_IDS = ["langfuse"] as const;
+const OPTIONAL_V3_PROVIDER_IDS = ["langfuse", "braintrust"] as const;
 let activeConfigPromise: Promise<AiSdrConfig> | undefined;
 
 type CloudflareResourceConfig = {
@@ -357,7 +365,7 @@ Examples:
   npm run trellis -- deploy
   npm run trellis -- deploy --json
 
-Simple labels stay short in the CLI: attio, agentmail, firecrawl, langfuse.
+Simple labels stay short in the CLI: attio, agentmail, firecrawl, langfuse, braintrust.
 
 Init scaffolds the Trellis v3 GTM path by default.
 Cloudflare is the default deploy target.
@@ -699,6 +707,7 @@ async function handleConnectCommand(moduleId: string | undefined) {
   npm run trellis -- connect agentmail
   npm run trellis -- connect firecrawl
   npm run trellis -- connect langfuse
+  npm run trellis -- connect braintrust
 
 Provider credentials can be connected after the first Cloudflare deploy.`);
     return;
@@ -2095,10 +2104,15 @@ HANDOFF_WEBHOOK_SECRET=
 # The default uses Cloudflare Workers AI through Cloudflare's default AI Gateway.
 TRELLIS_MODEL=
 
-# Optional trace export. Cloudflare logs and AI Gateway remain the default.
+# Optional trace export. D1 trace events, Cloudflare logs, and AI Gateway remain the default.
+TRELLIS_TRACE_EXPORT_URL=
+TRELLIS_TRACE_EXPORT_TOKEN=
 LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=
 LANGFUSE_BASE_URL=
+BRAINTRUST_API_KEY=
+BRAINTRUST_PROJECT_ID=
+BRAINTRUST_BASE_URL=
 `;
 }
 

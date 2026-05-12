@@ -56,6 +56,8 @@ The v3 baseline persists:
 
 Those records are enough to prove the GTM control loop is observable and safe before any provider writes happen. Trellis derives or accepts a stable `traceId` at signal ingest, carries it through workflow dispatch, approvals, provider action intents, queue messages, and side-effect execution, and records the timeline in `trellis_trace_events`.
 
+`trellis_trace_events` is the canonical trace log. Optional exporters can mirror each trace event to a bound `TRELLIS_TRACE_EXPORTER`, a generic `TRELLIS_TRACE_EXPORT_URL`, Langfuse, or Braintrust. Export failures are swallowed after the D1 write so signal ingest, approvals, workflow replay, and provider action execution keep moving. `/healthz`, `/mcp/trellis`, and the dashboard expose whether trace export is configured without leaking secrets.
+
 Approval decisions update D1, append an audit event, and enqueue a runtime event. Approved side effects create provider action intents. If no-send mode is still enabled, those intents are recorded as `blocked_no_send` instead of calling the provider.
 
 After a webhook run is persisted and enqueued, Trellis starts the configured `PROSPECT_WORKFLOW` binding with a stable instance id and params containing the signal, workflow name, prospect ids, draft ids, approval ids, and audit event ids. Dispatch and workflow checkpoints are recorded in `trellis_workflow_runs`; dispatch errors are returned as `workflowDispatch.ok: false` but do not make webhook ingestion fail.
@@ -124,6 +126,7 @@ Supported v3 provider IDs:
 - `agentmail`
 - `firecrawl`
 - `langfuse`
+- `braintrust`
 
 Provider credentials belong in Cloudflare secrets, local env, or the deployment environment.
 

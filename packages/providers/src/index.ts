@@ -37,3 +37,31 @@ export function firecrawl(): TrellisProviderDefinition {
     capabilities: ["research.search", "research.extract", "browser.run"],
   });
 }
+
+export function langfuse(): TrellisProviderDefinition {
+  return trellis.provider({
+    id: "langfuse",
+    kind: "observability",
+    displayName: "Langfuse",
+    env: [
+      { name: "LANGFUSE_PUBLIC_KEY", description: "Langfuse public key used for optional trace export." },
+      { name: "LANGFUSE_SECRET_KEY", description: "Langfuse secret key used for optional trace export." },
+      { name: "LANGFUSE_BASE_URL", description: "Optional Langfuse API base URL." },
+    ],
+    capabilities: ["trace.export", "evals.export"],
+  });
+}
+
+export function braintrust(): TrellisProviderDefinition {
+  return trellis.provider({
+    id: "braintrust",
+    kind: "observability",
+    displayName: "Braintrust",
+    env: [
+      { name: "BRAINTRUST_API_KEY", description: "Braintrust API key used for optional trace export." },
+      { name: "BRAINTRUST_PROJECT_ID", description: "Braintrust project id for trace export." },
+      { name: "BRAINTRUST_BASE_URL", description: "Optional Braintrust API base URL." },
+    ],
+    capabilities: ["trace.export", "evals.export"],
+  });
+}

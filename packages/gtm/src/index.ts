@@ -258,6 +258,18 @@ interface TrellisWorkflowBinding {
   }): Promise<{ id?: string; status?(): Promise<unknown> | unknown } | unknown> | { id?: string; status?(): Promise<unknown> | unknown } | unknown;
 }
 
+interface TrellisTraceEventRecord {
+  id: string;
+  traceId: string;
+  signalId: string | null;
+  workflow: string | null;
+  span: string;
+  type: string;
+  message: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
 interface TrellisWorkflowStep {
   do<T>(name: string, callback: () => Promise<T> | T): Promise<T> | T;
   sleep?(name: string, duration: string | number): Promise<unknown> | unknown;
@@ -1101,6 +1113,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             stack: "trellis-v3-cloudflare",
             safety: agent.config.safety ?? trellis.safeOutbound(),
             bindings: summarizeCloudflareBindings(env),
+            traceExport: summarizeTraceExport(env),
           });
         }
 
@@ -1371,6 +1384,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               "trellis.workflow.resume",
               "trellis.workflow.replay",
               "trellis.providerAction.replay",
+              "trellis.trace.export",
               "trellis.audit.search",
             ],
             toolCatalog,
@@ -1443,6 +1457,20 @@ function summarizeCloudflareBindings(env?: Record<string, unknown>) {
   return Object.fromEntries(bindingNames.map((name) => [name, Boolean(env?.[name])]));
 }
 
+function summarizeTraceExport(env?: Record<string, unknown>) {
+  const binding = isTraceExporterBinding(env?.TRELLIS_TRACE_EXPORTER);
+  const generic = Boolean(readString(env?.TRELLIS_TRACE_EXPORT_URL));
+  const langfuse = Boolean(readString(env?.LANGFUSE_PUBLIC_KEY) && readString(env?.LANGFUSE_SECRET_KEY));
+  const braintrust = Boolean(readString(env?.BRAINTRUST_API_KEY) && readString(env?.BRAINTRUST_PROJECT_ID));
+  return {
+    enabled: binding || generic || langfuse || braintrust,
+    binding,
+    generic,
+    langfuse,
+    braintrust,
+  };
+}
+
 function describeTrellisMcpTools(config: TrellisAgentConfig) {
   return createTrellisMcpTools(undefined, config).map((tool) => ({
     name: tool.name,
@@ -1479,6 +1507,24 @@ function createTrellisMcpTools(
           },
           safety: config.safety ?? trellis.safeOutbound(),
           bindings: summarizeCloudflareBindings(env),
+          traceExport: summarizeTraceExport(env),
+        };
+      },
+    },
+    {
+      name: "trellis.trace.export",
+      description: "Inspect optional trace export sinks. D1 trellis_trace_events remains canonical.",
+      operation: "trellis.trace.export",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+      execute() {
+        return {
+          ok: true,
+          canonical: "trellis_trace_events",
+          traceExport: summarizeTraceExport(env),
         };
       },
     },
@@ -1980,7 +2026,7 @@ async function persistRuntimeResult(env: Record<string, unknown> | undefined, ru
       event.message,
       new Date().toISOString(),
     ]);
-    await insertTraceEvent(db, {
+    await insertTraceEvent(env, db, {
       id: `trace_event_${event.id}`,
       traceId: event.traceId ?? traceIdForSignal(run.signal),
       signalId: event.signalId ?? run.signal.id,
@@ -2107,6 +2153,7 @@ async function runD1(db: TrellisD1Database, sql: string, bindings: unknown[] = [
 }
 
 async function insertTraceEvent(
+  env: Record<string, unknown> | undefined,
   db: TrellisD1Database,
   event: {
     id: string;
@@ -2119,21 +2166,174 @@ async function insertTraceEvent(
     payload?: Record<string, unknown>;
   },
 ) {
+  const createdAt = new Date().toISOString();
+  const record: TrellisTraceEventRecord = {
+    id: event.id,
+    traceId: event.traceId,
+    signalId: event.signalId ?? null,
+    workflow: event.workflow ?? null,
+    span: event.span,
+    type: event.type,
+    message: event.message,
+    payload: event.payload ?? {},
+    createdAt,
+  };
+
   await runD1(db, `
     INSERT OR REPLACE INTO trellis_trace_events
       (id, trace_id, signal_id, workflow, span, type, message, payload_json, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
-    event.id,
-    event.traceId,
-    event.signalId ?? null,
-    event.workflow ?? null,
-    event.span,
-    event.type,
-    event.message,
-    JSON.stringify(event.payload ?? {}),
-    new Date().toISOString(),
+    record.id,
+    record.traceId,
+    record.signalId,
+    record.workflow,
+    record.span,
+    record.type,
+    record.message,
+    JSON.stringify(record.payload),
+    record.createdAt,
   ]);
+
+  await exportTraceEvent(env, record);
+}
+
+async function exportTraceEvent(
+  env: Record<string, unknown> | undefined,
+  event: TrellisTraceEventRecord,
+) {
+  const tasks: Array<Promise<unknown>> = [];
+  const exporter = env?.TRELLIS_TRACE_EXPORTER;
+
+  if (isTraceExporterBinding(exporter)) {
+    tasks.push(callTraceExporterBinding(exporter, event).catch(() => undefined));
+  }
+
+  const genericUrl = readString(env?.TRELLIS_TRACE_EXPORT_URL);
+  if (genericUrl) {
+    const headers: Record<string, string> = {};
+    const token = readString(env?.TRELLIS_TRACE_EXPORT_TOKEN);
+    if (token) {
+      headers.authorization = `Bearer ${token}`;
+    }
+    tasks.push(postTraceJson(env, genericUrl, {
+      source: "trellis",
+      event,
+    }, headers).catch(() => undefined));
+  }
+
+  const langfusePublicKey = readString(env?.LANGFUSE_PUBLIC_KEY);
+  const langfuseSecretKey = readString(env?.LANGFUSE_SECRET_KEY);
+  if (langfusePublicKey && langfuseSecretKey) {
+    const baseUrl = (readString(env?.LANGFUSE_BASE_URL) ?? "https://cloud.langfuse.com").replace(/\/+$/, "");
+    tasks.push(postTraceJson(env, `${baseUrl}/api/public/ingestion`, {
+      batch: [
+        {
+          id: event.id,
+          timestamp: event.createdAt,
+          type: "event-create",
+          body: {
+            id: event.id,
+            traceId: event.traceId,
+            name: event.type,
+            startTime: event.createdAt,
+            metadata: traceEventMetadata(event),
+          },
+        },
+      ],
+    }, {
+      authorization: `Basic ${base64Encode(`${langfusePublicKey}:${langfuseSecretKey}`)}`,
+    }).catch(() => undefined));
+  }
+
+  const braintrustApiKey = readString(env?.BRAINTRUST_API_KEY);
+  const braintrustProjectId = readString(env?.BRAINTRUST_PROJECT_ID);
+  if (braintrustApiKey && braintrustProjectId) {
+    const baseUrl = (readString(env?.BRAINTRUST_BASE_URL) ?? "https://api.braintrust.dev").replace(/\/+$/, "");
+    tasks.push(postTraceJson(env, `${baseUrl}/v1/project_logs/${encodeURIComponent(braintrustProjectId)}/insert`, {
+      events: [
+        {
+          id: event.id,
+          span_id: event.id,
+          root_span_id: event.traceId,
+          created: event.createdAt,
+          span_attributes: {
+            name: event.type,
+            type: event.span,
+          },
+          metadata: traceEventMetadata(event),
+        },
+      ],
+    }, {
+      authorization: `Bearer ${braintrustApiKey}`,
+    }).catch(() => undefined));
+  }
+
+  await Promise.all(tasks);
+}
+
+type TrellisTraceExporterBinding =
+  | ((event: TrellisTraceEventRecord) => Promise<unknown> | unknown)
+  | {
+      export?: (event: TrellisTraceEventRecord) => Promise<unknown> | unknown;
+      send?: (event: TrellisTraceEventRecord) => Promise<unknown> | unknown;
+    };
+
+function isTraceExporterBinding(value: unknown): value is TrellisTraceExporterBinding {
+  return typeof value === "function"
+    || (isRecord(value) && (typeof value.export === "function" || typeof value.send === "function"));
+}
+
+async function callTraceExporterBinding(
+  exporter: TrellisTraceExporterBinding,
+  event: TrellisTraceEventRecord,
+) {
+  if (typeof exporter === "function") {
+    return await exporter(event);
+  }
+  if (typeof exporter.export === "function") {
+    return await exporter.export(event);
+  }
+  return await exporter.send?.(event);
+}
+
+async function postTraceJson(
+  env: Record<string, unknown> | undefined,
+  url: string,
+  body: Record<string, unknown>,
+  headers: Record<string, string> = {},
+) {
+  const response = await runtimeFetch(env, url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...headers,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`Trace export failed with ${response.status}.`);
+  }
+}
+
+function traceEventMetadata(event: TrellisTraceEventRecord) {
+  return {
+    ...event.payload,
+    trellisTraceEventId: event.id,
+    traceId: event.traceId,
+    signalId: event.signalId,
+    workflow: event.workflow,
+    span: event.span,
+    type: event.type,
+    message: event.message,
+  };
+}
+
+function base64Encode(value: string) {
+  if (typeof btoa === "function") {
+    return btoa(value);
+  }
+  return Buffer.from(value, "utf8").toString("base64");
 }
 
 async function enqueueRuntimeEvent(env: Record<string, unknown> | undefined, run: TrellisRuntimeResult) {
@@ -2253,7 +2453,7 @@ async function recordWorkflowRun(
     `Workflow ${record.workflow} is ${record.status}.`,
     now,
   ]);
-  await insertTraceEvent(db, {
+  await insertTraceEvent(env, db, {
     id: `trace_event_${normalizeIdPart(record.id)}_${normalizeIdPart(record.status)}`,
     traceId: record.traceId ?? traceIdForSignalId(record.signalId),
     signalId: record.signalId,
@@ -2337,7 +2537,7 @@ async function persistOperatorControl(
     operatorControlMessage(control),
     now,
   ]);
-  await insertTraceEvent(db, {
+  await insertTraceEvent(env, db, {
     id: `trace_event_operator_${normalizeIdPart(control.id)}_${normalizeIdPart(control.status)}`,
     traceId: resolvedTraceId,
     signalId,
@@ -2730,7 +2930,7 @@ async function persistApprovalDecision(
     `${decision.status === "approved" ? "Approved" : "Rejected"} approval ${decision.approvalId}.`,
     now,
   ]);
-  await insertTraceEvent(db, {
+  await insertTraceEvent(env, db, {
     id: `trace_event_${decision.status}_${decision.approvalId}`,
     traceId: decision.traceId ?? traceIdForSignalId(decision.signalId),
     signalId: decision.signalId,
@@ -2775,7 +2975,7 @@ async function persistApprovalDecision(
       `${providerAction.status === "queued" ? "Queued" : "Blocked"} provider action ${providerAction.operation} for ${providerAction.provider}.`,
       now,
     ]);
-    await insertTraceEvent(db, {
+    await insertTraceEvent(env, db, {
       id: `trace_event_${providerAction.status}_${providerAction.id}`,
       traceId: providerAction.traceId,
       signalId: providerAction.signalId,
@@ -2886,7 +3086,7 @@ async function persistProviderActionTransition(
     `${transition.status === "completed" ? "Completed" : "Failed"} provider action ${transition.providerActionId}.`,
     now,
   ]);
-  await insertTraceEvent(db, {
+  await insertTraceEvent(env, db, {
     id: `trace_event_provider_action_${transition.status}_${transition.providerActionId}`,
     traceId: transition.traceId ?? traceIdForSignalId(transition.signalId),
     signalId: transition.signalId,
@@ -3234,7 +3434,7 @@ async function persistProviderActionReplay(
     `Requeued provider action ${action.id}.`,
     now,
   ]);
-  await insertTraceEvent(db, {
+  await insertTraceEvent(env, db, {
     id: `trace_event_provider_action_replayed_${action.id}`,
     traceId: action.traceId,
     signalId: action.signalId,
@@ -3992,6 +4192,7 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
       counts: null,
       packs,
       controls: await readOperatorControls(env),
+      traceExport: summarizeTraceExport(env),
     };
   }
 
@@ -4010,6 +4211,7 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
     },
     packs,
     controls: await readOperatorControls(env),
+    traceExport: summarizeTraceExport(env),
   };
 }
 
@@ -4159,6 +4361,7 @@ function renderDashboard(
   };
   const packs = snapshot.packs;
   const controls = snapshot.controls;
+  const traceExport = snapshot.traceExport;
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -4181,6 +4384,7 @@ function renderDashboard(
         <dt>Kill Switch</dt><dd>${controls.globalKillSwitch?.status === "enabled" ? "enabled" : "disabled"}</dd>
         <dt>Active Control Blocks</dt><dd>${controls.reasons.join("; ") || "none"}</dd>
         <dt>Trace Events</dt><dd>${counts.traceEvents}</dd>
+        <dt>Trace Export</dt><dd>${traceExport.enabled ? "enabled" : "disabled"}</dd>
         <dt>Audit Events</dt><dd>${counts.auditEvents}</dd>
         <dt>Knowledge Files</dt><dd>${packs.knowledge?.manifest?.files ?? 0}</dd>
         <dt>Skill Files</dt><dd>${packs.skills?.objects ?? 0}</dd>

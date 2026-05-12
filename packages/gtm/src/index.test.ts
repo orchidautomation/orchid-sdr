@@ -821,6 +821,133 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
+  it("exports D1 trace events to optional observability sinks without blocking ingest", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    const fetchMock = vi.fn(async (url: string | URL | Request, _init?: RequestInit) =>
+      new Response(JSON.stringify({ ok: !String(url).includes("trace-sink.test") }), {
+        status: String(url).includes("trace-sink.test") ? 500 : 202,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const exporter = {
+      export: vi.fn(async () => {
+        throw new Error("sink temporarily unavailable");
+      }),
+    };
+    const env = {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_FETCH: fetchMock,
+      TRELLIS_TRACE_EXPORTER: exporter,
+      TRELLIS_TRACE_EXPORT_URL: "https://trace-sink.test/events",
+      TRELLIS_TRACE_EXPORT_TOKEN: "trace_token",
+      LANGFUSE_PUBLIC_KEY: "pk_test",
+      LANGFUSE_SECRET_KEY: "sk_test",
+      LANGFUSE_BASE_URL: "https://langfuse.test",
+      BRAINTRUST_API_KEY: "bt_test",
+      BRAINTRUST_PROJECT_ID: "proj_test",
+      BRAINTRUST_BASE_URL: "https://braintrust.test",
+    };
+
+    const health = await runtime.worker.fetch(new Request("https://example.com/healthz"), env);
+    const webhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_trace_export",
+        workspaceId: "wrk_trace",
+        threadId: "thr_trace",
+      }),
+    }), env);
+    const mcp = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), env);
+
+    await expect(health.json()).resolves.toMatchObject({
+      ok: true,
+      traceExport: {
+        enabled: true,
+        binding: true,
+        generic: true,
+        langfuse: true,
+        braintrust: true,
+      },
+    });
+    expect(webhook.status).toBe(202);
+    await expect(webhook.json()).resolves.toMatchObject({
+      ok: true,
+      accepted: true,
+      persistence: {
+        enabled: true,
+      },
+      workflowDispatch: {
+        enabled: false,
+      },
+    });
+    await expect(mcp.json()).resolves.toMatchObject({
+      snapshot: {
+        traceExport: {
+          enabled: true,
+          langfuse: true,
+          braintrust: true,
+        },
+        counts: {
+          traceEvents: 4,
+        },
+      },
+      tools: expect.arrayContaining(["trellis.trace.export"]),
+    });
+    expect(exporter.export).toHaveBeenCalled();
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(12);
+
+    const genericCall = fetchMock.mock.calls.find(([url]) => String(url) === "https://trace-sink.test/events");
+    const langfuseCall = fetchMock.mock.calls.find(([url]) => String(url) === "https://langfuse.test/api/public/ingestion");
+    const braintrustCall = fetchMock.mock.calls.find(([url]) =>
+      String(url) === "https://braintrust.test/v1/project_logs/proj_test/insert",
+    );
+    expect(genericCall?.[1]).toMatchObject({
+      method: "POST",
+      headers: expect.objectContaining({
+        authorization: "Bearer trace_token",
+      }),
+    });
+    expect(langfuseCall?.[1]).toMatchObject({
+      method: "POST",
+      headers: expect.objectContaining({
+        authorization: expect.stringMatching(/^Basic /),
+      }),
+    });
+    expect(braintrustCall?.[1]).toMatchObject({
+      method: "POST",
+      headers: expect.objectContaining({
+        authorization: "Bearer bt_test",
+      }),
+    });
+    expect(JSON.parse(String(langfuseCall?.[1]?.body))).toMatchObject({
+      batch: [
+        {
+          type: "event-create",
+          body: {
+            traceId: "trace_sig_trace_export",
+          },
+        },
+      ],
+    });
+  });
+
   it("accepts AgentMail reply webhooks as first-class v3 signals", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),

@@ -278,7 +278,7 @@ v3 parity:
 - AI Gateway logs for model calls
 - Workers logs/traces for platform events
 - D1 audit events for product history
-- optional Langfuse/Braintrust export
+- optional trace export to `TRELLIS_TRACE_EXPORTER`, `TRELLIS_TRACE_EXPORT_URL`, Langfuse, or Braintrust after the D1 trace write succeeds
 - workflow replay through stored `trellis_workflow_runs`
 - provider-action requeue for dead-letter-style recovery
 - real Cloudflare dead-letter queue recovery verification
@@ -314,4 +314,5 @@ The v3 rewrite reaches AI SDR parity when:
 - Attio, AgentMail, and Firecrawl can be connected after boot
 - no-send and approval gates are enforced before real side effects
 - observability links webhook, workflow, model, provider, approval, and side-effect events
+- optional trace export failures do not break signal ingest, approvals, workflow replay, or provider execution
 - legacy Rivet/Vercel/Convex-first paths are no longer required for the happy path
