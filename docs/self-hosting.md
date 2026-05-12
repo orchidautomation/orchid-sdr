@@ -6,9 +6,8 @@ For v3, "self-hosting" means you own the Cloudflare account and Trellis deploys 
 
 - Node.js 22
 - npm
-- Wrangler
 - Cloudflare account access
-- either `wrangler login` or `CLOUDFLARE_ACCOUNT_ID` plus `CLOUDFLARE_API_TOKEN`
+- either `npm run cf:login` in the generated app or `CLOUDFLARE_ACCOUNT_ID` plus `CLOUDFLARE_API_TOKEN`
 
 Business provider keys are optional for first deploy.
 

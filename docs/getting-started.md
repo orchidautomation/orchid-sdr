@@ -39,7 +39,7 @@ No SDR kit, Convex app, Vercel Sandbox, or Rivet runtime is installed by default
 Use Wrangler login or environment auth:
 
 ```bash
-npx wrangler login
+npm run cf:login
 ```
 
 or:
