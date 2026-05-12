@@ -1323,6 +1323,7 @@ async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
       "trellis smoke",
       "trellis connect attio",
       "trellis connect agentmail",
+      "trellis connect firecrawl",
       "trellis docs add ./product-docs",
     ],
   };
@@ -1357,7 +1358,8 @@ Then:
   1. trellis smoke
   2. trellis connect attio
   3. trellis connect agentmail
-  4. trellis docs add ./product-docs`);
+  4. trellis connect firecrawl
+  5. trellis docs add ./product-docs`);
       return;
   }
 
