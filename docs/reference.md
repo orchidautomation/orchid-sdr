@@ -22,6 +22,8 @@ The generated Cloudflare app should expose:
 - `GET /healthz`
 - `GET /smoke`
 - `POST /webhooks/signals`
+- `POST /approvals/:id/approve`
+- `POST /approvals/:id/reject`
 - `POST /mcp/trellis`
 - `GET /dashboard`
 - `POST /agents/*` for durable agent dispatch
@@ -37,6 +39,8 @@ The v3 baseline persists:
 - audit events
 
 Those records are enough to prove the GTM control loop is observable and safe before any provider writes happen.
+
+Approval decisions update D1, append an audit event, and enqueue a runtime event. Provider side effects still remain blocked until the approved action executor exists.
 
 ## Knowledge And Skills
 

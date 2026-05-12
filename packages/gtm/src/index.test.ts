@@ -117,6 +117,14 @@ describe("@trellis/gtm v3 API", () => {
     }), env);
     const mcp = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), env);
     const dashboard = await runtime.worker.fetch(new Request("https://example.com/dashboard"), env);
+    const approval = await runtime.worker.fetch(new Request("https://example.com/approvals/approval_draft_sig_live_email_send/approve", {
+      method: "POST",
+      body: JSON.stringify({
+        signalId: "sig_live",
+        actor: "operator@example.com",
+        reason: "Fixture approval.",
+      }),
+    }), env);
 
     await expect(health.json()).resolves.toMatchObject({
       ok: true,
@@ -164,11 +172,17 @@ describe("@trellis/gtm v3 API", () => {
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_drafts"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_approvals"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_audit_events"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("UPDATE trellis_approvals SET status = ?"))).toBe(true);
     expect(fakeQueue.messages).toEqual([
       expect.objectContaining({
         type: "trellis.signal.processed",
         signalId: "sig_live",
         workspaceId: "wrk_live",
+      }),
+      expect.objectContaining({
+        type: "trellis.approval.decided",
+        approvalId: "approval_draft_sig_live_email_send",
+        status: "approved",
       }),
     ]);
     await expect(mcp.json()).resolves.toMatchObject({
@@ -183,7 +197,7 @@ describe("@trellis/gtm v3 API", () => {
           auditEvents: 4,
         },
       },
-      tools: expect.arrayContaining(["trellis.smoke", "trellis.workflow.inspect"]),
+      tools: expect.arrayContaining(["trellis.smoke", "trellis.workflow.inspect", "trellis.approval.approve"]),
     });
     const dashboardHtml = await dashboard.text();
     expect(dashboardHtml).toContain("v3 Cloudflare GTM runtime");
@@ -191,6 +205,20 @@ describe("@trellis/gtm v3 API", () => {
     expect(dashboardHtml).toContain("<dt>Prospects</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Drafts</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Approvals</dt><dd>2</dd>");
+    await expect(approval.json()).resolves.toMatchObject({
+      ok: true,
+      approval: {
+        id: "approval_draft_sig_live_email_send",
+        status: "approved",
+      },
+      persistence: {
+        enabled: true,
+      },
+      queue: {
+        enabled: true,
+        messages: 1,
+      },
+    });
   });
 });
 

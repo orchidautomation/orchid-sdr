@@ -95,6 +95,7 @@ v3 parity:
 - first boot requires only Cloudflare credentials
 - provider credentials are optional until `trellis connect`
 - dashboard and MCP routes are present
+- approval approve/reject routes are present
 - `trellis doctor` validates Cloudflare bindings, D1, R2, Workflows, Queues, AI Gateway, and no-send mode
 - `trellis smoke` proves a safe fixture workflow
 
@@ -173,6 +174,7 @@ v3 parity:
 - D1 stores queryable projection
 - Durable Object SQLite stores local thread memory
 - no-send mode and approval gates are enforced before every side effect
+- approvals can be approved or rejected as durable state transitions before side-effect executors exist
 - follow-ups use Workflows durable sleep/checkpoints
 
 Legacy to remove after replacement:

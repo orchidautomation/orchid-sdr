@@ -173,6 +173,16 @@ interface TrellisQueue {
   send(message: unknown): Promise<unknown> | unknown;
 }
 
+type TrellisApprovalDecisionStatus = "approved" | "rejected";
+
+interface TrellisApprovalDecision {
+  approvalId: string;
+  signalId: string;
+  status: TrellisApprovalDecisionStatus;
+  actor?: string;
+  reason?: string;
+}
+
 export const schema = {
   gtm() {
     return z.object({
@@ -511,6 +521,17 @@ function createApprovalsForDrafts(signal: TrellisSignal, drafts: TrellisDraft[])
   );
 }
 
+function matchApprovalDecisionRoute(pathname: string) {
+  const match = pathname.match(/^\/approvals\/([^/]+)\/(approve|reject)$/);
+  if (!match?.[1] || !match[2]) {
+    return undefined;
+  }
+  return {
+    approvalId: decodeURIComponent(match[1]),
+    status: match[2] === "approve" ? "approved" as const : "rejected" as const,
+  };
+}
+
 function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): TrellisCloudflareRuntime {
   class TrellisAgentObject {
     constructor(
@@ -587,6 +608,27 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           }, 202);
         }
 
+        const approvalDecision = matchApprovalDecisionRoute(url.pathname);
+        if (approvalDecision && request.method === "POST") {
+          const body = await readJsonBody(request);
+          const record = isRecord(body) ? body : {};
+          const decision = await recordApprovalDecision(env, {
+            approvalId: approvalDecision.approvalId,
+            signalId: readString(record.signalId) ?? `approval:${approvalDecision.approvalId}`,
+            status: approvalDecision.status,
+            actor: readString(record.actor),
+            reason: readString(record.reason),
+          });
+          return jsonResponse({
+            ok: true,
+            approval: {
+              id: approvalDecision.approvalId,
+              status: approvalDecision.status,
+            },
+            ...decision,
+          });
+        }
+
         if (url.pathname === "/mcp/trellis") {
           return jsonResponse({
             ok: true,
@@ -598,6 +640,8 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               "trellis.smoke",
               "trellis.signal.inspect",
               "trellis.workflow.inspect",
+              "trellis.approval.approve",
+              "trellis.approval.reject",
               "trellis.audit.search",
             ],
           });
@@ -621,7 +665,15 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
         return jsonResponse({
           ok: true,
           agent: agent.name,
-          routes: ["/healthz", "/smoke", "/webhooks/signals", "/mcp/trellis", "/dashboard"],
+          routes: [
+            "/healthz",
+            "/smoke",
+            "/webhooks/signals",
+            "/approvals/:id/approve",
+            "/approvals/:id/reject",
+            "/mcp/trellis",
+            "/dashboard",
+          ],
         });
       },
     },
@@ -834,6 +886,74 @@ async function enqueueRuntimeEvent(env: Record<string, unknown> | undefined, run
     draftIds: run.drafts.map((draft) => draft.id),
     approvalIds: run.approvals.map((approval) => approval.id),
     auditEventIds: run.auditEvents.map((event) => event.id),
+  });
+  return {
+    enabled: true,
+    messages: 1,
+  };
+}
+
+async function recordApprovalDecision(env: Record<string, unknown> | undefined, decision: TrellisApprovalDecision) {
+  return {
+    persistence: await persistApprovalDecision(env, decision),
+    queue: await enqueueApprovalDecision(env, decision),
+  };
+}
+
+async function persistApprovalDecision(env: Record<string, unknown> | undefined, decision: TrellisApprovalDecision) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      enabled: false,
+      tables: [],
+    };
+  }
+
+  const now = new Date().toISOString();
+  await ensureD1Schema(db);
+  await runD1(db, `
+    UPDATE trellis_approvals
+    SET status = ?, updated_at = ?
+    WHERE id = ?
+  `, [
+    decision.status,
+    now,
+    decision.approvalId,
+  ]);
+  await runD1(db, `
+    INSERT OR REPLACE INTO trellis_audit_events
+      (id, signal_id, workflow, type, message, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `, [
+    `evt_${decision.status}_${decision.approvalId}`,
+    decision.signalId,
+    "approval",
+    `approval.${decision.status}`,
+    `${decision.status === "approved" ? "Approved" : "Rejected"} approval ${decision.approvalId}.`,
+    now,
+  ]);
+
+  return {
+    enabled: true,
+    tables: ["trellis_approvals", "trellis_audit_events"],
+  };
+}
+
+async function enqueueApprovalDecision(env: Record<string, unknown> | undefined, decision: TrellisApprovalDecision) {
+  const queue = env?.TRELLIS_EVENTS as TrellisQueue | undefined;
+  if (!queue?.send) {
+    return {
+      enabled: false,
+    };
+  }
+
+  await queue.send({
+    type: "trellis.approval.decided",
+    approvalId: decision.approvalId,
+    signalId: decision.signalId,
+    status: decision.status,
+    actor: decision.actor,
+    reason: decision.reason,
   });
   return {
     enabled: true,
