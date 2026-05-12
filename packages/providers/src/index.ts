@@ -1,10 +1,13 @@
-import { trellis, type TrellisProviderDefinition } from "@trellis/gtm";
+import { trellis, type TrellisAttioMap, type TrellisProviderDefinition } from "@trellis/gtm";
 
-export function attio(): TrellisProviderDefinition {
+export function attio(options: { map?: TrellisAttioMap } = {}): TrellisProviderDefinition {
   return trellis.provider({
     id: "attio",
     kind: "crm",
     displayName: "Attio",
+    config: {
+      map: options.map,
+    },
     env: [
       { name: "ATTIO_API_KEY", description: "Attio API key used for CRM sync." },
       { name: "ATTIO_DEFAULT_LIST_ID", description: "Optional Attio list for prospect cards." },

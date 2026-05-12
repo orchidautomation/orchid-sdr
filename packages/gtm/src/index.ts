@@ -13,12 +13,20 @@ export interface TrellisProviderDefinition {
   id: string;
   kind: TrellisProviderKind;
   displayName: string;
+  config?: Record<string, unknown>;
   env?: Array<{
     name: string;
     required?: boolean;
     description?: string;
   }>;
   capabilities?: string[];
+}
+
+export type TrellisFieldMap = Record<string, string>;
+
+export interface TrellisAttioMap {
+  companies?: TrellisFieldMap;
+  people?: TrellisFieldMap;
 }
 
 export interface TrellisSafetyPolicy {
@@ -344,7 +352,7 @@ interface TrellisProviderActionRecord extends TrellisProviderAction {
   updatedAt?: string | null;
 }
 
-interface TrellisWorkflowRunRecord {
+interface TrellisWorkflowRunRow {
   id: string;
   signalId: string;
   workflow: string;
@@ -379,7 +387,17 @@ interface TrellisProviderExecutionContext {
   draft: TrellisDraftRecord | null;
   signal: TrellisSignalRecord | null;
   prospect: TrellisProspectRecord | null;
+  workflowRun: TrellisWorkflowRunRecord | null;
   input: Record<string, unknown>;
+}
+
+interface TrellisWorkflowRunRecord {
+  id: string;
+  signalId: string;
+  workflow: string;
+  status: string;
+  params: Record<string, unknown>;
+  updatedAt?: string | null;
 }
 
 const MAX_PACK_CONTEXT_FILES = 24;
@@ -3910,6 +3928,7 @@ async function dispatchWorkflow(env: Record<string, unknown> | undefined, run: T
     const instance = await workflow.create({
       id,
       params: {
+        ...workflowInputParams(run),
         traceId: traceIdForSignal(run.signal),
         signal: run.signal,
         workflow: workflowName,
@@ -3928,6 +3947,7 @@ async function dispatchWorkflow(env: Record<string, unknown> | undefined, run: T
       workflow: workflowName,
       status: "dispatched",
       params: {
+        ...workflowInputParams(run),
         traceId: traceIdForSignal(run.signal),
         signal: run.signal,
         workflow: workflowName,
@@ -3967,6 +3987,11 @@ async function dispatchWorkflow(env: Record<string, unknown> | undefined, run: T
       persistence,
     };
   }
+}
+
+function workflowInputParams(run: TrellisRuntimeResult) {
+  const input = run.startedWorkflows[0]?.input;
+  return isRecord(input) ? input : {};
 }
 
 async function scheduleFollowUpWorkflow(
@@ -4192,7 +4217,7 @@ async function readWorkflowRunRecord(db: TrellisD1Database, workflowRunId: strin
       updated_at AS updatedAt
     FROM trellis_workflow_runs
     WHERE id = ?
-  `).bind(workflowRunId).first<TrellisWorkflowRunRecord>();
+  `).bind(workflowRunId).first<TrellisWorkflowRunRow>();
 }
 
 async function recordApprovalDecision(
@@ -4555,7 +4580,7 @@ async function executeProviderAction(
   }
 
   try {
-    const result = await dispatchProviderAction(env, context);
+    const result = await dispatchProviderAction(env, context, config);
     const transition = await recordProviderActionTransition(env, {
       providerActionId: action.id,
       traceId: action.traceId,
@@ -4924,6 +4949,29 @@ async function readProviderActionContext(
     ORDER BY updated_at DESC
     LIMIT 1
   `).bind(action.signalId).first<TrellisProspectRecord>();
+  const workflowRunRow = await db.prepare(`
+    SELECT
+      id,
+      signal_id AS signalId,
+      workflow,
+      status,
+      params_json AS paramsJson,
+      updated_at AS updatedAt
+    FROM trellis_workflow_runs
+    WHERE signal_id = ?
+    ORDER BY updated_at DESC
+    LIMIT 1
+  `).bind(action.signalId).first<Record<string, unknown>>();
+  const workflowRun = workflowRunRow
+    ? {
+        id: String(workflowRunRow.id),
+        signalId: String(workflowRunRow.signalId),
+        workflow: String(workflowRunRow.workflow),
+        status: String(workflowRunRow.status),
+        params: parseRecordJson(workflowRunRow.paramsJson),
+        updatedAt: readString(workflowRunRow.updatedAt) ?? null,
+      }
+    : null;
 
   return {
     action,
@@ -4948,6 +4996,7 @@ async function readProviderActionContext(
           updatedAt: prospect.updatedAt,
         }
       : null,
+    workflowRun,
     input,
   };
 }
@@ -4955,6 +5004,7 @@ async function readProviderActionContext(
 async function dispatchProviderAction(
   env: Record<string, unknown> | undefined,
   context: TrellisProviderExecutionContext,
+  config: TrellisAgentConfig,
 ): Promise<TrellisProviderActionExecutionResult> {
   const boundExecutor = await dispatchWithBoundExecutor(env, context);
   if (boundExecutor) {
@@ -4976,7 +5026,7 @@ async function dispatchProviderAction(
     context.action.provider === "attio"
     && (context.action.operation === "crm.update" || context.action.operation === "crm.syncProspect")
   ) {
-    return executeAttioCrmUpdate(env, context);
+    return executeAttioCrmUpdate(env, context, readAttioMap(config.crm));
   }
 
   if (context.action.provider === "handoff" && context.action.operation === "handoff.webhook") {
@@ -5209,6 +5259,7 @@ async function executeAgentMailReply(
 async function executeAttioCrmUpdate(
   env: Record<string, unknown> | undefined,
   context: TrellisProviderExecutionContext,
+  map: TrellisAttioMap | null = null,
 ): Promise<TrellisProviderActionExecutionResult> {
   const apiKey = readString(env?.ATTIO_API_KEY);
   if (!apiKey) {
@@ -5237,27 +5288,36 @@ async function executeAttioCrmUpdate(
   const twitterUrl = readFirstString(input, signalPayload, ["twitterUrl", "twitter", "xUrl"]);
   const companyRecordId = readFirstString(input, signalPayload, ["attioCompanyRecordId", "companyRecordId"]);
   const personRecordId = readFirstString(input, signalPayload, ["attioPersonRecordId", "personRecordId"]);
+  const mapSource = buildAttioMapSource(context);
+  const mappedCompanyValues = applyAttioFieldMap(map?.companies, mapSource);
+  const mappedPersonValues = applyAttioFieldMap(map?.people, mapSource);
   const hasCompanyUpdate = Boolean(companyName || companyDomain);
   const hasPersonUpdate = Boolean(personRecordId || fullName || email || linkedinUrl || twitterUrl);
+  const hasMappedCompanyUpdate = Object.keys(mappedCompanyValues).length > 0;
+  const hasMappedPersonUpdate = Object.keys(mappedPersonValues).length > 0;
+  const companyValues = {
+    ...buildAttioCompanyValues(companyName, companyDomain),
+    ...mappedCompanyValues,
+  };
 
-  if (!hasCompanyUpdate && !hasPersonUpdate) {
+  if (!hasCompanyUpdate && !hasPersonUpdate && !hasMappedCompanyUpdate && !hasMappedPersonUpdate) {
     throw new Error("Attio CRM update requires company, domain, email, name, LinkedIn, or an Attio record id.");
   }
 
   const baseUrl = (readString(env?.ATTIO_BASE_URL) ?? "https://api.attio.com/v2").replace(/\/+$/, "");
   const providerHeaders = trellisProviderHeaders(context);
-  const company = companyRecordId && hasCompanyUpdate
+  const company = companyRecordId && (hasCompanyUpdate || hasMappedCompanyUpdate)
     ? await attioRequest(env, apiKey, baseUrl, `/objects/companies/records/${encodeURIComponent(companyRecordId)}`, "PATCH", {
         data: {
-          values: buildAttioCompanyValues(companyName, companyDomain),
+          values: companyValues,
         },
       }, providerHeaders)
-    : hasCompanyUpdate
+    : (hasCompanyUpdate || hasMappedCompanyUpdate)
       ? await attioRequest(env, apiKey, baseUrl, companyDomain
           ? "/objects/companies/records?matching_attribute=domains"
           : "/objects/companies/records", companyDomain ? "PUT" : "POST", {
             data: {
-              values: buildAttioCompanyValues(companyName, companyDomain),
+              values: companyValues,
             },
           }, providerHeaders)
       : null;
@@ -5277,17 +5337,21 @@ async function executeAttioCrmUpdate(
         companyDomain,
       })
     : null;
-  const person = personValues
-    ? personRecordId
-      ? await attioRequest(env, apiKey, baseUrl, `/objects/people/records/${encodeURIComponent(personRecordId)}`, "PATCH", {
-          data: { values: personValues },
-        }, providerHeaders)
-      : await attioRequest(env, apiKey, baseUrl, email
+  const person = personRecordId && (personValues || hasMappedPersonUpdate)
+    ? await attioRequest(env, apiKey, baseUrl, `/objects/people/records/${encodeURIComponent(personRecordId)}`, "PATCH", {
+        data: { values: { ...(personValues ?? {}), ...mappedPersonValues } },
+      }, providerHeaders)
+    : personValues
+      ? await attioRequest(env, apiKey, baseUrl, email
           ? "/objects/people/records?matching_attribute=email_addresses"
           : "/objects/people/records", email ? "PUT" : "POST", {
-            data: { values: personValues },
+            data: { values: { ...personValues, ...mappedPersonValues } },
           }, providerHeaders)
-    : null;
+      : hasMappedPersonUpdate
+      ? await attioRequest(env, apiKey, baseUrl, "/objects/people/records", "POST", {
+          data: { values: mappedPersonValues },
+        }, providerHeaders)
+      : null;
   const personRef = person ? mapAttioRecordReference(person) : null;
 
   return {
@@ -5305,6 +5369,83 @@ async function executeAttioCrmUpdate(
       },
     },
   };
+}
+
+function readAttioMap(provider: TrellisProviderDefinition | undefined): TrellisAttioMap | null {
+  const config = isRecord(provider?.config) ? provider.config : {};
+  const map = isRecord(config.map) ? config.map : null;
+  if (!map) {
+    return null;
+  }
+  return {
+    companies: readStringFieldMap(map.companies),
+    people: readStringFieldMap(map.people),
+  };
+}
+
+function readStringFieldMap(value: unknown): TrellisFieldMap | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value)
+    .filter((entry): entry is [string, string] =>
+      typeof entry[0] === "string" && typeof entry[1] === "string" && entry[0].trim().length > 0 && entry[1].trim().length > 0,
+    );
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function buildAttioMapSource(context: TrellisProviderExecutionContext) {
+  const signal = context.signal
+    ? {
+        id: context.signal.id,
+        traceId: context.signal.traceId,
+        workspaceId: context.signal.workspaceId,
+        threadId: context.signal.threadId,
+        campaignId: context.signal.campaignId ?? null,
+        payload: context.signal.payload,
+      }
+    : null;
+  const params = context.workflowRun?.params ?? {};
+  return {
+    ...context.input,
+    ...(context.signal?.payload ?? {}),
+    ...params,
+    input: context.input,
+    signal,
+    payload: context.signal?.payload ?? {},
+    draft: context.draft,
+    prospect: context.prospect,
+    action: context.action,
+    workflow: context.workflowRun,
+  };
+}
+
+function applyAttioFieldMap(map: TrellisFieldMap | undefined, source: Record<string, unknown>) {
+  const values: Record<string, unknown> = {};
+  for (const [attioField, sourcePath] of Object.entries(map ?? {})) {
+    const value = readMappedValue(source, sourcePath);
+    if (value !== undefined && value !== null && value !== "") {
+      values[attioField] = value;
+    }
+  }
+  return values;
+}
+
+function readMappedValue(source: Record<string, unknown>, sourcePath: string) {
+  const pathParts = sourcePath.replace(/^\$\./, "").split(".").filter(Boolean);
+  let cursor: unknown = source;
+  for (const part of pathParts) {
+    if (Array.isArray(cursor)) {
+      const index = Number(part);
+      cursor = Number.isInteger(index) ? cursor[index] : undefined;
+      continue;
+    }
+    if (!isRecord(cursor)) {
+      return undefined;
+    }
+    cursor = cursor[part];
+  }
+  return cursor;
 }
 
 async function executeHandoffWebhook(

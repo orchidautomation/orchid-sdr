@@ -53,9 +53,10 @@ The proof point is that a user can see one signal become a qualified prospect, a
 ```ts
 import { trellis, schema } from "@trellis/gtm";
 import { attio, agentmail, firecrawl } from "@trellis/providers";
+import attioMap from "./crm/attio.map";
 
 export default trellis.agent("gtm-sdr", {
-  crm: attio(),
+  crm: attio({ map: attioMap }),
   email: agentmail(),
   research: firecrawl(),
   knowledge: "knowledge/**/*.md",

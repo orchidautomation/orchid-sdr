@@ -68,9 +68,10 @@ Generated apps install `@flue/sdk` and create a hidden Flue context factory in t
 ```ts
 import { trellis, schema } from "@trellis/gtm";
 import { agentmail, attio, firecrawl } from "@trellis/providers";
+import attioMap from "./crm/attio.map";
 
 export default trellis.agent("sdr", {
-  crm: attio(),
+  crm: attio({ map: attioMap }),
   email: agentmail(),
   research: firecrawl(),
   model: "@cf/moonshotai/kimi-k2.6",

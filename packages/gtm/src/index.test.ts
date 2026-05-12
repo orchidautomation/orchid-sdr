@@ -2178,7 +2178,17 @@ describe("@trellis/gtm v3 API", () => {
 
   it("executes approved Attio CRM updates through the built-in v3 provider executor", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
-      crm: attio(),
+      crm: attio({
+        map: {
+          companies: {
+            icp_status: "qualification.decision",
+            latest_signal: "signal.payload.signal",
+          },
+          people: {
+            qualification_summary: "qualification.summary",
+          },
+        },
+      }),
       email: agentmail(),
       research: firecrawl(),
       knowledge: "knowledge/**/*.md",
@@ -2196,6 +2206,9 @@ describe("@trellis/gtm v3 API", () => {
 
     const fakeD1 = createFakeD1();
     const fakeQueue = createFakeQueue();
+    const fakeWorkflow = {
+      create: vi.fn(async (options: Record<string, unknown>) => ({ id: options.id })),
+    };
     const fetchMock = vi.fn(async (url: string | URL | Request) => {
       const href = String(url);
       if (href.includes("/objects/companies/records")) {
@@ -2223,6 +2236,7 @@ describe("@trellis/gtm v3 API", () => {
     const env = {
       TRELLIS_DB: fakeD1,
       TRELLIS_EVENTS: fakeQueue,
+      PROSPECT_WORKFLOW: fakeWorkflow,
       TRELLIS_FETCH: fetchMock,
       ATTIO_API_KEY: "attio_test",
       ATTIO_BASE_URL: "https://attio.test",
@@ -2242,6 +2256,7 @@ describe("@trellis/gtm v3 API", () => {
         email: "avery@acme.com",
         title: "VP RevOps",
         linkedinUrl: "https://linkedin.com/in/avery",
+        signal: "Opened the pricing page twice this week.",
       }),
     }), env);
     const approval = await runtime.worker.fetch(new Request("https://example.com/approvals/approval_draft_sig_attio_crm_update/approve", {
@@ -2316,6 +2331,8 @@ describe("@trellis/gtm v3 API", () => {
         values: {
           name: "Acme Corp",
           domains: ["acme.com"],
+          icp_status: "needs_review",
+          latest_signal: "Opened the pricing page twice this week.",
         },
       },
     });
@@ -2347,6 +2364,7 @@ describe("@trellis/gtm v3 API", () => {
           email_addresses: ["avery@acme.com"],
           job_title: "VP RevOps",
           linkedin: "https://linkedin.com/in/avery",
+          qualification_summary: "Fixture qualification result.",
           company: [
             {
               target_object: "companies",
@@ -3149,6 +3167,9 @@ function createFakeD1() {
               }
               if (normalized.includes("FROM trellis_workflow_runs WHERE id = ?")) {
                 return workflowRuns.get(String(bindings[0])) ?? null;
+              }
+              if (normalized.includes("FROM trellis_workflow_runs WHERE signal_id = ?")) {
+                return sortRows(workflowRuns).find((row) => row.signalId === bindings[0]) ?? null;
               }
               if (normalized.includes("FROM trellis_drafts WHERE id = ?")) {
                 return drafts.get(String(bindings[0])) ?? null;

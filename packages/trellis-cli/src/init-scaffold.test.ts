@@ -48,6 +48,7 @@ describe("trellis init v3 scaffold", () => {
       const agentSource = readFileSync(path.join(targetDir, "src", "agent.ts"), "utf8");
       const workerSource = readFileSync(path.join(targetDir, "src", "index.ts"), "utf8");
       const flueSource = readFileSync(path.join(targetDir, "src", "trellis-flue.ts"), "utf8");
+      const attioMapSource = readFileSync(path.join(targetDir, "src", "crm", "attio.map.ts"), "utf8");
       const wranglerConfig = readFileSync(path.join(targetDir, "wrangler.jsonc"), "utf8");
       const envExample = readFileSync(path.join(targetDir, ".env.example"), "utf8");
       const readme = readFileSync(path.join(targetDir, "README.md"), "utf8");
@@ -59,6 +60,7 @@ describe("trellis init v3 scaffold", () => {
       expect(initResult.mode).toBe("v3-cloudflare-gtm");
       expect(initResult.filesWritten).toContain("src/agent.ts");
       expect(initResult.filesWritten).toContain("src/trellis-flue.ts");
+      expect(initResult.filesWritten).toContain("src/crm/attio.map.ts");
       expect(dependencySpecs).not.toContain("workspace:*");
       expect(generatedPackage.dependencies["@trellis/gtm"]).toMatch(/^file:\/\//);
       expect(generatedPackage.dependencies["@trellis/providers"]).toMatch(/^file:\/\//);
@@ -75,6 +77,8 @@ describe("trellis init v3 scaffold", () => {
       expect(readFileSync(cliPath, "utf8")).toMatch(/^#!\/usr\/bin\/env tsx/);
 
       expect(agentSource).toContain("trellis.agent(\"sdr\"");
+      expect(agentSource).toContain("import attioMap from \"./crm/attio.map\"");
+      expect(agentSource).toContain("crm: attio({ map: attioMap })");
       expect(agentSource).toContain("model: \"@cf/moonshotai/kimi-k2.6\"");
       expect(agentSource).toContain("trellis.safeOutbound()");
       expect(agentSource).toContain("app.skill(\"icp-qualification\"");
@@ -95,6 +99,10 @@ describe("trellis init v3 scaffold", () => {
       expect(flueSource).toContain("readPackFiles(input.packs, \"skills\")");
       expect(flueSource.indexOf("const env = (input.env ?? {}) as TrellisEnv;"))
         .toBeLessThan(flueSource.indexOf("registerProvider(\"cloudflare\""));
+      expect(attioMapSource).toContain("satisfies TrellisAttioMap");
+      expect(attioMapSource).toContain("companies:");
+      expect(attioMapSource).toContain("people:");
+      expect(attioMapSource).toContain("latest_signal");
 
       expect(wranglerConfig).toContain("\"ai\"");
       expect(wranglerConfig).toContain("\"browser\"");

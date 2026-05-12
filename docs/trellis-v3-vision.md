@@ -115,9 +115,10 @@ This is the public shape v3 should keep optimizing around:
 // src/agent.ts
 import { trellis, schema } from "@trellis/gtm";
 import { attio, agentmail, firecrawl } from "@trellis/providers";
+import attioMap from "./crm/attio.map";
 
 export default trellis.agent("sdr", {
-  crm: attio(),
+  crm: attio({ map: attioMap }),
   email: agentmail(),
   research: firecrawl(),
   knowledge: "knowledge/**/*.md",
