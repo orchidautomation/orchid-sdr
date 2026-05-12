@@ -545,6 +545,178 @@ describe("@trellis/gtm v3 API", () => {
     }
   });
 
+  it("executes approved Attio CRM updates through the built-in v3 provider executor", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound({ noSends: false }),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    const fakeQueue = createFakeQueue();
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.includes("/objects/companies/records")) {
+        return new Response(JSON.stringify({
+          data: {
+            id: { record_id: "company_123" },
+            web_url: "https://app.attio.com/company_123",
+          },
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({
+        data: {
+          id: { record_id: "person_123" },
+          web_url: "https://app.attio.com/person_123",
+        },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const env = {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_EVENTS: fakeQueue,
+      TRELLIS_FETCH: fetchMock,
+      ATTIO_API_KEY: "attio_test",
+      ATTIO_BASE_URL: "https://attio.test",
+    };
+
+    await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_attio",
+        workspaceId: "wrk_attio",
+        threadId: "thr_attio",
+        provider: "test",
+        source: "unit.test",
+        company: "Acme Corp",
+        domain: "https://www.acme.com/pricing",
+        fullName: "Avery Buyer",
+        email: "avery@acme.com",
+        title: "VP RevOps",
+        linkedinUrl: "https://linkedin.com/in/avery",
+      }),
+    }), env);
+    const approval = await runtime.worker.fetch(new Request("https://example.com/approvals/approval_draft_sig_attio_crm_update/approve", {
+      method: "POST",
+      body: JSON.stringify({
+        signalId: "sig_attio",
+        draftId: "draft_sig_attio",
+        action: "crm.update",
+        actor: "operator@example.com",
+      }),
+    }), env);
+    const execution = await runtime.worker.fetch(new Request("https://example.com/provider-actions/provider_action_approval_draft_sig_attio_crm_update/execute", {
+      method: "POST",
+      body: JSON.stringify({
+        actor: "attio-worker",
+      }),
+    }), env);
+
+    await expect(approval.json()).resolves.toMatchObject({
+      providerAction: {
+        id: "provider_action_approval_draft_sig_attio_crm_update",
+        provider: "attio",
+        operation: "crm.update",
+        status: "queued",
+      },
+    });
+    expect(execution.status).toBe(200);
+    await expect(execution.json()).resolves.toMatchObject({
+      ok: true,
+      providerAction: {
+        id: "provider_action_approval_draft_sig_attio_crm_update",
+        status: "completed",
+      },
+      execution: {
+        ok: true,
+        provider: "attio",
+        operation: "crm.update",
+        externalId: "person_123",
+        raw: {
+          company: {
+            recordId: "company_123",
+            webUrl: "https://app.attio.com/company_123",
+          },
+          person: {
+            recordId: "person_123",
+            webUrl: "https://app.attio.com/person_123",
+          },
+        },
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [companyUrl, companyInit] = fetchMock.mock.calls[0] as unknown as [string | URL | Request, RequestInit];
+    const [personUrl, personInit] = fetchMock.mock.calls[1] as unknown as [string | URL | Request, RequestInit];
+    expect(String(companyUrl)).toBe("https://attio.test/objects/companies/records?matching_attribute=domains");
+    expect(companyInit).toMatchObject({
+      method: "PUT",
+      headers: expect.objectContaining({
+        authorization: "Bearer attio_test",
+      }),
+    });
+    expect(JSON.parse(String(companyInit?.body))).toEqual({
+      data: {
+        values: {
+          name: "Acme Corp",
+          domains: ["acme.com"],
+        },
+      },
+    });
+    expect(String(personUrl)).toBe("https://attio.test/objects/people/records?matching_attribute=email_addresses");
+    expect(personInit).toMatchObject({
+      method: "PUT",
+      headers: expect.objectContaining({
+        authorization: "Bearer attio_test",
+      }),
+    });
+    expect(JSON.parse(String(personInit?.body))).toEqual({
+      data: {
+        values: {
+          name: [
+            {
+              first_name: "Avery",
+              last_name: "Buyer",
+              full_name: "Avery Buyer",
+            },
+          ],
+          email_addresses: ["avery@acme.com"],
+          job_title: "VP RevOps",
+          linkedin: "https://linkedin.com/in/avery",
+          company: [
+            {
+              target_object: "companies",
+              target_record_id: "company_123",
+            },
+          ],
+        },
+      },
+    });
+    expect(fakeQueue.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "trellis.provider.action.completed",
+        providerActionId: "provider_action_approval_draft_sig_attio_crm_update",
+      }),
+    ]));
+  });
+
   it("drains queued provider actions from the Cloudflare queue consumer", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),

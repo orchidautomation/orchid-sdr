@@ -46,7 +46,7 @@ Those records are enough to prove the GTM control loop is observable and safe be
 
 Approval decisions update D1, append an audit event, and enqueue a runtime event. Approved side effects create provider action intents. If no-send mode is still enabled, those intents are recorded as `blocked_no_send` instead of calling the provider.
 
-Queued provider actions can be executed through `POST /provider-actions/:id/execute`. The executor refuses to run while no-send mode is enabled, refuses actions that are not `queued`, dispatches through a bound `TRELLIS_PROVIDER_EXECUTOR` when present, and includes a built-in AgentMail `email.send` executor. Execution success or failure updates D1, appends audit, and emits queue events.
+Queued provider actions can be executed through `POST /provider-actions/:id/execute`. The executor refuses to run while no-send mode is enabled, refuses actions that are not `queued`, dispatches through a bound `TRELLIS_PROVIDER_EXECUTOR` when present, and includes built-in AgentMail `email.send` and Attio `crm.update` executors. Execution success or failure updates D1, appends audit, and emits queue events.
 
 The generated Worker also exposes a Cloudflare Queues consumer through the same hidden runtime object. `trellis.provider.action.queued` messages are drained by the executor, acknowledged on handled outcomes, and retried on provider execution failures.
 

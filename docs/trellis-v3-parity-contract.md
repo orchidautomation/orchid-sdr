@@ -211,6 +211,7 @@ v3 parity:
 - provider side effects are approval-gated
 - provider action intents carry approval, signal, draft, operation, provider, and trace ids
 - provider action status transitions and executor outcomes emit audit and queue events for recovery
+- built-in executors cover the curated GTM stack first, including AgentMail `email.send` and Attio `crm.update`
 - provider calls carry trace/workflow/prospect ids
 - provider failures are retried or moved to dead letter with operator recovery
 

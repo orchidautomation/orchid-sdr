@@ -1768,6 +1768,13 @@ async function dispatchProviderAction(
     return executeAgentMailSend(env, context);
   }
 
+  if (
+    context.action.provider === "attio"
+    && (context.action.operation === "crm.update" || context.action.operation === "crm.syncProspect")
+  ) {
+    return executeAttioCrmUpdate(env, context);
+  }
+
   throw new Error(`No executor is configured for ${context.action.provider}:${context.action.operation}`);
 }
 
@@ -1868,6 +1875,219 @@ async function executeAgentMailSend(
     externalThreadId: readString(record.thread_id) ?? readString(record.threadId) ?? null,
     raw,
   };
+}
+
+async function executeAttioCrmUpdate(
+  env: Record<string, unknown> | undefined,
+  context: TrellisProviderExecutionContext,
+): Promise<TrellisProviderActionExecutionResult> {
+  const apiKey = readString(env?.ATTIO_API_KEY);
+  if (!apiKey) {
+    throw new Error("ATTIO_API_KEY is not configured.");
+  }
+
+  const signalPayload = context.signal?.payload ?? {};
+  const input = context.input;
+  const companyName = readFirstString(input, signalPayload, [
+    "companyName",
+    "company",
+    "account",
+    "accountName",
+    "organization",
+  ]);
+  const companyDomain = normalizeDomain(readFirstString(input, signalPayload, [
+    "companyDomain",
+    "domain",
+    "website",
+    "companyWebsite",
+  ]));
+  const fullName = readFirstString(input, signalPayload, ["fullName", "name", "personName", "contactName"]);
+  const email = readFirstString(input, signalPayload, ["email", "recipientEmail", "personEmail", "contactEmail"]);
+  const title = readFirstString(input, signalPayload, ["title", "jobTitle"]);
+  const linkedinUrl = readFirstString(input, signalPayload, ["linkedinUrl", "linkedin"]);
+  const twitterUrl = readFirstString(input, signalPayload, ["twitterUrl", "twitter", "xUrl"]);
+  const companyRecordId = readFirstString(input, signalPayload, ["attioCompanyRecordId", "companyRecordId"]);
+  const personRecordId = readFirstString(input, signalPayload, ["attioPersonRecordId", "personRecordId"]);
+  const hasCompanyUpdate = Boolean(companyName || companyDomain);
+  const hasPersonUpdate = Boolean(personRecordId || fullName || email || linkedinUrl || twitterUrl);
+
+  if (!hasCompanyUpdate && !hasPersonUpdate) {
+    throw new Error("Attio CRM update requires company, domain, email, name, LinkedIn, or an Attio record id.");
+  }
+
+  const baseUrl = (readString(env?.ATTIO_BASE_URL) ?? "https://api.attio.com/v2").replace(/\/+$/, "");
+  const company = companyRecordId && hasCompanyUpdate
+    ? await attioRequest(env, apiKey, baseUrl, `/objects/companies/records/${encodeURIComponent(companyRecordId)}`, "PATCH", {
+        data: {
+          values: buildAttioCompanyValues(companyName, companyDomain),
+        },
+      })
+    : hasCompanyUpdate
+      ? await attioRequest(env, apiKey, baseUrl, companyDomain
+          ? "/objects/companies/records?matching_attribute=domains"
+          : "/objects/companies/records", companyDomain ? "PUT" : "POST", {
+            data: {
+              values: buildAttioCompanyValues(companyName, companyDomain),
+            },
+          })
+      : null;
+  const companyRef = company
+    ? mapAttioRecordReference(company)
+    : companyRecordId
+      ? { recordId: companyRecordId, webUrl: null }
+      : null;
+  const personValues = hasPersonUpdate
+    ? buildAttioPersonValues({
+        fullName,
+        email,
+        title,
+        linkedinUrl,
+        twitterUrl,
+        companyRecordId: companyRef?.recordId,
+        companyDomain,
+      })
+    : null;
+  const person = personValues
+    ? personRecordId
+      ? await attioRequest(env, apiKey, baseUrl, `/objects/people/records/${encodeURIComponent(personRecordId)}`, "PATCH", {
+          data: { values: personValues },
+        })
+      : await attioRequest(env, apiKey, baseUrl, email
+          ? "/objects/people/records?matching_attribute=email_addresses"
+          : "/objects/people/records", email ? "PUT" : "POST", {
+            data: { values: personValues },
+          })
+    : null;
+  const personRef = person ? mapAttioRecordReference(person) : null;
+
+  return {
+    ok: true,
+    provider: "attio",
+    operation: context.action.operation,
+    actionId: context.action.id,
+    externalId: personRef?.recordId || companyRef?.recordId || null,
+    raw: {
+      company: companyRef,
+      person: personRef,
+      attio: {
+        company,
+        person,
+      },
+    },
+  };
+}
+
+function buildAttioCompanyValues(companyName: string | undefined, companyDomain: string | undefined) {
+  const values: Record<string, unknown> = {};
+  if (companyName) {
+    values.name = companyName;
+  }
+  if (companyDomain) {
+    values.domains = [companyDomain];
+  }
+  return values;
+}
+
+function buildAttioPersonValues(input: {
+  fullName?: string;
+  email?: string;
+  title?: string;
+  linkedinUrl?: string;
+  twitterUrl?: string;
+  companyRecordId?: string;
+  companyDomain?: string;
+}) {
+  const values: Record<string, unknown> = {};
+  if (input.fullName) {
+    const { firstName, lastName } = splitFullName(input.fullName);
+    values.name = [
+      {
+        first_name: firstName,
+        last_name: lastName,
+        full_name: input.fullName,
+      },
+    ];
+  }
+  if (input.email) {
+    values.email_addresses = [input.email];
+  }
+  if (input.title) {
+    values.job_title = input.title;
+  }
+  if (input.linkedinUrl) {
+    values.linkedin = input.linkedinUrl;
+  }
+  if (input.twitterUrl) {
+    values.twitter = input.twitterUrl;
+  }
+  if (input.companyRecordId) {
+    values.company = [
+      {
+        target_object: "companies",
+        target_record_id: input.companyRecordId,
+      },
+    ];
+  } else if (input.companyDomain) {
+    values.company = [
+      {
+        target_object: "companies",
+        domains: [{ domain: input.companyDomain }],
+      },
+    ];
+  }
+  return values;
+}
+
+async function attioRequest(
+  env: Record<string, unknown> | undefined,
+  apiKey: string,
+  baseUrl: string,
+  path: string,
+  method: "POST" | "PUT" | "PATCH",
+  body: Record<string, unknown>,
+) {
+  const fetcher = typeof env?.TRELLIS_FETCH === "function"
+    ? env.TRELLIS_FETCH as typeof fetch
+    : fetch;
+  const response = await fetcher(`${baseUrl}${path}`, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`Attio request failed with ${response.status}: ${await response.text()}`);
+  }
+  const parsed = await response.json().catch(() => ({}));
+  return isRecord(parsed) ? parsed : {};
+}
+
+function mapAttioRecordReference(response: Record<string, unknown>) {
+  const data = isRecord(response.data) ? response.data : {};
+  const id = isRecord(data.id) ? data.id : {};
+  return {
+    recordId: readString(id.record_id) ?? readString(id.id) ?? "",
+    webUrl: readString(data.web_url) ?? null,
+  };
+}
+
+function splitFullName(fullName: string) {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] ?? fullName,
+    lastName: parts.length > 1 ? parts.slice(1).join(" ") : "",
+  };
+}
+
+function normalizeDomain(value: string | undefined) {
+  return value
+    ?.trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/\/.*$/, "")
+    .toLowerCase();
 }
 
 function readFirstString(
