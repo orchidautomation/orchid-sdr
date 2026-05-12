@@ -518,7 +518,7 @@ export function createTrellisTestApp(input?: {
     auditEvents,
     signal() {
       auditEvents.push({
-        id: `evt_${auditEvents.length + 1}`,
+        id: nextAuditEventId(signal, auditEvents),
         traceId: signal.traceId,
         type: "signal.accepted",
         message: "Accepted fixture signal.",
@@ -545,7 +545,7 @@ export function createTrellisTestApp(input?: {
         const harnessResult = await input.harness.skill(name, skillInput);
         const parsed = parseSkillOutput(harnessResult, skillInput.schema);
         auditEvents.push({
-          id: `evt_${auditEvents.length + 1}`,
+          id: nextAuditEventId(signal, auditEvents),
           traceId: signal.traceId,
           type: "skill.completed",
           message: `Completed skill ${name}.`,
@@ -565,7 +565,7 @@ export function createTrellisTestApp(input?: {
       };
       const parsed = parseSkillOutput(result, skillInput.schema);
       auditEvents.push({
-        id: `evt_${auditEvents.length + 1}`,
+        id: nextAuditEventId(signal, auditEvents),
         traceId: signal.traceId,
         type: "skill.completed",
         message: `Completed skill ${name}.`,
@@ -600,7 +600,7 @@ export function createTrellisTestApp(input?: {
             body: readWorkflowDraftBody(name, workflowInput),
           });
           auditEvents.push({
-            id: `evt_${auditEvents.length + 1}`,
+            id: nextAuditEventId(signal, auditEvents),
             traceId: signal.traceId,
             type: "workflow.started",
             message: `Started workflow ${name}.`,
@@ -612,7 +612,7 @@ export function createTrellisTestApp(input?: {
             },
           });
           auditEvents.push({
-            id: `evt_${auditEvents.length + 1}`,
+            id: nextAuditEventId(signal, auditEvents),
             traceId: signal.traceId,
             type: "draft.created",
             message: "Created draft and blocked side effects pending approval.",
@@ -641,6 +641,10 @@ export function createTrellisTestApp(input?: {
   }
 
   return app;
+}
+
+function nextAuditEventId(signal: TrellisSignal, auditEvents: TrellisAuditEvent[]) {
+  return `evt_${normalizeIdPart(signal.id)}_${auditEvents.length + 1}`;
 }
 
 export async function runTrellisSmoke(input?: {

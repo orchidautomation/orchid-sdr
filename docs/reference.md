@@ -54,7 +54,7 @@ The v3 baseline persists:
 - audit events
 - trace events
 
-Those records are enough to prove the GTM control loop is observable and safe before any provider writes happen. Trellis derives or accepts a stable `traceId` at signal ingest, carries it through workflow dispatch, approvals, provider action intents, queue messages, and side-effect execution, and records the timeline in `trellis_trace_events`.
+Those records are enough to prove the GTM control loop is observable and safe before any provider writes happen. Trellis derives or accepts a stable `traceId` at signal ingest, carries it through workflow dispatch, approvals, provider action intents, queue messages, and side-effect execution, and records the timeline in `trellis_trace_events`. Generated audit and trace event ids are scoped to the signal or workflow/action id so repeated webhook runs do not overwrite each other.
 
 `trellis_trace_events` is the canonical trace log. Optional exporters can mirror each trace event to a bound `TRELLIS_TRACE_EXPORTER`, a generic `TRELLIS_TRACE_EXPORT_URL`, Langfuse, or Braintrust. Export failures are swallowed after the D1 write so signal ingest, approvals, workflow replay, and provider action execution keep moving. `/healthz`, `/mcp/trellis`, and the dashboard expose whether trace export is configured without leaking secrets.
 

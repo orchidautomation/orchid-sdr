@@ -651,6 +651,63 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
+  it("scopes persisted audit and trace event ids per signal", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      email: agentmail(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+    const fakeD1 = createFakeD1();
+    const env = {
+      TRELLIS_DB: fakeD1,
+    };
+
+    await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_audit_a",
+        workspaceId: "wrk_audit",
+        threadId: "thr_audit_a",
+      }),
+    }), env);
+    await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_audit_b",
+        workspaceId: "wrk_audit",
+        threadId: "thr_audit_b",
+      }),
+    }), env);
+
+    const mcp = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), env);
+    await expect(mcp.json()).resolves.toMatchObject({
+      snapshot: {
+        counts: {
+          signals: 2,
+          auditEvents: 8,
+          traceEvents: 8,
+        },
+      },
+    });
+    expect(fakeD1.statements).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        bindings: expect.arrayContaining(["evt_sig_audit_a_1"]),
+      }),
+      expect.objectContaining({
+        bindings: expect.arrayContaining(["evt_sig_audit_b_1"]),
+      }),
+    ]));
+  });
+
   it("enforces operator kill switch and pause controls before workflow dispatch and provider execution", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       email: agentmail(),
@@ -2207,6 +2264,8 @@ function createFakeD1() {
   const providerActions = new Map<string, Record<string, unknown>>();
   const operatorControls = new Map<string, Record<string, unknown>>();
   const workflowRuns = new Map<string, Record<string, unknown>>();
+  const auditEvents = new Map<string, Record<string, unknown>>();
+  const traceEvents = new Map<string, Record<string, unknown>>();
   return {
     statements,
     prepare(sql: string) {
@@ -2277,6 +2336,29 @@ function createFakeD1() {
                   updatedAt: bindings[6],
                 });
               }
+              if (normalized.includes("INSERT OR REPLACE INTO trellis_audit_events")) {
+                auditEvents.set(String(bindings[0]), {
+                  id: bindings[0],
+                  signalId: bindings[1],
+                  workflow: bindings[2],
+                  type: bindings[3],
+                  message: bindings[4],
+                  createdAt: bindings[5],
+                });
+              }
+              if (normalized.includes("INSERT OR REPLACE INTO trellis_trace_events")) {
+                traceEvents.set(String(bindings[0]), {
+                  id: bindings[0],
+                  traceId: bindings[1],
+                  signalId: bindings[2],
+                  workflow: bindings[3],
+                  span: bindings[4],
+                  type: bindings[5],
+                  message: bindings[6],
+                  payloadJson: bindings[7],
+                  createdAt: bindings[8],
+                });
+              }
               if (normalized.includes("UPDATE trellis_provider_actions SET status = ?")) {
                 const row = providerActions.get(String(bindings[2]));
                 if (row) {
@@ -2296,6 +2378,12 @@ function createFakeD1() {
                 }
                 if (tableName === "trellis_workflow_runs") {
                   return { count: workflowRuns.size };
+                }
+                if (tableName === "trellis_audit_events") {
+                  return { count: auditEvents.size };
+                }
+                if (tableName === "trellis_trace_events") {
+                  return { count: traceEvents.size };
                 }
                 const count = statements.filter((statement) =>
                   statement.sql.includes(`INSERT OR REPLACE INTO ${tableName}`),
