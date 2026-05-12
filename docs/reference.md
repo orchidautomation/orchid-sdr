@@ -72,6 +72,8 @@ Replay controls use the existing durable records instead of asking operators to 
 
 The MCP snapshot and dashboard include compact recent D1 projections for signals, prospects, drafts, approvals, provider actions, workflow runs, audit events, trace events, and smoke runs. This backs the inspection tools with durable Trellis state instead of only showing aggregate counts.
 
+The hidden `TrellisAgent` Durable Object also returns a read-only snapshot when routed through `/agents/*`. If the Durable Object storage exposes KV-style `trellis:snapshot` / `trellis:memory` records or Cloudflare SQLite, Trellis reports that local agent memory without requiring users to call Cloudflare primitives directly.
+
 The generated Worker also exposes a Cloudflare Queues consumer through the same hidden runtime object. `trellis.provider.action.queued` messages are drained by the executor and acknowledged on handled outcomes. Provider execution failures are recorded, reset to `queued` for the Cloudflare retry attempt, and can still be requeued manually through the operator replay route after DLQ inspection.
 
 `GET /smoke` remains safe to run before provider credentials are connected. When `TRELLIS_DB` is bound, it writes a row to `trellis_smoke_runs`, appends a `smoke.pass` or `smoke.fail` trace event, and surfaces the count through MCP and the dashboard.

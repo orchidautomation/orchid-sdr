@@ -749,6 +749,102 @@ describe("@trellis/gtm v3 API", () => {
     ]));
   });
 
+  it("exposes read-only durable agent snapshots", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      email: agentmail(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      return app.workflow("prospect").start({ signal });
+    }));
+    const get = vi.fn(async (key: string) => {
+      if (key === "trellis:snapshot") {
+        return {
+          status: "active",
+          signalId: "sig_agent_snapshot",
+        };
+      }
+      if (key === "trellis:memory") {
+        return {
+          lastStage: "approval",
+        };
+      }
+      return null;
+    });
+    const exec = vi.fn((query: string) => {
+      if (query.includes("sqlite_master")) {
+        return {
+          toArray: () => [
+            { name: "trellis_agent_memory" },
+          ],
+        };
+      }
+      if (query.includes("trellis_agent_memory")) {
+        return {
+          toArray: () => [
+            {
+              key: "lastSignal",
+              value: JSON.stringify({ id: "sig_agent_snapshot" }),
+              updatedAt: "2026-05-12T00:00:00.000Z",
+            },
+          ],
+        };
+      }
+      return {
+        toArray: () => [],
+      };
+    });
+    const agentObject = new runtime.TrellisAgent({
+      storage: {
+        get,
+        sql: {
+          exec,
+        },
+      },
+    }, {});
+
+    const response = await agentObject.fetch(new Request("https://example.com/agents/prospect_sig_agent_snapshot"));
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      runtime: "trellis-agent",
+      path: "/agents/prospect_sig_agent_snapshot",
+      storage: "durable-object-sqlite",
+      snapshot: {
+        enabled: true,
+        kv: {
+          snapshot: {
+            status: "active",
+            signalId: "sig_agent_snapshot",
+          },
+          memory: {
+            lastStage: "approval",
+          },
+        },
+        sqlite: {
+          enabled: true,
+          tables: [
+            {
+              name: "trellis_agent_memory",
+            },
+          ],
+          memory: [
+            {
+              key: "lastSignal",
+              value: {
+                id: "sig_agent_snapshot",
+              },
+            },
+          ],
+        },
+      },
+    });
+    expect(get).toHaveBeenCalledWith("trellis:snapshot");
+    expect(get).toHaveBeenCalledWith("trellis:memory");
+    expect(exec).toHaveBeenCalledWith("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name LIMIT 20");
+  });
+
   it("enforces operator kill switch and pause controls before workflow dispatch and provider execution", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       email: agentmail(),

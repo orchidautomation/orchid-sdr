@@ -1036,12 +1036,14 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
       private readonly env?: unknown,
     ) {}
 
-    async fetch() {
+    async fetch(request?: Request) {
       return jsonResponse({
         ok: true,
         runtime: "trellis-agent",
         agent: agent.name,
+        path: request ? new URL(request.url).pathname : null,
         storage: "durable-object-sqlite",
+        snapshot: await readDurableAgentSnapshot(this.state),
         state: Boolean(this.state),
         env: Boolean(this.env),
       });
@@ -1471,6 +1473,79 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
     ProspectWorkflow: ProspectWorkflowObject,
     worker,
   };
+}
+
+async function readDurableAgentSnapshot(state: unknown) {
+  const record = isRecord(state) ? state : {};
+  const storage = isRecord(record.storage) ? record.storage : null;
+  const sql = isRecord(storage?.sql) ? storage.sql : null;
+  const snapshot = storage ? await readDurableStorageKey(storage, "trellis:snapshot") : null;
+  const memory = storage ? await readDurableStorageKey(storage, "trellis:memory") : null;
+  return {
+    enabled: Boolean(storage),
+    kv: {
+      snapshot,
+      memory,
+    },
+    sqlite: {
+      enabled: Boolean(sql && typeof sql.exec === "function"),
+      tables: sql ? await readDurableSqlRows(sql, "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name LIMIT 20") : [],
+      memory: sql ? await readDurableSqlRows(sql, "SELECT key, value, updated_at AS updatedAt FROM trellis_agent_memory ORDER BY updated_at DESC LIMIT 20") : [],
+    },
+  };
+}
+
+async function readDurableStorageKey(storage: Record<string, unknown>, key: string) {
+  if (typeof storage.get !== "function") {
+    return null;
+  }
+  try {
+    return await Promise.resolve((storage.get as (key: string) => unknown)(key));
+  } catch {
+    return null;
+  }
+}
+
+async function readDurableSqlRows(sql: Record<string, unknown>, query: string) {
+  if (typeof sql.exec !== "function") {
+    return [];
+  }
+  try {
+    const result = await Promise.resolve((sql.exec as (query: string) => unknown)(query));
+    const rows = await normalizeSqlRows(result);
+    return rows.map((row) => normalizeDurableSqlRow(row));
+  } catch {
+    return [];
+  }
+}
+
+async function normalizeSqlRows(result: unknown): Promise<Record<string, unknown>[]> {
+  if (Array.isArray(result)) {
+    return result.filter(isRecord);
+  }
+  if (isRecord(result)) {
+    if (typeof result.toArray === "function") {
+      const rows = await Promise.resolve((result.toArray as () => unknown)());
+      return Array.isArray(rows) ? rows.filter(isRecord) : [];
+    }
+    if (Array.isArray(result.results)) {
+      return result.results.filter(isRecord);
+    }
+  }
+  if (result && typeof result === "object" && Symbol.iterator in result) {
+    return Array.from(result as Iterable<unknown>).filter(isRecord);
+  }
+  return [];
+}
+
+function normalizeDurableSqlRow(row: Record<string, unknown>) {
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    normalized[key] = typeof value === "string" && (value.startsWith("{") || value.startsWith("["))
+      ? parseJsonValue(value)
+      : value;
+  }
+  return normalized;
 }
 
 function summarizeCloudflareBindings(env?: Record<string, unknown>) {
