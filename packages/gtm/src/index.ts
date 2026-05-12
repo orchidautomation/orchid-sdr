@@ -168,6 +168,7 @@ export interface TrellisCloudflareRuntime {
   };
   worker: {
     fetch(request: Request, env?: Record<string, unknown>): Promise<Response>;
+    queue?(batch: TrellisQueueBatch, env?: Record<string, unknown>): Promise<unknown>;
   };
 }
 
@@ -193,6 +194,16 @@ interface TrellisD1Database {
 
 interface TrellisQueue {
   send(message: unknown): Promise<unknown> | unknown;
+}
+
+interface TrellisQueueMessage {
+  body: unknown;
+  ack?(): void;
+  retry?(): void;
+}
+
+interface TrellisQueueBatch {
+  messages: TrellisQueueMessage[];
 }
 
 interface TrellisR2Bucket {
@@ -685,11 +696,8 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
     }
   }
 
-  return {
-    TrellisAgent: TrellisAgentObject,
-    ProspectWorkflow: ProspectWorkflowObject,
-    worker: {
-      async fetch(request, env) {
+  const worker: TrellisCloudflareRuntime["worker"] = {
+      async fetch(request: Request, env?: Record<string, unknown>) {
         const url = new URL(request.url);
 
         if (url.pathname === "/healthz") {
@@ -864,7 +872,15 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           ],
         });
       },
-    },
+      async queue(batch: TrellisQueueBatch, env?: Record<string, unknown>) {
+        return drainTrellisQueue(batch, env, agent.config);
+      },
+  };
+
+  return {
+    TrellisAgent: TrellisAgentObject,
+    ProspectWorkflow: ProspectWorkflowObject,
+    worker,
   };
 }
 
@@ -1462,6 +1478,70 @@ async function executeProviderAction(
       },
     };
   }
+}
+
+async function drainTrellisQueue(
+  batch: TrellisQueueBatch,
+  env: Record<string, unknown> | undefined,
+  config: TrellisAgentConfig,
+) {
+  const results = [];
+  for (const message of batch.messages) {
+    const queuedAction = readQueuedProviderActionMessage(message.body);
+    if (!queuedAction) {
+      message.ack?.();
+      results.push({
+        ok: true,
+        skipped: true,
+        reason: "not_provider_action_queued",
+      });
+      continue;
+    }
+
+    const execution = await executeProviderAction(env, {
+      providerActionId: queuedAction.providerActionId,
+      actor: "trellis-queue",
+      reason: "Drained queued provider action from TRELLIS_EVENTS.",
+      input: queuedAction.input,
+    }, config);
+    if (execution.status >= 500) {
+      message.retry?.();
+    } else {
+      message.ack?.();
+    }
+    results.push({
+      ok: execution.status >= 200 && execution.status < 300,
+      providerActionId: queuedAction.providerActionId,
+      status: execution.status,
+      body: execution.body,
+    });
+  }
+
+  return {
+    ok: results.every((result) => result.ok || result.skipped),
+    processed: results.filter((result) => !result.skipped).length,
+    skipped: results.filter((result) => result.skipped).length,
+    results,
+  };
+}
+
+function readQueuedProviderActionMessage(body: unknown) {
+  if (!isRecord(body) || body.type !== "trellis.provider.action.queued") {
+    return null;
+  }
+  const providerAction = isRecord(body.providerAction) ? body.providerAction : {};
+  const providerActionId = readString(body.providerActionId) ?? readString(providerAction.id);
+  if (!providerActionId) {
+    return null;
+  }
+  return {
+    providerActionId,
+    input: isRecord(body.input)
+      ? body.input
+      : isRecord(providerAction.input)
+        ? providerAction.input
+        : {},
+  };
 }
 
 async function readProviderActionRecord(db: TrellisD1Database, providerActionId: string) {

@@ -48,6 +48,8 @@ Approval decisions update D1, append an audit event, and enqueue a runtime event
 
 Queued provider actions can be executed through `POST /provider-actions/:id/execute`. The executor refuses to run while no-send mode is enabled, refuses actions that are not `queued`, dispatches through a bound `TRELLIS_PROVIDER_EXECUTOR` when present, and includes a built-in AgentMail `email.send` executor. Execution success or failure updates D1, appends audit, and emits queue events.
 
+The generated Worker also exposes a Cloudflare Queues consumer through the same hidden runtime object. `trellis.provider.action.queued` messages are drained by the executor, acknowledged on handled outcomes, and retried on provider execution failures.
+
 Signal webhooks support optional shared-secret verification through `TRELLIS_WEBHOOK_SECRET` or `SIGNAL_WEBHOOK_SECRET`. If a secret is configured, callers must send either `Authorization: Bearer <secret>`, `x-trellis-webhook-secret`, or `x-webhook-secret`.
 
 Signal webhooks also accept `Idempotency-Key`, `x-trellis-idempotency-key`, or `idempotencyKey` in the JSON body. If the payload does not provide a signal id, Trellis derives a stable id from that key.

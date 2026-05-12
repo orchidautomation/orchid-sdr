@@ -544,7 +544,121 @@ describe("@trellis/gtm v3 API", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("drains queued provider actions from the Cloudflare queue consumer", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound({ noSends: false }),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    const fakeQueue = createFakeQueue();
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({
+        id: "msg_queue_123",
+        thread_id: "thread_queue_123",
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const env = {
+        TRELLIS_DB: fakeD1,
+        TRELLIS_EVENTS: fakeQueue,
+        AGENTMAIL_API_KEY: "am_queue",
+        AGENTMAIL_BASE_URL: "https://agentmail.test",
+      };
+
+      await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+        method: "POST",
+        body: JSON.stringify({
+          id: "sig_queue",
+          workspaceId: "wrk_queue",
+          threadId: "thr_queue",
+          provider: "test",
+          source: "unit.test",
+          inboxId: "inbox_queue",
+          to: "queue-buyer@example.com",
+          subject: "Queue hello",
+        }),
+      }), env);
+      await runtime.worker.fetch(new Request("https://example.com/approvals/approval_draft_sig_queue_email_send/approve", {
+        method: "POST",
+        body: JSON.stringify({
+          signalId: "sig_queue",
+          draftId: "draft_sig_queue",
+          action: "email.send",
+          actor: "operator@example.com",
+        }),
+      }), env);
+
+      const queuedMessage = fakeQueue.messages.find((message) =>
+        isTestRecord(message) && message.type === "trellis.provider.action.queued",
+      );
+      const ack = vi.fn();
+      const retry = vi.fn();
+      const drain = await runtime.worker.queue?.({
+        messages: [
+          {
+            body: queuedMessage,
+            ack,
+            retry,
+          },
+        ],
+      }, env);
+
+      expect(drain).toMatchObject({
+        ok: true,
+        processed: 1,
+        skipped: 0,
+        results: [
+          {
+            ok: true,
+            providerActionId: "provider_action_approval_draft_sig_queue_email_send",
+            status: 200,
+          },
+        ],
+      });
+      expect(ack).toHaveBeenCalledTimes(1);
+      expect(retry).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string | URL | Request, RequestInit];
+      expect(String(url)).toBe("https://agentmail.test/v0/inboxes/inbox_queue/messages/send");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        to: ["queue-buyer@example.com"],
+        subject: "Queue hello",
+        text: "Fixture outbound draft. Not sent.",
+      });
+      expect(fakeQueue.messages).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: "trellis.provider.action.completed",
+          providerActionId: "provider_action_approval_draft_sig_queue_email_send",
+        }),
+      ]));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
+
+function isTestRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function createFakeD1() {
   const statements: Array<{ sql: string; bindings: unknown[] }> = [];

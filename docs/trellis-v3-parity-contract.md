@@ -180,7 +180,7 @@ v3 parity:
 - no-send mode and approval gates are enforced before every side effect
 - approvals can be approved or rejected as durable state transitions
 - approved side effects create provider action intents, and no-send mode records them as `blocked_no_send` instead of calling providers
-- queued provider action intents can be executed through the v3 executor route, with no-send/status guards, audit, and queue events
+- queued provider action intents can be executed through the v3 executor route or Cloudflare queue consumer, with no-send/status guards, audit, and queue events
 - follow-ups use Workflows durable sleep/checkpoints
 
 Legacy to remove after replacement:
