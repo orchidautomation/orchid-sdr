@@ -111,8 +111,8 @@ describe("@trellis/gtm v3 API", () => {
         source: "unit.test",
       }),
     }), env);
-    const mcp = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), {});
-    const dashboard = await runtime.worker.fetch(new Request("https://example.com/dashboard"), {});
+    const mcp = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), env);
+    const dashboard = await runtime.worker.fetch(new Request("https://example.com/dashboard"), env);
 
     await expect(health.json()).resolves.toMatchObject({
       ok: true,
@@ -164,9 +164,22 @@ describe("@trellis/gtm v3 API", () => {
     ]);
     await expect(mcp.json()).resolves.toMatchObject({
       ok: true,
+      snapshot: {
+        enabled: true,
+        counts: {
+          signals: 1,
+          prospects: 1,
+          drafts: 1,
+          auditEvents: 4,
+        },
+      },
       tools: expect.arrayContaining(["trellis.smoke", "trellis.workflow.inspect"]),
     });
-    await expect(dashboard.text()).resolves.toContain("v3 Cloudflare GTM runtime");
+    const dashboardHtml = await dashboard.text();
+    expect(dashboardHtml).toContain("v3 Cloudflare GTM runtime");
+    expect(dashboardHtml).toContain("<dt>Signals</dt><dd>1</dd>");
+    expect(dashboardHtml).toContain("<dt>Prospects</dt><dd>1</dd>");
+    expect(dashboardHtml).toContain("<dt>Drafts</dt><dd>1</dd>");
   });
 });
 
@@ -184,6 +197,18 @@ function createFakeD1() {
                 bindings,
               });
               return { success: true };
+            },
+            first() {
+              const normalized = sql.replace(/\s+/g, " ").trim();
+              const match = normalized.match(/^SELECT COUNT\(\*\) AS count FROM (\w+)$/i);
+              const tableName = match?.[1];
+              if (!tableName) {
+                return null;
+              }
+              const count = statements.filter((statement) =>
+                statement.sql.includes(`INSERT OR REPLACE INTO ${tableName}`),
+              ).length;
+              return { count };
             },
           };
         },

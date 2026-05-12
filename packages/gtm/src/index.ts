@@ -154,6 +154,7 @@ interface TrellisD1Database {
   prepare(sql: string): {
     bind(...values: unknown[]): {
       run(): Promise<unknown> | unknown;
+      first<T = Record<string, unknown>>(): Promise<T | null> | T | null;
     };
   };
 }
@@ -565,6 +566,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             ok: true,
             server: "trellis",
             agent: agent.name,
+            snapshot: await readRuntimeSnapshot(env),
             tools: [
               "trellis.health",
               "trellis.smoke",
@@ -576,7 +578,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
         }
 
         if (url.pathname === "/dashboard") {
-          return new Response(renderDashboard(agent), {
+          return new Response(renderDashboard(agent, await readRuntimeSnapshot(env)), {
             headers: { "content-type": "text/html; charset=utf-8" },
           });
         }
@@ -787,6 +789,35 @@ async function enqueueRuntimeEvent(env: Record<string, unknown> | undefined, run
   };
 }
 
+async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      enabled: false,
+      counts: null,
+    };
+  }
+
+  return {
+    enabled: true,
+    counts: {
+      signals: await countD1Rows(db, "trellis_signals"),
+      prospects: await countD1Rows(db, "trellis_prospects"),
+      drafts: await countD1Rows(db, "trellis_drafts"),
+      auditEvents: await countD1Rows(db, "trellis_audit_events"),
+    },
+  };
+}
+
+async function countD1Rows(db: TrellisD1Database, tableName: string) {
+  try {
+    const row = await db.prepare(`SELECT COUNT(*) AS count FROM ${tableName}`).bind().first<{ count: number }>();
+    return Number(row?.count ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -802,7 +833,16 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-function renderDashboard(agent: TrellisAgentDefinition<TrellisGtmApp>) {
+function renderDashboard(
+  agent: TrellisAgentDefinition<TrellisGtmApp>,
+  snapshot: Awaited<ReturnType<typeof readRuntimeSnapshot>>,
+) {
+  const counts = snapshot.counts ?? {
+    signals: 0,
+    prospects: 0,
+    drafts: 0,
+    auditEvents: 0,
+  };
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -814,6 +854,12 @@ function renderDashboard(agent: TrellisAgentDefinition<TrellisGtmApp>) {
       <h1>Trellis ${agent.name}</h1>
       <p>v3 Cloudflare GTM runtime</p>
       <p>No-send mode: ${agent.config.safety?.noSends ?? true}</p>
+      <dl>
+        <dt>Signals</dt><dd>${counts.signals}</dd>
+        <dt>Prospects</dt><dd>${counts.prospects}</dd>
+        <dt>Drafts</dt><dd>${counts.drafts}</dd>
+        <dt>Audit Events</dt><dd>${counts.auditEvents}</dd>
+      </dl>
     </main>
   </body>
 </html>`;
