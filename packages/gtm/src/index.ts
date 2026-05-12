@@ -71,6 +71,14 @@ export interface TrellisDraft {
   body: string;
 }
 
+export interface TrellisApproval {
+  id: string;
+  draftId: string;
+  signalId: string;
+  action: string;
+  status: "pending" | "approved" | "rejected" | string;
+}
+
 export interface TrellisProspect {
   id: string;
   signalId: string;
@@ -124,6 +132,7 @@ export interface TrellisSmokeResult {
   startedWorkflows: Array<{ name: string; input: TrellisWorkflowStartInput }>;
   prospects: TrellisProspect[];
   drafts: TrellisDraft[];
+  approvals: TrellisApproval[];
   auditEvents: TrellisAuditEvent[];
   result: unknown;
 }
@@ -146,6 +155,7 @@ export interface TrellisRuntimeResult {
   startedWorkflows: Array<{ name: string; input: TrellisWorkflowStartInput }>;
   prospects: TrellisProspect[];
   drafts: TrellisDraft[];
+  approvals: TrellisApproval[];
   auditEvents: TrellisAuditEvent[];
   result: unknown;
 }
@@ -428,6 +438,7 @@ export async function runTrellisSmoke(input?: {
     startedWorkflows: run.startedWorkflows,
     prospects: run.prospects,
     drafts: run.drafts,
+    approvals: run.approvals,
     auditEvents: run.auditEvents,
     result: run.result,
   };
@@ -443,12 +454,14 @@ export async function runTrellisAgent(
 ): Promise<TrellisRuntimeResult> {
   const app = createTrellisTestApp(input);
   const result = await agent.handler(app);
+  const approvals = createApprovalsForDrafts(app.fixtureSignal, app.drafts);
   return {
     signal: app.fixtureSignal,
     skillCalls: app.skillCalls,
     startedWorkflows: app.startedWorkflows,
     prospects: app.prospects,
     drafts: app.drafts,
+    approvals,
     auditEvents: app.auditEvents,
     result,
   };
@@ -484,6 +497,18 @@ function readQualificationDecision(value: unknown): TrellisProspect["status"] {
   }
   const decision = (value as { decision?: unknown }).decision;
   return typeof decision === "string" ? decision : "needs_review";
+}
+
+function createApprovalsForDrafts(signal: TrellisSignal, drafts: TrellisDraft[]): TrellisApproval[] {
+  return drafts.flatMap((draft) =>
+    draft.approvalRequiredFor.map((action) => ({
+      id: `approval_${draft.id}_${action.replace(/[^a-z0-9]+/gi, "_")}`,
+      draftId: draft.id,
+      signalId: signal.id,
+      action,
+      status: "pending",
+    })),
+  );
 }
 
 function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): TrellisCloudflareRuntime {
@@ -554,6 +579,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             signal: run.signal,
             prospects: run.prospects,
             drafts: run.drafts,
+            approvals: run.approvals,
             auditEvents: run.auditEvents,
             persistence,
             queue,
@@ -695,6 +721,21 @@ async function persistRuntimeResult(env: Record<string, unknown> | undefined, ru
     ]);
   }
 
+  for (const approval of run.approvals) {
+    await runD1(db, `
+      INSERT OR REPLACE INTO trellis_approvals
+        (id, draft_id, signal_id, action, status, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [
+      approval.id,
+      approval.draftId,
+      approval.signalId,
+      approval.action,
+      approval.status,
+      new Date().toISOString(),
+    ]);
+  }
+
   for (const event of run.auditEvents) {
     await runD1(db, `
       INSERT OR REPLACE INTO trellis_audit_events
@@ -712,7 +753,7 @@ async function persistRuntimeResult(env: Record<string, unknown> | undefined, ru
 
   return {
     enabled: true,
-    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_audit_events"],
+    tables: ["trellis_signals", "trellis_prospects", "trellis_drafts", "trellis_approvals", "trellis_audit_events"],
   };
 }
 
@@ -760,6 +801,16 @@ async function ensureD1Schema(db: TrellisD1Database) {
       created_at TEXT NOT NULL
     )
   `);
+  await runD1(db, `
+    CREATE TABLE IF NOT EXISTS trellis_approvals (
+      id TEXT PRIMARY KEY,
+      draft_id TEXT NOT NULL,
+      signal_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      status TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
 }
 
 async function runD1(db: TrellisD1Database, sql: string, bindings: unknown[] = []) {
@@ -781,6 +832,7 @@ async function enqueueRuntimeEvent(env: Record<string, unknown> | undefined, run
     threadId: run.signal.threadId,
     prospectIds: run.prospects.map((prospect) => prospect.id),
     draftIds: run.drafts.map((draft) => draft.id),
+    approvalIds: run.approvals.map((approval) => approval.id),
     auditEventIds: run.auditEvents.map((event) => event.id),
   });
   return {
@@ -804,6 +856,7 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
       signals: await countD1Rows(db, "trellis_signals"),
       prospects: await countD1Rows(db, "trellis_prospects"),
       drafts: await countD1Rows(db, "trellis_drafts"),
+      approvals: await countD1Rows(db, "trellis_approvals"),
       auditEvents: await countD1Rows(db, "trellis_audit_events"),
     },
   };
@@ -841,6 +894,7 @@ function renderDashboard(
     signals: 0,
     prospects: 0,
     drafts: 0,
+    approvals: 0,
     auditEvents: 0,
   };
   return `<!doctype html>
@@ -858,6 +912,7 @@ function renderDashboard(
         <dt>Signals</dt><dd>${counts.signals}</dd>
         <dt>Prospects</dt><dd>${counts.prospects}</dd>
         <dt>Drafts</dt><dd>${counts.drafts}</dd>
+        <dt>Approvals</dt><dd>${counts.approvals}</dd>
         <dt>Audit Events</dt><dd>${counts.auditEvents}</dd>
       </dl>
     </main>

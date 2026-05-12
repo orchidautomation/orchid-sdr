@@ -68,6 +68,10 @@ describe("@trellis/gtm v3 API", () => {
         approvalRequiredFor: ["email.send", "crm.update"],
       }),
     ]);
+    expect(result.approvals).toEqual([
+      expect.objectContaining({ action: "email.send", status: "pending" }),
+      expect.objectContaining({ action: "crm.update", status: "pending" }),
+    ]);
     expect(result.auditEvents.map((event) => event.type)).toEqual([
       "signal.accepted",
       "skill.completed",
@@ -141,6 +145,10 @@ describe("@trellis/gtm v3 API", () => {
       drafts: [
         expect.objectContaining({ status: "blocked_pending_approval" }),
       ],
+      approvals: [
+        expect.objectContaining({ action: "email.send", status: "pending" }),
+        expect.objectContaining({ action: "crm.update", status: "pending" }),
+      ],
       persistence: {
         enabled: true,
       },
@@ -154,6 +162,7 @@ describe("@trellis/gtm v3 API", () => {
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_signals"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_prospects"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_drafts"))).toBe(true);
+    expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_approvals"))).toBe(true);
     expect(fakeD1.statements.some((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_audit_events"))).toBe(true);
     expect(fakeQueue.messages).toEqual([
       expect.objectContaining({
@@ -170,6 +179,7 @@ describe("@trellis/gtm v3 API", () => {
           signals: 1,
           prospects: 1,
           drafts: 1,
+          approvals: 2,
           auditEvents: 4,
         },
       },
@@ -180,6 +190,7 @@ describe("@trellis/gtm v3 API", () => {
     expect(dashboardHtml).toContain("<dt>Signals</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Prospects</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Drafts</dt><dd>1</dd>");
+    expect(dashboardHtml).toContain("<dt>Approvals</dt><dd>2</dd>");
   });
 });
 
