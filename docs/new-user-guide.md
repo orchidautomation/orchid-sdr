@@ -71,7 +71,7 @@ export default trellis.agent("gtm-sdr", {
   research: firecrawl(),
 
   // Pick the LLM once. You can override this per environment with TRELLIS_MODEL.
-  model: "@cf/moonshotai/kimi-k2.6",
+  model: "anthropic/claude-sonnet-4.6",
 
   // Choose the business schema Trellis remembers in its database.
   // Tables, fields, indexes, and relationships live in this map.
@@ -110,7 +110,7 @@ That snippet is the public story. The generated Cloudflare wrapper mounts health
 The LLM belongs in the agent config:
 
 ```ts
-model: "@cf/moonshotai/kimi-k2.6"
+model: "anthropic/claude-sonnet-4.6"
 ```
 
 That keeps the “what brain runs this?” decision visible without forcing a user to wire provider SDKs. Production can override it with `TRELLIS_MODEL` so teams can move between a cheap default, a stronger reasoning model, or a customer-specific model without changing agent logic.

@@ -74,7 +74,7 @@ export default trellis.agent("sdr", {
   crm: attio({ map: attioMap }),
   email: agentmail(),
   research: firecrawl(),
-  model: "@cf/moonshotai/kimi-k2.6",
+  model: "anthropic/claude-sonnet-4.6",
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
   safety: trellis.safeOutbound(),

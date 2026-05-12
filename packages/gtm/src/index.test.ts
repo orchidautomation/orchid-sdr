@@ -9,7 +9,7 @@ describe("@trellis/gtm v3 API", () => {
       crm: attio(),
       email: agentmail(),
       research: firecrawl(),
-      model: "@cf/moonshotai/kimi-k2.6",
+      model: "anthropic/claude-sonnet-4.6",
       state: trellis.state({
         tables: {
           prospects: {
@@ -58,7 +58,7 @@ describe("@trellis/gtm v3 API", () => {
     expect(agent.config.crm?.id).toBe("attio");
     expect(agent.config.email?.id).toBe("agentmail");
     expect(agent.config.research?.id).toBe("firecrawl");
-    expect(agent.config.model).toBe("@cf/moonshotai/kimi-k2.6");
+    expect(agent.config.model).toBe("anthropic/claude-sonnet-4.6");
     expect(agent.config.state?.tables.prospects?.fields.summary).toBe("qualification.summary");
     expect(app.skillCalls).toHaveLength(1);
     expect(app.startedWorkflows).toHaveLength(1);
@@ -183,7 +183,7 @@ describe("@trellis/gtm v3 API", () => {
       crm: attio(),
       email: agentmail(),
       research: firecrawl(),
-      model: "@cf/moonshotai/kimi-k2.6",
+      model: "anthropic/claude-sonnet-4.6",
       state: trellis.state({
         tables: {
           prospects: {

@@ -74,7 +74,7 @@ export interface TrellisSafetyPolicy {
   killSwitch: boolean;
 }
 
-const DEFAULT_TRELLIS_MODEL = "@cf/moonshotai/kimi-k2.6";
+const DEFAULT_TRELLIS_MODEL = "anthropic/claude-sonnet-4.6";
 
 export interface TrellisAgentConfig {
   crm?: TrellisProviderDefinition;

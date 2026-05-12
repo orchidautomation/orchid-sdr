@@ -57,7 +57,7 @@ The generated app expects Cloudflare bindings for:
 - Durable Objects / Cloudflare Agents
 - AI Gateway routing through `TRELLIS_AI_GATEWAY_ID` (defaults to `default`)
 
-The model is configured in `src/agent.ts` with the same string you copy from the Cloudflare AI model directory, such as `model: "@cf/moonshotai/kimi-k2.6"` or `model: "anthropic/claude-sonnet-4.6"`. `TRELLIS_MODEL` can override it per environment without changing code.
+The model is configured in `src/agent.ts`, for example `model: "anthropic/claude-sonnet-4.6"`. `TRELLIS_MODEL` can override it per environment without changing code.
 
 ## 4. Add Knowledge
 

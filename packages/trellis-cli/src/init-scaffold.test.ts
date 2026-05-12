@@ -83,7 +83,7 @@ describe("trellis init v3 scaffold", () => {
       expect(agentSource).toContain("import stateMap from \"./state/prospect.map\"");
       expect(agentSource).toContain("crm: attio({ map: attioMap })");
       expect(agentSource).toContain("state: stateMap");
-      expect(agentSource).toContain("model: \"@cf/moonshotai/kimi-k2.6\"");
+      expect(agentSource).toContain("model: \"anthropic/claude-sonnet-4.6\"");
       expect(agentSource).toContain("trellis.safeOutbound()");
       expect(agentSource).toContain("app.skill(\"icp-qualification\"");
       expect(agentSource).not.toContain("@flue/sdk");
