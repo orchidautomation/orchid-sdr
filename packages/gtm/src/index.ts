@@ -1048,7 +1048,20 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
       const workflow = readString(params.workflow) ?? "prospect";
       const signal = readWorkflowSignal(params.signal);
       const traceId = readString(params.traceId) ?? traceIdForSignal(signal);
-      const runId = `trellis_${normalizeIdPart(signal.id)}_${normalizeIdPart(workflow)}`;
+      const runId = readString(params.workflowRunId)
+        ?? readString(params.runId)
+        ?? `trellis_${normalizeIdPart(signal.id)}_${normalizeIdPart(workflow)}`;
+
+      if (workflow === "follow_up") {
+        return runFollowUpWorkflow(this.env, {
+          params,
+          runId,
+          signal,
+          step,
+          traceId,
+        });
+      }
+
       const started = await runWorkflowStep(step, "record workflow start", () =>
         recordWorkflowRun(this.env, {
           id: runId,
@@ -2374,6 +2387,82 @@ function readWorkflowEventParams(event: unknown): Record<string, unknown> {
   return event;
 }
 
+async function runFollowUpWorkflow(
+  env: Record<string, unknown> | undefined,
+  input: {
+    params: Record<string, unknown>;
+    runId: string;
+    signal: TrellisSignal;
+    step: unknown;
+    traceId: string;
+  },
+) {
+  const followUp = isRecord(input.params.followUp) ? input.params.followUp : {};
+  const delay = readString(input.params.followUpDelay)
+    ?? readString(followUp.delay)
+    ?? defaultFollowUpDelay(env);
+  const checkpoint = await runWorkflowStep(input.step, "plan follow-up check", () => ({
+    signalId: input.signal.id,
+    traceId: input.traceId,
+    workflow: "follow_up",
+    providerActionId: readString(input.params.providerActionId),
+    draftId: readString(input.params.draftId),
+    delay,
+    next: readString(followUp.next) ?? "draft_follow_up_if_no_reply",
+  }));
+  const scheduled = await runWorkflowStep(input.step, "record follow-up schedule", () =>
+    recordWorkflowRun(env, {
+      id: input.runId,
+      traceId: input.traceId,
+      signalId: input.signal.id,
+      workflow: "follow_up",
+      status: "follow_up_scheduled",
+      params: {
+        ...input.params,
+        checkpoint,
+      },
+    }),
+  );
+  const sleep = await runWorkflowSleep(input.step, "wait for follow-up window", delay);
+  const due = await runWorkflowStep(input.step, "record follow-up due", () =>
+    recordWorkflowRun(env, {
+      id: input.runId,
+      traceId: input.traceId,
+      signalId: input.signal.id,
+      workflow: "follow_up",
+      status: "follow_up_due",
+      params: {
+        ...input.params,
+        checkpoint: {
+          ...checkpoint,
+          next: "draft_follow_up_if_no_reply",
+        },
+      },
+    }),
+  );
+
+  return {
+    ok: true,
+    workflow: "follow_up",
+    runId: input.runId,
+    traceId: input.traceId,
+    signalId: input.signal.id,
+    status: "follow_up_due",
+    checkpoint,
+    sleep,
+    persistence: {
+      scheduled,
+      due,
+    },
+  };
+}
+
+function defaultFollowUpDelay(env: Record<string, unknown> | undefined) {
+  return readString(env?.TRELLIS_FOLLOW_UP_DELAY)
+    ?? readString(env?.FOLLOW_UP_DELAY)
+    ?? "3 days";
+}
+
 function readWorkflowSignal(value: unknown): TrellisSignal {
   const record = isRecord(value) ? value : {};
   const id = readString(record.id) ?? readString(record.signalId) ?? "sig_workflow";
@@ -2403,6 +2492,24 @@ async function runWorkflowStep<T>(
     return await step.do(name, callback);
   }
   return await callback();
+}
+
+async function runWorkflowSleep(
+  step: unknown,
+  name: string,
+  duration: string | number,
+) {
+  if (isWorkflowStep(step) && typeof step.sleep === "function") {
+    await step.sleep(name, duration);
+    return {
+      enabled: true,
+      duration,
+    };
+  }
+  return {
+    enabled: false,
+    duration,
+  };
 }
 
 function isWorkflowStep(value: unknown): value is TrellisWorkflowStep {
@@ -2744,6 +2851,138 @@ async function dispatchWorkflow(env: Record<string, unknown> | undefined, run: T
       enabled: true,
       ok: false,
       workflow: workflowName,
+      instanceId: id,
+      error: error instanceof Error ? error.message : String(error),
+      persistence,
+    };
+  }
+}
+
+async function scheduleFollowUpWorkflow(
+  env: Record<string, unknown> | undefined,
+  context: TrellisProviderExecutionContext,
+  result: TrellisProviderActionExecutionResult,
+) {
+  if (context.action.operation !== "email.send") {
+    return {
+      enabled: false,
+      reason: "not_outbound_email",
+    };
+  }
+
+  const workflow = env?.PROSPECT_WORKFLOW as TrellisWorkflowBinding | undefined;
+  if (!workflow?.create) {
+    return {
+      enabled: false,
+    };
+  }
+
+  const signal = context.signal;
+  if (!signal) {
+    return {
+      enabled: true,
+      ok: false,
+      error: "signal_unavailable",
+      detail: "Trellis could not schedule a follow-up because the original signal was not found.",
+    };
+  }
+
+  const trellisSignal: TrellisSignal = {
+    id: signal.id,
+    traceId: context.action.traceId,
+    workspaceId: signal.workspaceId,
+    threadId: signal.threadId,
+    campaignId: readString(signal.campaignId),
+    provider: "trellis",
+    source: "provider-action.completed",
+    payload: signal.payload,
+  };
+  const id = `trellis_${normalizeIdPart(context.action.signalId)}_follow_up_${normalizeIdPart(context.action.id)}`;
+  const delay = readString(context.input.followUpDelay)
+    ?? readString(context.input.follow_up_delay)
+    ?? defaultFollowUpDelay(env);
+  const params = {
+    workflowRunId: id,
+    traceId: context.action.traceId,
+    signal: trellisSignal,
+    workflow: "follow_up",
+    providerActionId: context.action.id,
+    draftId: context.action.draftId ?? null,
+    followUp: {
+      delay,
+      next: "draft_follow_up_if_no_reply",
+    },
+    execution: {
+      externalId: result.externalId ?? null,
+      externalThreadId: result.externalThreadId ?? null,
+    },
+  };
+  const controls = await readOperatorControls(env, trellisSignal);
+  if (controls.blocked) {
+    const persistence = await recordWorkflowRun(env, {
+      id,
+      traceId: context.action.traceId,
+      signalId: context.action.signalId,
+      workflow: "follow_up",
+      status: "paused",
+      params: {
+        ...params,
+        controls,
+        reason: controls.reasons.join("; "),
+      },
+    });
+    return {
+      enabled: true,
+      ok: true,
+      blocked: true,
+      workflow: "follow_up",
+      instanceId: id,
+      status: "paused",
+      reason: controls.reasons.join("; "),
+      controls,
+      persistence,
+    };
+  }
+
+  try {
+    const instance = await workflow.create({
+      id,
+      params,
+    });
+    const record = isRecord(instance) ? instance : {};
+    const persistence = await recordWorkflowRun(env, {
+      id,
+      traceId: context.action.traceId,
+      signalId: context.action.signalId,
+      workflow: "follow_up",
+      status: "scheduled",
+      params,
+    });
+    return {
+      enabled: true,
+      ok: true,
+      workflow: "follow_up",
+      instanceId: readString(record.id) ?? id,
+      delay,
+      next: "draft_follow_up_if_no_reply",
+      persistence,
+    };
+  } catch (error) {
+    const persistence = await recordWorkflowRun(env, {
+      id,
+      traceId: context.action.traceId,
+      signalId: context.action.signalId,
+      workflow: "follow_up",
+      status: "schedule_failed",
+      params: {
+        ...params,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+    return {
+      enabled: true,
+      ok: false,
+      workflow: "follow_up",
       instanceId: id,
       error: error instanceof Error ? error.message : String(error),
       persistence,
@@ -3214,6 +3453,12 @@ async function executeProviderAction(
       actor: execution.actor ?? "trellis-provider-executor",
       reason: execution.reason ?? `Executed ${action.operation} through ${action.provider}.`,
     });
+    const followUpWorkflow = await scheduleFollowUpWorkflow(env, context, result).catch((followUpError: unknown) => ({
+      enabled: true,
+      ok: false,
+      workflow: "follow_up",
+      error: followUpError instanceof Error ? followUpError.message : String(followUpError),
+    }));
     return {
       status: 200,
       body: {
@@ -3223,6 +3468,7 @@ async function executeProviderAction(
           status: "completed",
         },
         execution: result,
+        followUpWorkflow,
         ...transition,
       },
     };

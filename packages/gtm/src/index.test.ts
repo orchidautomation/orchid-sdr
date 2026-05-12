@@ -526,6 +526,60 @@ describe("@trellis/gtm v3 API", () => {
         },
       },
     });
+    const followUpStep = createFakeWorkflowStep();
+    const followUpRun = await new runtime.ProspectWorkflow(env).run({
+      params: {
+        workflow: "follow_up",
+        traceId: "trace_sig_live",
+        signal: {
+          id: "sig_live",
+          workspaceId: "wrk_live",
+          threadId: "thr_live",
+        },
+        providerActionId: "provider_action_approval_draft_sig_live_email_send",
+        draftId: "draft_sig_live",
+        followUp: {
+          delay: "1 day",
+        },
+      },
+    }, followUpStep);
+    expect(followUpStep.steps).toEqual([
+      "plan follow-up check",
+      "record follow-up schedule",
+      "wait for follow-up window",
+      "record follow-up due",
+    ]);
+    expect(followUpStep.sleeps).toEqual([
+      {
+        name: "wait for follow-up window",
+        duration: "1 day",
+      },
+    ]);
+    expect(followUpRun).toMatchObject({
+      ok: true,
+      workflow: "follow_up",
+      runId: "trellis_sig_live_follow_up",
+      traceId: "trace_sig_live",
+      status: "follow_up_due",
+      checkpoint: {
+        signalId: "sig_live",
+        providerActionId: "provider_action_approval_draft_sig_live_email_send",
+        draftId: "draft_sig_live",
+        delay: "1 day",
+        next: "draft_follow_up_if_no_reply",
+      },
+      sleep: {
+        enabled: true,
+        duration: "1 day",
+      },
+      persistence: {
+        due: {
+          enabled: true,
+          table: "trellis_workflow_runs",
+          status: "follow_up_due",
+        },
+      },
+    });
     await expect(approval.json()).resolves.toMatchObject({
       ok: true,
       approval: {
@@ -815,7 +869,7 @@ describe("@trellis/gtm v3 API", () => {
       snapshot: {
         counts: {
           operatorControls: 2,
-          workflowRuns: 2,
+          workflowRuns: 3,
         },
       },
     });
@@ -1071,11 +1125,19 @@ describe("@trellis/gtm v3 API", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     try {
+      const fakeWorkflow = {
+        create: vi.fn(async (options: Record<string, unknown>) => ({ id: options.id })),
+      };
       const env = {
         TRELLIS_DB: fakeD1,
         TRELLIS_EVENTS: fakeQueue,
         AGENTMAIL_API_KEY: "am_test",
         AGENTMAIL_BASE_URL: "https://agentmail.test",
+      };
+      const executionEnv = {
+        ...env,
+        PROSPECT_WORKFLOW: fakeWorkflow,
+        TRELLIS_FOLLOW_UP_DELAY: "2 days",
       };
 
       await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
@@ -1108,8 +1170,8 @@ describe("@trellis/gtm v3 API", () => {
             bodyText: "Fixture outbound draft. Not sent.",
           },
         }),
-      }), env);
-      const snapshot = await runtime.worker.fetch(new Request("https://example.com/provider-actions"), env);
+      }), executionEnv);
+      const snapshot = await runtime.worker.fetch(new Request("https://example.com/provider-actions"), executionEnv);
 
       await expect(approval.json()).resolves.toMatchObject({
         providerAction: {
@@ -1137,6 +1199,30 @@ describe("@trellis/gtm v3 API", () => {
           enabled: true,
           messages: 1,
         },
+        followUpWorkflow: {
+          enabled: true,
+          ok: true,
+          workflow: "follow_up",
+          instanceId: "trellis_sig_execute_follow_up_provider_action_approval_draft_sig_execute_email_send",
+          delay: "2 days",
+          next: "draft_follow_up_if_no_reply",
+        },
+      });
+      expect(fakeWorkflow.create).toHaveBeenCalledWith({
+        id: "trellis_sig_execute_follow_up_provider_action_approval_draft_sig_execute_email_send",
+        params: expect.objectContaining({
+          workflow: "follow_up",
+          providerActionId: "provider_action_approval_draft_sig_execute_email_send",
+          draftId: "draft_sig_execute",
+          followUp: {
+            delay: "2 days",
+            next: "draft_follow_up_if_no_reply",
+          },
+          execution: {
+            externalId: "msg_agentmail_123",
+            externalThreadId: "thread_agentmail_123",
+          },
+        }),
       });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0] as unknown as [string | URL | Request, RequestInit];
@@ -1172,7 +1258,8 @@ describe("@trellis/gtm v3 API", () => {
         snapshot: {
           counts: {
             providerActions: 1,
-            auditEvents: 7,
+            auditEvents: 8,
+            workflowRuns: 1,
           },
         },
       });
@@ -2114,11 +2201,17 @@ function createFakeQueue() {
 
 function createFakeWorkflowStep() {
   const steps: string[] = [];
+  const sleeps: Array<{ name: string; duration: string | number }> = [];
   return {
     steps,
+    sleeps,
     async do<T>(name: string, callback: () => Promise<T> | T) {
       steps.push(name);
       return await callback();
+    },
+    async sleep(name: string, duration: string | number) {
+      steps.push(name);
+      sleeps.push({ name, duration });
     },
   };
 }

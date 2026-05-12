@@ -64,6 +64,8 @@ After a webhook run is persisted and enqueued, Trellis starts the configured `PR
 
 Queued provider actions can be executed through `POST /provider-actions/:id/execute`. The executor refuses to run while no-send mode is enabled, refuses actions that are not `queued`, dispatches through a bound `TRELLIS_PROVIDER_EXECUTOR` when present, and includes built-in AgentMail `email.send` / `mail.reply`, Attio `crm.update`, and `handoff.webhook` executors. Execution success or failure updates D1, appends audit, and emits queue events.
 
+Completed `email.send` actions automatically schedule a `follow_up` run on `PROSPECT_WORKFLOW`. The schedule uses `TRELLIS_FOLLOW_UP_DELAY` when set, defaults to `3 days`, carries the provider message/thread ids into the workflow params, and records `scheduled`, `follow_up_scheduled`, and `follow_up_due` checkpoints in `trellis_workflow_runs`.
+
 Operator controls live in `trellis_operator_controls`. The global kill switch and campaign/thread pause records are exposed through `/operator/*` routes, the dashboard, and the MCP snapshot. Active controls block workflow dispatch before Cloudflare Workflows start and block queued provider-action execution before side effects run. Each control change writes audit, trace, and queue events.
 
 Replay controls use the existing durable records instead of asking operators to understand the queue substrate. `POST /operator/workflows/:id/replay` reads the stored workflow params from `trellis_workflow_runs`, creates a new Cloudflare Workflow instance, and records the replay. `POST /operator/provider-actions/:id/replay` moves a failed or blocked provider action back to `queued` and emits a new `trellis.provider.action.queued` message for recovery.

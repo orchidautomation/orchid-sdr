@@ -2145,6 +2145,7 @@ HANDOFF_WEBHOOK_SECRET=
 # Optional model override for Flue-backed skills.
 # The default uses Cloudflare Workers AI through Cloudflare's default AI Gateway.
 TRELLIS_MODEL=
+TRELLIS_FOLLOW_UP_DELAY=3 days
 
 # Optional trace export. D1 trace events, Cloudflare logs, and AI Gateway remain the default.
 TRELLIS_TRACE_EXPORT_URL=
