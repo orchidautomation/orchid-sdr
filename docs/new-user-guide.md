@@ -66,6 +66,9 @@ export default trellis.agent("gtm-sdr", {
   email: agentmail(),
   research: firecrawl(),
 
+  // Pick the LLM once. You can override this per environment with TRELLIS_MODEL.
+  model: "@cf/moonshotai/kimi-k2.6",
+
   // Give the agent your company context in markdown:
   // ICP, playbooks, product docs, roles, and repeatable skills.
   knowledge: "knowledge/**/*.md",
@@ -92,7 +95,41 @@ export default trellis.agent("gtm-sdr", {
 });
 ```
 
-That snippet is the public story. The generated Cloudflare wrapper can mount health checks, signal webhooks, MCP, dashboard, persistence, queues, and smoke routes around it.
+That snippet is the public story. The generated Cloudflare wrapper mounts health checks, signal webhooks, MCP, dashboard, persistence, queues, and smoke routes around it.
+
+## Model, Database, And Schema
+
+The LLM belongs in the agent config:
+
+```ts
+model: "@cf/moonshotai/kimi-k2.6"
+```
+
+That keeps the “what brain runs this?” decision visible without forcing a user to wire provider SDKs. Production can override it with `TRELLIS_MODEL` so teams can move between a cheap default, a stronger reasoning model, or a customer-specific model without changing agent logic.
+
+The database should not be a hand-written connection in the pitch snippet. `trellis deploy` provisions and binds the app database as `TRELLIS_DB`, then Trellis owns the operational tables for signals, prospects, drafts, approvals, workflows, provider actions, audit events, traces, and smoke runs. Users should feel like they get durable state by default, not like they have to design infrastructure before the first agent works.
+
+There are really three schemas:
+
+- **Skill output schema**: `schema.qualification()` validates what the agent extracts before workflows or provider writes happen.
+- **CRM field map**: `src/crm/attio.map.ts` maps extracted Trellis values to Attio attributes.
+- **Business state map**: this is the missing product concept. Trellis should add a generated `src/state/prospect.map.ts` that maps agent outputs into durable business fields, while Trellis keeps the low-level D1 table schema private and reliable.
+
+The state map should feel like the CRM map:
+
+```ts
+export default {
+  prospect: {
+    status: "qualification.decision",
+    company: "signal.payload.company",
+    domain: "signal.payload.domain",
+    summary: "qualification.summary",
+    nextStep: "qualification.nextStep",
+  },
+};
+```
+
+That gives a user one obvious place to say “what should Trellis remember about this prospect?” without exposing D1 migrations, indexes, or storage details in the happy path.
 
 ## Safety Defaults
 
