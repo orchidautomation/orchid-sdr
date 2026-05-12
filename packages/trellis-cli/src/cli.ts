@@ -1970,7 +1970,7 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
   const nextSteps = [
     `cd ${targetDir}`,
     "npm install",
-    "wrangler login",
+    "npm run cf:login",
     "npm run docs:add",
     "npm run deploy",
     "npm run smoke",
@@ -2030,6 +2030,7 @@ function buildV3ScaffoldPackage(packageName: string) {
       smoke: "trellis smoke",
       verify: "trellis verify cloudflare",
       typecheck: "tsc --noEmit",
+      "cf:login": "wrangler login",
       "cf:deploy": "wrangler deploy",
       "cf:tail": "wrangler tail",
     },
@@ -2566,7 +2567,7 @@ Trellis v3 GTM agent scaffold.
 
 \`\`\`bash
 npm install
-wrangler login
+npm run cf:login
 npm run docs:add
 npm run deploy
 npm run smoke
