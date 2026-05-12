@@ -121,6 +121,8 @@ const V3_CONNECTIONS = {
 } as const;
 
 type V3ConnectionId = keyof typeof V3_CONNECTIONS;
+const REQUIRED_V3_PROVIDER_IDS = ["attio", "agentmail", "firecrawl"] as const;
+const OPTIONAL_V3_PROVIDER_IDS = ["langfuse"] as const;
 let activeConfigPromise: Promise<AiSdrConfig> | undefined;
 
 await main();
@@ -713,9 +715,7 @@ async function handleDoctorCommand() {
   const wranglerConfigPath = findWranglerConfig(process.cwd());
   const wranglerSource = wranglerConfigPath ? readFileSync(wranglerConfigPath, "utf8") : "";
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
-  const providerReadiness = await Promise.all(
-    (["attio", "agentmail", "firecrawl"] as const).map((id) => loadV3ProviderReadiness(id)),
-  );
+  const providerReadiness = await loadAllV3ProviderReadiness();
   const smoke = await runTrellisSmoke();
   const checks = [
     doctorCheck("cloudflare.config", Boolean(wranglerConfigPath), "warn", wranglerConfigPath
@@ -843,7 +843,17 @@ async function writeV3ConnectionManifest(guide: (typeof V3_CONNECTIONS)[V3Connec
   };
 }
 
-async function loadV3ProviderReadiness(id: "attio" | "agentmail" | "firecrawl") {
+async function loadAllV3ProviderReadiness() {
+  const required = await Promise.all(REQUIRED_V3_PROVIDER_IDS.map((id) => loadV3ProviderReadiness(id)));
+  const optional = await Promise.all(
+    OPTIONAL_V3_PROVIDER_IDS
+      .filter((id) => existsSync(path.join(process.cwd(), trellisStateDirName, "providers", `${id}.json`)))
+      .map((id) => loadV3ProviderReadiness(id)),
+  );
+  return [...required, ...optional];
+}
+
+async function loadV3ProviderReadiness(id: V3ConnectionId) {
   const guide = V3_CONNECTIONS[id];
   const manifestPath = path.join(process.cwd(), trellisStateDirName, "providers", `${id}.json`);
   const manifestExists = existsSync(manifestPath);
@@ -1122,6 +1132,7 @@ Recommended sequence:
 async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
   const wranglerConfigPath = findWranglerConfig(process.cwd());
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
+  const providerReadiness = await loadAllV3ProviderReadiness();
   const apply = flags.apply === true || flags.write === true || (Boolean(wranglerConfigPath) && !jsonOutput && flags["dry-run"] !== true);
   const plan = {
     ok: true,
@@ -1148,6 +1159,7 @@ async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
       smokeMode: true,
     },
     knowledgePack: knowledgePack.summary,
+    providers: Object.fromEntries(providerReadiness.map((provider) => [provider.id, provider.summary])),
     next: [
       "trellis smoke",
       "trellis connect attio",
