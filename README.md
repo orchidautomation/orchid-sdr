@@ -95,7 +95,7 @@ export default trellis.agent("sdr", {
 
 ## Current Branch Status
 
-The repo still contains the older reference app and framework-composition packages. They are useful as behavior/parity source material, not the v3 public architecture.
+The repo still contains the older reference app and framework-composition packages. They are behavior/parity source material only, not the v3 public architecture.
 
 Root npm scripts now follow that boundary. `npm run build`, `npm run doctor`, `npm run smoke`, and `npm run dev` exercise the v3 Trellis/Cloudflare path. The old AI SDR baseline is still available only through explicit `legacy:*` scripts and `npm run build:all`.
 
@@ -107,7 +107,7 @@ The v3 surface now lives in:
 - `docs/trellis-v3-parity-contract.md`
 - the default `trellis init`, `trellis deploy`, `trellis smoke`, `trellis connect`, and `trellis docs add` CLI path
 
-Legacy composition commands remain available only for migration work with explicit legacy/development intent.
+Migration compatibility stays out of the default help, scaffold, docs, and deploy story.
 
 ## Verify
 

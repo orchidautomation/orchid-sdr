@@ -1,8 +1,10 @@
-# MCP Capability Index
+# MCP Capability Archive
 
-This index maps hosted MCP servers to Trellis capabilities. It is the working source of truth for what `trellis add <capability> <provider>` should mount into the sandbox.
+This document is migration research for hosted MCP servers and provider capabilities.
 
-Provider packages can expose more than one capability. The CLI should install by capability/provider pair, but it should mount the provider's MCP servers from the package manifest.
+It is not the v3 public architecture. Trellis v3 exposes curated provider setup through `trellis connect <provider>`, then mounts the right tools behind the Trellis/Flue runtime. Users should not have to assemble capability/provider/module graphs.
+
+Provider packages can still expose more than one internal capability, but that should compile into Trellis-owned manifests, smoke checks, MCP tool catalogs, and Flue tool bindings without becoming the product-facing CLI.
 
 ## Parallel
 
@@ -23,15 +25,13 @@ MCP servers:
 | `parallel-task` | `https://task-mcp.parallel.ai/mcp` | bearer | `getStatus` | `observability` | none |
 | `parallel-task` | `https://task-mcp.parallel.ai/mcp` | bearer | `getResultMarkdown` | `extract`, `enrichment` | `research.extract.v1`, `research.enrich.v1` |
 
-Module commands:
+v3 connection:
 
 ```bash
-trellis add search parallel
-trellis add extract parallel
-trellis add enrichment parallel
+trellis connect parallel
 ```
 
-`trellis add research parallel` should remain an alias for search/extract/enrichment.
+Parallel is not part of the default GTM stack today. If it returns, it should be a curated research provider connection, not a generic `add` command.
 
 ## Firecrawl
 
@@ -58,47 +58,34 @@ MCP server:
 | `firecrawl` | `https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp` | URL token | `firecrawl_interact` | `runtime`, `extract` | `research.extract.v1` |
 | `firecrawl` | `https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp` | URL token | `firecrawl_interact_stop` | `runtime` | none |
 
-Module commands:
+v3 connection:
 
 ```bash
-trellis add search firecrawl
-trellis add extract firecrawl
-trellis add enrichment firecrawl
+trellis connect firecrawl
 ```
 
 ## Config Direction
 
-The eventual external config can be YAML, while the TypeScript config remains the typed implementation target.
+The old external config idea was too close to abstracting over abstractions. For v3, the generated app should stay Trellis-first and provider manifests should stay internal/product-shaped.
 
-Example shape:
+If Trellis needs a manifest, it should look like a deployment artifact, not a user-authored framework config:
 
 ```yaml
 name: profound-sdr
-modules:
-  - capability: search
-    provider: parallel
-    package: "@trellis/parallel"
+providers:
+  - id: firecrawl
+    lane: research
     mcp:
-      - id: parallel-search
-        url: https://search.parallel.ai/mcp
-        auth: optional-bearer
-      - id: parallel-task
-        url: https://task-mcp.parallel.ai/mcp
-        auth: bearer
-  - capability: extract
-    provider: firecrawl
-    package: "@trellis/firecrawl"
-    mcp:
-      - id: firecrawl
-        url: https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp
-        auth: url-token
+      enabled: true
+    tools:
+      - research.search
+      - research.extract
 ```
 
-The framework should compile this into:
+Trellis should compile curated provider connections into:
 
-- package installs
-- `trellis.config.ts`
-- sandbox `.mcp.json`
-- env requirements
+- provider readiness checks
 - doctor checks
 - smoke checks
+- hidden Flue MCP/tool bindings
+- Cloudflare secret names

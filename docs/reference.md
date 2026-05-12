@@ -159,15 +159,6 @@ npm run trellis -- smoke
 npm run trellis -- deploy
 ```
 
-## Legacy Commands
+## Migration Material
 
-Older composition commands and the AI SDR reference app remain only for migration work:
-
-- `trellis add ... --legacy`
-- `trellis init ... --legacy`
-- `trellis init ... --kit sdr`
-- `npm run legacy:*`
-- `npm run build:all`
-- `examples/reference-app`
-
-Do not document those as the first-run product path.
+The old AI SDR reference app and composition packages are behavior source material while v3 reaches full parity. They are intentionally omitted from the public CLI reference because the default product path is Trellis v3 on Cloudflare.

@@ -109,10 +109,10 @@ Flue shows the power of the harness by building a useful agent in 20 to 30 lines
 
 Trellis should show the power of the full vertical stack by building a reliable GTM agent in roughly the same space.
 
-This API is aspirational, but it is the shape v3 should optimize for:
+This is the public shape v3 should keep optimizing around:
 
 ```ts
-// agents/gtm-sdr.ts
+// src/agent.ts
 import { trellis, schema } from "@trellis/gtm";
 import { attio, agentmail, firecrawl } from "@trellis/providers";
 
@@ -202,7 +202,7 @@ trellis init acme-sdr
 trellis connect attio
 trellis connect agentmail
 trellis docs add ./product-docs
-trellis add observability langfuse
+trellis connect langfuse
 trellis deploy
 trellis smoke
 ```
@@ -629,29 +629,21 @@ Suggested generated app:
 
 ```text
 my-agent/
-  trellis.config.ts
   wrangler.jsonc
   package.json
   .env.example
 
-  agents/
-    qualify.ts
-    research.ts
-    draft.ts
-    reply.ts
-    handoff.ts
+  src/
+    agent.ts
+    index.ts
+    trellis-flue.ts
 
-  workflows/
-    prospect.workflow.ts
-    campaign.workflow.ts
+  .trellis/
+    knowledge-pack.json
+    providers/
 
   knowledge/
-    product.md
     icp.md
-    compliance.md
-    usp.md
-    handoff.md
-    negative-signals.md
 
   skills/
     icp-qualification/SKILL.md
@@ -659,33 +651,13 @@ my-agent/
     sdr-copy/SKILL.md
     reply-policy/SKILL.md
     handoff-policy/SKILL.md
-
-  providers/
-    crm.ts
-    email.ts
-    research.ts
-
-  state/
-    schema.ts
-    migrations/
-
-  mcp/
-    tools.ts
-    server.ts
-
-  dashboard/
-    app.ts
-
-  tests/
-    smoke.test.ts
-    fixtures/
 ```
 
 The generated app is normal TypeScript.
 
 Users can edit it.
 
-Trellis should not trap users inside a black box.
+The default editing surface is `src/agent.ts`, markdown knowledge, and `SKILL.md` files. `src/trellis-flue.ts` is generated plumbing for the Flue/Cloudflare harness and should stay boring unless someone is deliberately changing the runtime adapter.
 
 ## CLI Shape
 
@@ -714,7 +686,7 @@ Creates:
 trellis connect attio
 trellis connect agentmail
 trellis docs add ./product-docs
-trellis add observability langfuse
+trellis connect langfuse
 ```
 
 Each connect command should:

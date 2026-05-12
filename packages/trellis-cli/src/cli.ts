@@ -371,8 +371,7 @@ Simple labels stay short in the CLI: attio, agentmail, firecrawl, langfuse, brai
 Init scaffolds the Trellis v3 GTM path by default.
 Cloudflare is the default deploy target.
 Business providers are connected after first boot.
-Use --json when a plugin or coding agent is orchestrating the setup.
-Legacy composition commands still exist behind explicit --legacy for migration work, but they are not part of the v3 happy path.`);
+Use --json when a plugin or coding agent is orchestrating the setup.`);
 }
 
 function requireLegacyCommand(commandName: string, replacement: string) {
@@ -2012,6 +2011,7 @@ function buildV3ScaffoldPackage(packageName: string) {
     type: "module",
     scripts: {
       dev: "wrangler dev",
+      doctor: "trellis doctor",
       deploy: "trellis deploy",
       smoke: "trellis smoke",
       typecheck: "tsc --noEmit",
