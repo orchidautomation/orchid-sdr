@@ -11,11 +11,16 @@ This branch is converting Trellis from a generic composition framework into the 
 
 ## Remaining Work
 
-1. Port the reference AI SDR behavior into `@trellis/gtm`.
-2. Run `trellis verify cloudflare --live --url <worker> --exercise-agent` against a real Cloudflare account to prove the generated Flue harness against Cloudflare AI and R2 packs.
-3. Verify R2 pack sync and Cloudflare Workflow execution against a real Cloudflare account.
-4. Verify operator replay/requeue controls against a real Cloudflare Workflow and dead-letter queue.
-5. Keep legacy Convex/Vercel/Rivet paths as migration-only behavior fixtures until parity is proven; they should stay unreachable from the v3 CLI surface.
+1. Run `trellis verify cloudflare --live --url <worker> --exercise-agent` against a real Cloudflare account to prove the generated Flue harness against Cloudflare AI and R2 packs.
+2. Verify R2 pack sync and Cloudflare Workflow execution against a real Cloudflare account.
+3. Verify operator replay/requeue controls against a real Cloudflare Workflow and dead-letter queue.
+4. Keep legacy Convex/Vercel/Rivet paths as migration-only behavior fixtures until parity is proven; they should stay unreachable from the v3 CLI surface.
+
+## Local Parity Audit
+
+See `docs/trellis-v3-completion-audit.md`.
+
+Local v3 behavior is covered for the Trellis-first API, generated Cloudflare scaffold, safe smoke workflow, R2 pack plan, signal and reply ingest, provider runs, D1 projections, queues, Workflows, provider executors, MCP/dashboard, operator controls, and observability. The remaining items require live Cloudflare credentials and a deployed Worker URL.
 
 ## Verification
 
