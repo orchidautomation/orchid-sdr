@@ -1801,6 +1801,119 @@ describe("@trellis/gtm v3 API", () => {
     }
   });
 
+  it("keeps failed queue provider actions retryable for dead-letter recovery", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound({ noSends: false }),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    const fakeQueue = createFakeQueue();
+    const env = {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_EVENTS: fakeQueue,
+    };
+
+    await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_queue_fail",
+        workspaceId: "wrk_queue_fail",
+        threadId: "thr_queue_fail",
+        provider: "test",
+        source: "unit.test",
+        inboxId: "inbox_queue_fail",
+        to: "fail-buyer@example.com",
+      }),
+    }), env);
+    await runtime.worker.fetch(new Request("https://example.com/approvals/approval_draft_sig_queue_fail_email_send/approve", {
+      method: "POST",
+      body: JSON.stringify({
+        signalId: "sig_queue_fail",
+        draftId: "draft_sig_queue_fail",
+        action: "email.send",
+        actor: "operator@example.com",
+      }),
+    }), env);
+
+    const queuedMessage = fakeQueue.messages.find((message) =>
+      isTestRecord(message)
+        && message.type === "trellis.provider.action.queued"
+        && isTestRecord(message.providerAction)
+        && message.providerAction.id === "provider_action_approval_draft_sig_queue_fail_email_send",
+    );
+    const ack = vi.fn();
+    const retry = vi.fn();
+    const drain = await runtime.worker.queue?.({
+      messages: [
+        {
+          body: queuedMessage,
+          ack,
+          retry,
+        },
+      ],
+    }, env);
+
+    expect(drain).toMatchObject({
+      ok: false,
+      processed: 1,
+      results: [
+        {
+          ok: false,
+          providerActionId: "provider_action_approval_draft_sig_queue_fail_email_send",
+          status: 502,
+          retryState: {
+            enabled: true,
+          },
+        },
+      ],
+    });
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(ack).not.toHaveBeenCalled();
+    expect(fakeQueue.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "trellis.provider.action.failed",
+        providerActionId: "provider_action_approval_draft_sig_queue_fail_email_send",
+      }),
+    ]));
+    expect(fakeD1.statements.some((statement) =>
+      statement.sql.includes("UPDATE trellis_provider_actions")
+        && statement.bindings[0] === "queued"
+        && statement.bindings[2] === "provider_action_approval_draft_sig_queue_fail_email_send",
+    )).toBe(true);
+
+    const replay = await runtime.worker.fetch(new Request("https://example.com/operator/provider-actions/provider_action_approval_draft_sig_queue_fail_email_send/replay", {
+      method: "POST",
+      body: JSON.stringify({
+        actor: "ops@example.com",
+        reason: "retry after DLQ inspection",
+      }),
+    }), env);
+    await expect(replay.json()).resolves.toMatchObject({
+      ok: true,
+      providerAction: {
+        id: "provider_action_approval_draft_sig_queue_fail_email_send",
+        status: "queued",
+      },
+      queue: {
+        enabled: true,
+        messages: 1,
+      },
+    });
+  });
+
   it("routes app.skill through a hidden Flue-compatible harness when provided", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),

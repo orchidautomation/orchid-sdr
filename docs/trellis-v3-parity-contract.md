@@ -168,6 +168,7 @@ v3 parity:
 - workflow dispatches and checkpoints are queryable in D1 via `trellis_workflow_runs`
 - completed outbound `email.send` actions schedule durable `follow_up` workflow runs with a configurable delay and due checkpoint
 - Queues handle fanout/retries/dead letters
+- failed queue drains reset provider actions to `queued` before retry so Cloudflare retry/DLQ recovery remains actionable
 - D1 records signal, provider run, audit event, and workflow dispatch
 
 Legacy to remove after replacement:
@@ -229,7 +230,7 @@ v3 parity:
 - provider action status transitions and executor outcomes emit audit and queue events for recovery
 - built-in executors cover the curated GTM stack first, including AgentMail `email.send` / `mail.reply`, Attio `crm.update`, and `handoff.webhook`
 - provider calls carry trace/workflow/prospect ids
-- provider failures are retried or moved to dead letter with operator recovery
+- provider failures are recorded, kept retryable for Cloudflare queue retry/DLQ handling, and recoverable through operator replay
 
 Legacy to remove after replacement:
 

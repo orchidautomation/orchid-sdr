@@ -3618,7 +3618,14 @@ async function drainTrellisQueue(
       reason: "Drained queued provider action from TRELLIS_EVENTS.",
       input: queuedAction.input,
     }, config);
+    let retryState = null;
     if (execution.status >= 500) {
+      retryState = await markProviderActionQueuedForQueueRetry(env, queuedAction.providerActionId, {
+        actor: "trellis-queue",
+        reason: isRecord(execution.body)
+          ? readString(execution.body.detail) ?? readString(execution.body.error)
+          : `Provider action ${queuedAction.providerActionId} failed during queue drain.`,
+      });
       message.retry?.();
     } else {
       message.ack?.();
@@ -3628,6 +3635,7 @@ async function drainTrellisQueue(
       providerActionId: queuedAction.providerActionId,
       status: execution.status,
       body: execution.body,
+      retryState,
     });
   }
 
@@ -3637,6 +3645,41 @@ async function drainTrellisQueue(
     skipped: results.filter((result) => result.skipped).length,
     results,
   };
+}
+
+async function markProviderActionQueuedForQueueRetry(
+  env: Record<string, unknown> | undefined,
+  providerActionId: string,
+  retry: {
+    actor?: string;
+    reason?: string;
+  },
+) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      enabled: false,
+    };
+  }
+
+  await ensureD1Schema(db);
+  const action = await readProviderActionRecord(db, providerActionId);
+  if (!action) {
+    return {
+      enabled: true,
+      ok: false,
+      error: "provider_action_not_found",
+      providerActionId,
+    };
+  }
+
+  return persistProviderActionReplay(env, {
+    ...action,
+    status: "queued",
+  }, {
+    actor: retry.actor,
+    reason: retry.reason ?? "Prepared provider action for Cloudflare queue retry.",
+  });
 }
 
 function readQueuedProviderActionMessage(body: unknown) {
