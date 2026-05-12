@@ -8,17 +8,7 @@ import { describe, expect, it } from "vitest";
 describe("trellis init v3 scaffold", () => {
   it("keeps default help focused on the v3 happy path", () => {
     const repoRoot = process.cwd();
-    const cliPath = path.join(repoRoot, "packages", "trellis-cli", "src", "cli.ts");
-    const tsxCli = path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs");
-
-    const output = execFileSync(process.execPath, [
-      tsxCli,
-      cliPath,
-      "help",
-    ], {
-      cwd: repoRoot,
-      encoding: "utf8",
-    });
+    const output = runCli(repoRoot, ["help"], repoRoot);
 
     expect(output).toContain("npm run trellis -- init <target-dir> [--name my-app]");
     expect(output).toContain("Cloudflare is the default deploy target.");
@@ -33,21 +23,15 @@ describe("trellis init v3 scaffold", () => {
     const repoRoot = process.cwd();
     const targetDir = mkdtempSync(path.join(tmpdir(), "trellis-init-test."));
     const cliPath = path.join(repoRoot, "packages", "trellis-cli", "src", "cli.ts");
-    const tsxCli = path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs");
 
     try {
-      const output = execFileSync(process.execPath, [
-        tsxCli,
-        cliPath,
+      const output = runCli(repoRoot, [
         "init",
         targetDir,
         "--name",
         "test-sdr",
         "--json",
-      ], {
-        cwd: repoRoot,
-        encoding: "utf8",
-      });
+      ], repoRoot);
 
       const initResult = JSON.parse(output) as {
         mode: string;
@@ -124,4 +108,135 @@ describe("trellis init v3 scaffold", () => {
       rmSync(targetDir, { recursive: true, force: true });
     }
   });
+
+  it("runs the generated first-run spine without provider credentials", () => {
+    const repoRoot = process.cwd();
+    const targetDir = mkdtempSync(path.join(tmpdir(), "trellis-first-run-test."));
+
+    try {
+      runCli(repoRoot, [
+        "init",
+        targetDir,
+        "--name",
+        "first-run-sdr",
+        "--json",
+      ], repoRoot);
+
+      const docsResult = JSON.parse(runCli(repoRoot, [
+        "docs",
+        "add",
+        "./knowledge",
+        "--json",
+      ], targetDir)) as {
+        files: Array<{ path: string }>;
+        target: string;
+      };
+      expect(docsResult.target).toBe("R2-backed Trellis knowledge pack");
+      expect(docsResult.files.map((file) => file.path)).toEqual(["knowledge/icp.md"]);
+
+      const doctorResult = JSON.parse(runCli(repoRoot, [
+        "doctor",
+        "--json",
+      ], targetDir)) as {
+        ok: boolean;
+        mode: string;
+        checks: Array<{ id: string; status: string; detail: string }>;
+        knowledgePack: { files: number } | null;
+        skillPack: { files: string[] } | null;
+      };
+      expect(doctorResult.ok).toBe(true);
+      expect(doctorResult.mode).toBe("v3-cloudflare-gtm");
+      expect(doctorResult.checks.find((check) => check.id === "cloudflare.config")?.status).toBe("pass");
+      expect(doctorResult.checks.find((check) => check.id === "binding.TRELLIS_DB")?.status).toBe("pass");
+      expect(doctorResult.checks.find((check) => check.id === "binding.TRELLIS_PACKS")?.status).toBe("pass");
+      expect(doctorResult.checks.find((check) => check.id === "binding.TRELLIS_EVENTS")?.status).toBe("pass");
+      expect(doctorResult.checks.find((check) => check.id === "binding.PROSPECT_WORKFLOW")?.status).toBe("pass");
+      expect(doctorResult.checks.find((check) => check.id === "binding.AI")?.status).toBe("pass");
+      expect(doctorResult.checks.find((check) => check.id === "binding.BROWSER")?.status).toBe("pass");
+      expect(doctorResult.checks.find((check) => check.id === "cloudflare.d1.database")?.detail).toContain("trellis deploy will resolve or create it");
+      expect(doctorResult.knowledgePack?.files).toBe(1);
+      expect(doctorResult.skillPack?.files).toHaveLength(5);
+
+      const smokeResult = JSON.parse(runCli(repoRoot, [
+        "smoke",
+        "--json",
+      ], targetDir)) as {
+        ok: boolean;
+        noSendsMode: boolean;
+        externalWrites: boolean;
+        prospects: unknown[];
+        drafts: Array<{ status: string }>;
+        auditEvents: Array<{ type: string }>;
+        knowledgePack: { files: number } | null;
+      };
+      expect(smokeResult.ok).toBe(true);
+      expect(smokeResult.noSendsMode).toBe(true);
+      expect(smokeResult.externalWrites).toBe(false);
+      expect(smokeResult.prospects).toHaveLength(1);
+      expect(smokeResult.drafts[0]?.status).toBe("blocked_pending_approval");
+      expect(smokeResult.auditEvents.map((event) => event.type)).toContain("draft.created");
+      expect(smokeResult.knowledgePack?.files).toBe(1);
+
+      const deployResult = JSON.parse(runCli(repoRoot, [
+        "deploy",
+        "--json",
+      ], targetDir)) as {
+        target: string;
+        mode: string;
+        firstBoot: {
+          requiresProviderCredentials: boolean;
+          noSendsMode: boolean;
+          smokeMode: boolean;
+        };
+        cloudflare: {
+          autoProvisionable: boolean;
+          readyForDeploy: boolean;
+          resources: Array<{ id: string; ready: boolean; detail: string }>;
+        };
+        packSync: {
+          enabled: boolean;
+          syncable: boolean;
+          entries: Array<{ objectKey: string }>;
+        };
+        providers: Record<string, { connected: boolean; status: string }>;
+      };
+      expect(deployResult.target).toBe("cloudflare");
+      expect(deployResult.mode).toBe("plan");
+      expect(deployResult.firstBoot).toEqual({
+        requiresProviderCredentials: false,
+        noSendsMode: true,
+        smokeMode: true,
+      });
+      expect(deployResult.cloudflare.autoProvisionable).toBe(true);
+      expect(deployResult.cloudflare.readyForDeploy).toBe(false);
+      expect(deployResult.cloudflare.resources.find((resource) => resource.id === "d1.database")?.detail).toContain("trellis deploy will resolve or create it");
+      expect(deployResult.packSync.enabled).toBe(true);
+      expect(deployResult.packSync.syncable).toBe(true);
+      expect(deployResult.packSync.entries.map((entry) => entry.objectKey)).toEqual(expect.arrayContaining([
+        "knowledge/manifest.json",
+        "knowledge/files/icp.md",
+        "skills/files/icp-qualification/SKILL.md",
+        "skills/files/research-brief/SKILL.md",
+        "skills/files/sdr-copy/SKILL.md",
+        "skills/files/reply-policy/SKILL.md",
+        "skills/files/handoff-policy/SKILL.md",
+      ]));
+      expect(deployResult.providers.attio).toMatchObject({ connected: false, status: "not_connected" });
+      expect(deployResult.providers.agentmail).toMatchObject({ connected: false, status: "not_connected" });
+      expect(deployResult.providers.firecrawl).toMatchObject({ connected: false, status: "not_connected" });
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
 });
+
+function runCli(repoRoot: string, args: string[], cwd: string) {
+  return execFileSync(process.execPath, [
+    path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs"),
+    path.join(repoRoot, "packages", "trellis-cli", "src", "cli.ts"),
+    ...args,
+  ], {
+    cwd,
+    encoding: "utf8",
+  });
+}
