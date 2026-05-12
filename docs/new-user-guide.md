@@ -1,6 +1,6 @@
 # Trellis User Guide
 
-Trellis v3 is the GTM agent stack for teams that want to ship an agent without assembling the harness, runtime, queues, storage, gateway, safety gates, provider glue, and observability from scratch.
+Trellis v3 is the GTM agent stack for teams that want to ship an agent without assembling the runtime, queues, storage, model routing, safety gates, provider glue, and observability from scratch.
 
 The product promise is intentionally narrow: build and deploy a reliable GTM agent with one blessed stack, then connect the business systems you actually need.
 
@@ -21,15 +21,14 @@ Trellis owns the GTM product contract:
 
 Trellis hides the plumbing:
 
-- Flue for the agent harness
-- Cloudflare Workers for HTTP
-- Cloudflare Agents / Durable Objects for identity and state locality
-- D1 for queryable app state
-- R2 for knowledge, skills, attachments, and artifacts
-- Queues for background work and retries
-- Workflows for long-running GTM steps
-- AI Gateway for model routing and usage visibility
-- Sandbox or browser primitives only when lightweight filesystem context is not enough
+- reliable HTTP endpoints for signals, approvals, smoke tests, and MCP
+- durable state for accounts, prospects, inboxes, campaigns, and workflows
+- queryable app history for audits, dashboards, and operator review
+- packed markdown knowledge, skills, attachments, and artifacts
+- background queues for provider work, retries, and handoffs
+- long-running GTM workflows for research, approvals, sends, waits, and follow-up
+- model routing and usage visibility without making the agent code messy
+- heavier sandbox or browser automation only when the task actually needs it
 
 ## The Demo Shape
 
@@ -56,39 +55,39 @@ The default smoke path stays safe: `GET /smoke` and `trellis smoke` never write 
 import { trellis, schema } from "@trellis/gtm";
 import { attio, agentmail, firecrawl } from "@trellis/providers";
 
-// This file says how Trellis fields become Attio fields.
-// Example: qualification.decision -> your Attio `icp_status` attribute.
+// Map agent outputs to your CRM fields.
+// Example: qualification.decision -> Attio `icp_status`.
 import attioMap from "./crm/attio.map";
 
 export default trellis.agent("gtm-sdr", {
-  // Connect the GTM tools. Trellis owns the reliability wrapper around them.
+  // Bring your GTM stack: CRM, email, and research.
+  // Trellis handles the webhooks, retries, queues, logs, and approvals around them.
   crm: attio({ map: attioMap }),
   email: agentmail(),
   research: firecrawl(),
 
-  // These markdown files are the agent's brain: ICP, playbooks, roles, skills.
-  // Trellis packs them into Cloudflare R2 and mounts them into the hidden Flue sandbox.
+  // Give the agent your company context in markdown:
+  // ICP, playbooks, product docs, roles, and repeatable skills.
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
 
-  // Nothing writes to the outside world until an operator approves it.
+  // Start safe: drafts, CRM updates, and sends wait for human approval.
   safety: trellis.safeOutbound({
     noSends: true,
     requireApproval: ["email.send", "crm.update"],
   }),
 }, async (app) => {
-  // Accept one normalized GTM signal from a webhook, Apify, AgentMail, etc.
+  // Accept one buying signal from a webhook, enrichment job, inbox, or form.
   const signal = await app.signal();
 
-  // Run a markdown-backed skill through the Flue harness.
-  // Trellis validates the result against this schema before anything continues.
+  // Qualify the account using your markdown skill and return typed data.
   const qualification = await app.skill("icp-qualification", {
     context: await app.context(signal),
     schema: schema.qualification(),
   });
 
-  // Start the durable Cloudflare Workflow.
-  // This creates prospect state, blocked drafts, approvals, audit events, and queue work.
+  // Turn the result into durable work:
+  // prospect state, blocked drafts, CRM updates, approvals, and audit history.
   return app.workflow("prospect").start({ signal, qualification });
 });
 ```
