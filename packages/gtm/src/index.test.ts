@@ -10,12 +10,19 @@ describe("@trellis/gtm v3 API", () => {
       email: agentmail(),
       research: firecrawl(),
       model: "@cf/moonshotai/kimi-k2.6",
-      state: {
-        prospect: {
-          status: "qualification.decision",
-          summary: "qualification.summary",
+      state: trellis.state({
+        tables: {
+          prospects: {
+            primaryKey: "id",
+            fields: {
+              id: "prospect.id",
+              status: "qualification.decision",
+              summary: "qualification.summary",
+            },
+            indexes: [{ name: "prospects_by_status", fields: ["status"] }],
+          },
         },
-      },
+      }),
       knowledge: "knowledge/**/*.md",
       skills: "skills/**/SKILL.md",
       safety: trellis.safeOutbound(),
@@ -52,7 +59,7 @@ describe("@trellis/gtm v3 API", () => {
     expect(agent.config.email?.id).toBe("agentmail");
     expect(agent.config.research?.id).toBe("firecrawl");
     expect(agent.config.model).toBe("@cf/moonshotai/kimi-k2.6");
-    expect(agent.config.state?.prospect?.summary).toBe("qualification.summary");
+    expect(agent.config.state?.tables.prospects?.fields.summary).toBe("qualification.summary");
     expect(app.skillCalls).toHaveLength(1);
     expect(app.startedWorkflows).toHaveLength(1);
     expect(result).toMatchObject({
@@ -177,12 +184,19 @@ describe("@trellis/gtm v3 API", () => {
       email: agentmail(),
       research: firecrawl(),
       model: "@cf/moonshotai/kimi-k2.6",
-      state: {
-        prospect: {
-          status: "qualification.decision",
-          summary: "qualification.summary",
+      state: trellis.state({
+        tables: {
+          prospects: {
+            primaryKey: "id",
+            fields: {
+              id: "prospect.id",
+              status: "qualification.decision",
+              summary: "qualification.summary",
+            },
+            indexes: [{ name: "prospects_by_status", fields: ["status"] }],
+          },
         },
-      },
+      }),
       knowledge: "knowledge/**/*.md",
       skills: "skills/**/SKILL.md",
       safety: trellis.safeOutbound(),
@@ -500,12 +514,19 @@ describe("@trellis/gtm v3 API", () => {
           ],
           stateRecords: [
             expect.objectContaining({
-              entity: "prospect",
+              entity: "prospects",
               recordId: "prospect_sig_live",
               fields: expect.objectContaining({
+                id: "prospect_sig_live",
                 status: "needs_review",
                 summary: "Fixture qualification result.",
               }),
+              schema: expect.objectContaining({
+                primaryKey: "id",
+              }),
+              indexes: expect.arrayContaining([
+                expect.objectContaining({ name: "prospects_by_status" }),
+              ]),
             }),
           ],
           providerActions: [
@@ -3159,7 +3180,10 @@ function createFakeD1() {
                   workspaceId: bindings[4],
                   threadId: bindings[5],
                   fieldsJson: bindings[6],
-                  updatedAt: bindings[7],
+                  schemaJson: bindings[7],
+                  indexesJson: bindings[8],
+                  relationshipsJson: bindings[9],
+                  updatedAt: bindings[10],
                 });
               }
               if (normalized.includes("INSERT OR REPLACE INTO trellis_drafts")) {

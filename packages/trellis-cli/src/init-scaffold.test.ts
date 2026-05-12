@@ -107,8 +107,10 @@ describe("trellis init v3 scaffold", () => {
       expect(attioMapSource).toContain("companies:");
       expect(attioMapSource).toContain("people:");
       expect(attioMapSource).toContain("latest_signal");
-      expect(stateMapSource).toContain("satisfies TrellisStateMap");
-      expect(stateMapSource).toContain("prospect:");
+      expect(stateMapSource).toContain("trellis.state");
+      expect(stateMapSource).toContain("tables:");
+      expect(stateMapSource).toContain("prospects:");
+      expect(stateMapSource).toContain("relationships:");
       expect(stateMapSource).toContain("qualification.summary");
 
       expect(wranglerConfig).toContain("\"ai\"");

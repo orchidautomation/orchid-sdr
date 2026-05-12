@@ -2351,20 +2351,43 @@ export default trellis.agent("sdr", {
 }
 
 function renderV3ProspectStateMapSource() {
-  return `import type { TrellisStateMap } from "@trellis/gtm";
+  return `import { trellis } from "@trellis/gtm";
 
-const stateMap = {
-  prospect: {
-    status: "qualification.decision",
-    company: "signal.payload.company",
-    domain: "signal.payload.domain",
-    summary: "qualification.summary",
-    confidence: "qualification.confidence",
-    nextStep: "qualification.nextStep",
-    researchSummary: "research.summary",
-    draftSubject: "draft.subject",
+const stateMap = trellis.state({
+  tables: {
+    prospects: {
+      primaryKey: "id",
+      fields: {
+        id: "prospect.id",
+        signalId: "signal.id",
+        company: "signal.payload.company",
+        domain: "signal.payload.domain",
+        status: "qualification.decision",
+        summary: "qualification.summary",
+        confidence: { source: "qualification.confidence", type: "number" },
+        nextStep: "qualification.nextStep",
+        researchSummary: "research.summary",
+        draftSubject: "draft.subject",
+      },
+      indexes: [
+        { name: "prospects_by_domain", fields: ["domain"] },
+        { name: "prospects_by_status", fields: ["status"] },
+      ],
+      relationships: {
+        signal: { table: "signals", local: "signalId", foreign: "id" },
+      },
+    },
+    signals: {
+      primaryKey: "id",
+      fields: {
+        id: "signal.id",
+        source: "signal.source",
+        provider: "signal.provider",
+        payload: { source: "signal.payload", type: "json" },
+      },
+    },
   },
-} satisfies TrellisStateMap;
+});
 
 export default stateMap;
 `;
@@ -2751,7 +2774,7 @@ npm run trellis -- connect prospeo    # optional email enrichment
 npm run trellis -- docs add ./product-docs
 \`\`\`
 
-Your app code stays Trellis-only in \`src/agent.ts\`. Attio field mapping lives in \`src/crm/attio.map.ts\`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like \`qualification.decision\`, \`qualification.summary\`, or \`signal.payload.signal\`. Durable prospect state mapping lives in \`src/state/prospect.map.ts\`: choose the business fields Trellis should remember while Trellis keeps D1 tables and migrations private. The generated \`src/trellis-flue.ts\` adapter installs the hidden Flue harness, mounts Trellis R2 markdown packs into Flue's virtual sandbox, uses the Cloudflare AI binding through the default AI Gateway, and stores Flue sessions in \`TRELLIS_DB\`.
+Your app code stays Trellis-only in \`src/agent.ts\`. Attio field mapping lives in \`src/crm/attio.map.ts\`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like \`qualification.decision\`, \`qualification.summary\`, or \`signal.payload.signal\`. Durable business state lives in \`src/state/prospect.map.ts\`: define tables, fields, indexes, and relationships while Trellis keeps D1 migrations private. The generated \`src/trellis-flue.ts\` adapter installs the hidden Flue harness, mounts Trellis R2 markdown packs into Flue's virtual sandbox, uses the Cloudflare AI binding through the default AI Gateway, and stores Flue sessions in \`TRELLIS_DB\`.
 
 Deploy auto-packs the default \`knowledge/**/*.md\` files, or uses \`.trellis/knowledge-pack.json\` when you run \`trellis docs add <path>\`. It also syncs tracked \`SKILL.md\` files into the \`TRELLIS_PACKS\` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
 

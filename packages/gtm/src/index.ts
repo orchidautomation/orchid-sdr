@@ -29,8 +29,43 @@ export interface TrellisAttioMap {
   people?: TrellisFieldMap;
 }
 
+export type TrellisStateFieldType = "string" | "number" | "boolean" | "json" | "datetime";
+
+export type TrellisStateFieldDefinition =
+  | string
+  | {
+      source: string;
+      type?: TrellisStateFieldType;
+      required?: boolean;
+    };
+
+export type TrellisStateFields = Record<string, TrellisStateFieldDefinition>;
+
+export type TrellisStateIndexDefinition =
+  | string
+  | string[]
+  | {
+      name?: string;
+      fields: string[];
+      unique?: boolean;
+    };
+
+export interface TrellisStateRelationshipDefinition {
+  table: string;
+  local: string;
+  foreign: string;
+  many?: boolean;
+}
+
+export interface TrellisStateTableDefinition {
+  primaryKey: string;
+  fields: TrellisStateFields;
+  indexes?: TrellisStateIndexDefinition[];
+  relationships?: Record<string, TrellisStateRelationshipDefinition>;
+}
+
 export interface TrellisStateMap {
-  prospect?: TrellisFieldMap;
+  tables: Record<string, TrellisStateTableDefinition>;
 }
 
 export interface TrellisSafetyPolicy {
@@ -514,6 +549,9 @@ export const trellis = {
       requireApproval: input?.requireApproval ?? ["email.send", "mail.reply", "crm.update", "handoff.webhook"],
       killSwitch: input?.killSwitch ?? true,
     };
+  },
+  state(definition: TrellisStateMap): TrellisStateMap {
+    return definition;
   },
   provider(definition: TrellisProviderDefinition): TrellisProviderDefinition {
     return definition;
@@ -3290,22 +3328,24 @@ async function persistRuntimeResult(
       prospect.status,
       new Date().toISOString(),
     ]);
-    const mappedState = applyStateFieldMap(config?.state?.prospect, buildStateMapSource(run, prospect));
-    if (Object.keys(mappedState).length > 0) {
-      const updatedAt = new Date().toISOString();
+    const stateRecords = buildStateRecords(config?.state, run, prospect);
+    for (const stateRecord of stateRecords) {
       await runD1(db, `
         INSERT OR REPLACE INTO trellis_state_records
-          (id, entity, record_id, signal_id, workspace_id, thread_id, fields_json, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          (id, entity, record_id, signal_id, workspace_id, thread_id, fields_json, schema_json, indexes_json, relationships_json, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
-        `state_${normalizeIdPart(prospect.id)}_prospect`,
-        "prospect",
-        prospect.id,
-        prospect.signalId,
-        prospect.workspaceId,
-        prospect.threadId,
-        JSON.stringify(mappedState),
-        updatedAt,
+        stateRecord.id,
+        stateRecord.table,
+        stateRecord.recordId,
+        stateRecord.signalId,
+        stateRecord.workspaceId,
+        stateRecord.threadId,
+        JSON.stringify(stateRecord.fields),
+        JSON.stringify(stateRecord.schema),
+        JSON.stringify(stateRecord.indexes),
+        JSON.stringify(stateRecord.relationships),
+        stateRecord.updatedAt,
       ]);
     }
   }
@@ -3396,15 +3436,108 @@ function buildStateMapSource(run: TrellisRuntimeResult, prospect: TrellisProspec
   };
 }
 
-function applyStateFieldMap(map: TrellisFieldMap | undefined, source: Record<string, unknown>) {
-  const values: Record<string, unknown> = {};
-  for (const [stateField, sourcePath] of Object.entries(map ?? {})) {
-    const value = readMappedValue(source, sourcePath);
-    if (value !== undefined && value !== null && value !== "") {
-      values[stateField] = value;
+function buildStateRecords(
+  state: TrellisStateMap | undefined,
+  run: TrellisRuntimeResult,
+  prospect: TrellisProspect,
+) {
+  const source = buildStateMapSource(run, prospect);
+  const records: Array<{
+    id: string;
+    table: string;
+    recordId: string;
+    signalId: string;
+    workspaceId: string;
+    threadId: string;
+    fields: Record<string, unknown>;
+    schema: Record<string, unknown>;
+    indexes: TrellisStateIndexDefinition[];
+    relationships: Record<string, TrellisStateRelationshipDefinition>;
+    updatedAt: string;
+  }> = [];
+  for (const [tableName, table] of Object.entries(state?.tables ?? {})) {
+    const fields = applyStateTableFields(table.fields, source);
+    const recordId = readStateRecordId(tableName, table, fields, source, prospect, run);
+    if (!recordId || Object.keys(fields).length === 0) {
+      continue;
     }
+    records.push({
+      id: `state_${normalizeIdPart(tableName)}_${normalizeIdPart(recordId)}`,
+      table: tableName,
+      recordId,
+      signalId: run.signal.id,
+      workspaceId: run.signal.workspaceId,
+      threadId: run.signal.threadId,
+      fields,
+      schema: {
+        primaryKey: table.primaryKey,
+        fields: table.fields,
+      },
+      indexes: table.indexes ?? [],
+      relationships: table.relationships ?? {},
+      updatedAt: new Date().toISOString(),
+    });
+  }
+  return records;
+}
+
+function applyStateTableFields(fields: TrellisStateFields, source: Record<string, unknown>) {
+  const values: Record<string, unknown> = {};
+  for (const [stateField, definition] of Object.entries(fields)) {
+    const sourcePath = typeof definition === "string" ? definition : definition.source;
+    const rawValue = readMappedValue(source, sourcePath);
+    if (rawValue === undefined || rawValue === null || rawValue === "") {
+      continue;
+    }
+    values[stateField] = typeof definition === "string"
+      ? rawValue
+      : coerceStateFieldValue(rawValue, definition.type);
   }
   return values;
+}
+
+function readStateRecordId(
+  tableName: string,
+  table: TrellisStateTableDefinition,
+  fields: Record<string, unknown>,
+  source: Record<string, unknown>,
+  prospect: TrellisProspect,
+  run: TrellisRuntimeResult,
+) {
+  const fieldValue = fields[table.primaryKey];
+  if (fieldValue !== undefined && fieldValue !== null && fieldValue !== "") {
+    return String(fieldValue);
+  }
+  const sourceValue = readMappedValue(source, table.primaryKey);
+  if (sourceValue !== undefined && sourceValue !== null && sourceValue !== "") {
+    return String(sourceValue);
+  }
+  if (tableName === "prospects" || tableName === "prospect") {
+    return prospect.id;
+  }
+  if (tableName === "signals" || tableName === "signal") {
+    return run.signal.id;
+  }
+  return undefined;
+}
+
+function coerceStateFieldValue(value: unknown, type: TrellisStateFieldType | undefined) {
+  if (type === "string" || type === "datetime") {
+    return String(value);
+  }
+  if (type === "number") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : value;
+  }
+  if (type === "boolean") {
+    if (typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "string") {
+      return ["true", "1", "yes"].includes(value.toLowerCase());
+    }
+  }
+  return value;
 }
 
 async function recordSmokeRun(
@@ -3501,9 +3634,15 @@ async function ensureD1Schema(db: TrellisD1Database) {
       workspace_id TEXT NOT NULL,
       thread_id TEXT NOT NULL,
       fields_json TEXT NOT NULL,
+      schema_json TEXT,
+      indexes_json TEXT,
+      relationships_json TEXT,
       updated_at TEXT NOT NULL
     )
   `);
+  await runD1Optional(db, `ALTER TABLE trellis_state_records ADD COLUMN schema_json TEXT`);
+  await runD1Optional(db, `ALTER TABLE trellis_state_records ADD COLUMN indexes_json TEXT`);
+  await runD1Optional(db, `ALTER TABLE trellis_state_records ADD COLUMN relationships_json TEXT`);
   await runD1(db, `
     CREATE INDEX IF NOT EXISTS idx_trellis_state_records_entity_record
       ON trellis_state_records (entity, record_id)
@@ -3617,6 +3756,14 @@ async function ensureD1Schema(db: TrellisD1Database) {
 
 async function runD1(db: TrellisD1Database, sql: string, bindings: unknown[] = []) {
   await db.prepare(sql).bind(...bindings).run();
+}
+
+async function runD1Optional(db: TrellisD1Database, sql: string, bindings: unknown[] = []) {
+  try {
+    await runD1(db, sql, bindings);
+  } catch {
+    // Optional D1 migrations are best-effort for existing generated apps.
+  }
 }
 
 async function insertTraceEvent(
@@ -6328,6 +6475,9 @@ async function readRecentRuntimeRows(db: TrellisD1Database) {
       workspaceId: string;
       threadId: string;
       fieldsJson?: string;
+      schemaJson?: string;
+      indexesJson?: string;
+      relationshipsJson?: string;
       updatedAt?: string;
     }>(db, `
       SELECT
@@ -6338,6 +6488,9 @@ async function readRecentRuntimeRows(db: TrellisD1Database) {
         workspace_id AS workspaceId,
         thread_id AS threadId,
         fields_json AS fieldsJson,
+        schema_json AS schemaJson,
+        indexes_json AS indexesJson,
+        relationships_json AS relationshipsJson,
         updated_at AS updatedAt
       FROM trellis_state_records
       ORDER BY updated_at DESC
@@ -6345,7 +6498,13 @@ async function readRecentRuntimeRows(db: TrellisD1Database) {
     `, [5])).map((row) => ({
       ...row,
       fields: parseJsonValue(row.fieldsJson),
+      schema: parseJsonValue(row.schemaJson),
+      indexes: parseJsonValue(row.indexesJson),
+      relationships: parseJsonValue(row.relationshipsJson),
       fieldsJson: undefined,
+      schemaJson: undefined,
+      indexesJson: undefined,
+      relationshipsJson: undefined,
     })),
     drafts: (await readD1Rows<{
       id: string;

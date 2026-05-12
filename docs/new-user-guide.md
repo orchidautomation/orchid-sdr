@@ -59,8 +59,8 @@ import { attio, agentmail, firecrawl } from "@trellis/providers";
 // Example: qualification.decision -> Attio `icp_status`.
 import attioMap from "./crm/attio.map";
 
-// Map agent outputs to the durable Trellis database.
-// Example: qualification.summary -> prospect.summary.
+// Define durable business tables, fields, indexes, and relationships.
+// Trellis turns this into managed database state.
 import stateMap from "./state/prospect.map";
 
 export default trellis.agent("gtm-sdr", {
@@ -73,8 +73,8 @@ export default trellis.agent("gtm-sdr", {
   // Pick the LLM once. You can override this per environment with TRELLIS_MODEL.
   model: "@cf/moonshotai/kimi-k2.6",
 
-  // Choose what Trellis remembers in its database.
-  // Trellis manages the tables; this map defines your business fields.
+  // Choose the business schema Trellis remembers in its database.
+  // Tables, fields, indexes, and relationships live in this map.
   state: stateMap,
 
   // Give the agent your company context in markdown:
@@ -121,23 +121,37 @@ There are really three schemas:
 
 - **Skill output schema**: `schema.qualification()` validates what the agent extracts before workflows or provider writes happen.
 - **CRM field map**: `src/crm/attio.map.ts` maps extracted Trellis values to Attio attributes.
-- **Business state map**: `src/state/prospect.map.ts` maps agent outputs into durable business fields, while Trellis keeps the low-level D1 table schema private and reliable.
+- **Business state schema**: `src/state/prospect.map.ts` defines business tables, fields, indexes, and relationships, while Trellis keeps the low-level D1 tables and migrations private and reliable.
 
-The state map should feel like the CRM map:
+The state schema should feel like a small product model, not a raw migration:
 
 ```ts
-export default {
-  prospect: {
-    status: "qualification.decision",
-    company: "signal.payload.company",
-    domain: "signal.payload.domain",
-    summary: "qualification.summary",
-    nextStep: "qualification.nextStep",
+export default trellis.state({
+  tables: {
+    prospects: {
+      primaryKey: "id",
+      fields: {
+        id: "prospect.id",
+        signalId: "signal.id",
+        company: "signal.payload.company",
+        domain: "signal.payload.domain",
+        status: "qualification.decision",
+        summary: "qualification.summary",
+        confidence: { source: "qualification.confidence", type: "number" },
+      },
+      indexes: [
+        { name: "prospects_by_domain", fields: ["domain"] },
+        { name: "prospects_by_status", fields: ["status"] },
+      ],
+      relationships: {
+        signal: { table: "signals", local: "signalId", foreign: "id" },
+      },
+    },
   },
-};
+});
 ```
 
-That gives a user one obvious place to say “what should Trellis remember about this prospect?” without exposing D1 migrations, indexes, or storage details in the happy path.
+That gives a user one obvious place to say “what tables should Trellis remember, how are they shaped, and how do they relate?” without exposing D1 migrations or storage details in the happy path.
 
 ## Safety Defaults
 
