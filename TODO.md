@@ -12,10 +12,10 @@ This branch is converting Trellis from a generic composition framework into the 
 ## Remaining Work
 
 1. Port the reference AI SDR behavior into `@trellis/gtm`.
-2. Verify the generated Flue harness against a real Cloudflare AI binding and R2 pack in a Cloudflare account.
+2. Run `trellis verify cloudflare --live --url <worker> --exercise-agent` against a real Cloudflare account to prove the generated Flue harness against Cloudflare AI and R2 packs.
 3. Verify R2 pack sync and Cloudflare Workflow execution against a real Cloudflare account.
 4. Verify operator replay/requeue controls against a real Cloudflare Workflow and dead-letter queue.
-5. Quarantine legacy Convex/Vercel/Rivet paths as migration-only behavior fixtures until parity is proven.
+5. Keep legacy Convex/Vercel/Rivet paths as migration-only behavior fixtures until parity is proven; they should stay unreachable from the v3 CLI surface.
 
 ## Verification
 
@@ -26,4 +26,5 @@ npm test
 npm run trellis -- doctor --json
 npm run trellis -- smoke --json
 npm run trellis -- deploy --json
+npm run trellis -- verify cloudflare --json
 ```

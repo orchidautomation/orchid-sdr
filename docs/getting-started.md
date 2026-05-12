@@ -30,7 +30,7 @@ npm install
 - `skills/**/SKILL.md`
 - `wrangler.jsonc`
 - `.env.example`
-- package scripts for `doctor`, `smoke`, and `deploy`
+- package scripts for `doctor`, `smoke`, `deploy`, and `verify`
 
 No SDR kit, Convex app, Vercel Sandbox, or Rivet runtime is installed by default.
 
@@ -72,6 +72,7 @@ This writes `.trellis/knowledge-pack.json` with file paths, sizes, and hashes. D
 ```bash
 npm run trellis -- doctor
 npm run trellis -- smoke
+npm run trellis -- verify cloudflare
 ```
 
 `doctor` checks Cloudflare wiring, markdown packs, skill packs, provider readiness, and the no-send safety gate.
@@ -90,10 +91,19 @@ npm run trellis -- deploy
 
 Deploy is the magic path. For the generated `wrangler.jsonc`, Trellis resolves or creates the D1 database, writes the `database_id`, creates or verifies the R2 buckets, creates or verifies the events queue and dead-letter queue, syncs markdown and skills into R2, then runs `wrangler deploy`.
 
+After deploy, verify the live Cloudflare surface:
+
+```bash
+npm run trellis -- verify cloudflare --live --url https://<your-worker>.workers.dev
+```
+
+When you are ready to spend one safe model call to prove the hidden Flue/Cloudflare harness, add `--exercise-agent`.
+
 Use JSON output when another agent or setup tool is orchestrating the flow:
 
 ```bash
 npm run trellis -- deploy --json
+npm run trellis -- verify cloudflare --json
 ```
 
 ## 7. Connect Providers

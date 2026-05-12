@@ -9,6 +9,7 @@ It is not trying to be a universal agent framework. The v3 direction is one cura
 ```bash
 trellis init acme-sdr
 trellis deploy
+trellis verify cloudflare
 trellis doctor
 trellis smoke
 trellis connect attio
@@ -24,6 +25,8 @@ The first deploy should require only Cloudflare auth. CRM, email, research, and 
 `trellis docs add` writes `.trellis/knowledge-pack.json` with markdown file hashes so the pack can be verified locally. `trellis deploy` syncs the knowledge manifest, markdown files, and tracked `SKILL.md` files into `TRELLIS_PACKS`, and the runtime hydrates those markdown files into bounded agent context.
 
 `trellis deploy` also owns the first Cloudflare provisioning pass for the generated app: it resolves or creates the D1 database and writes the `database_id`, creates or verifies the R2 buckets, creates or verifies the events queue and dead-letter queue, then runs the pack sync and Wrangler deploy.
+
+`trellis verify cloudflare` checks the generated app shape, local smoke path, pack sync plan, and Cloudflare resource posture. With `--live --url <worker-url>` it also verifies Wrangler auth and deployed `/healthz`, `/mcp/trellis`, and `/smoke`; add `--exercise-agent` to post a safe signal through the live Flue/Cloudflare harness.
 
 ## What Trellis Owns
 
@@ -97,7 +100,7 @@ export default trellis.agent("sdr", {
 
 The repo still contains the older reference app and framework-composition packages. They are behavior/parity source material only, not the v3 public architecture.
 
-Root npm scripts now follow that boundary. `npm run build`, `npm run doctor`, `npm run smoke`, and `npm run dev` exercise the v3 Trellis/Cloudflare path. The old AI SDR baseline is still available only through explicit `legacy:*` scripts and `npm run build:all`.
+Root npm scripts now follow that boundary. `npm run build`, `npm run doctor`, `npm run smoke`, `npm run verify`, and `npm run dev` exercise the v3 Trellis/Cloudflare path. The v3 CLI rejects old composition commands even when a legacy flag is passed. The old AI SDR baseline is still available only through explicit `legacy:*` scripts and `npm run build:all`.
 
 The v3 surface now lives in:
 
@@ -105,9 +108,9 @@ The v3 surface now lives in:
 - `packages/providers`
 - `docs/trellis-v3-vision.md`
 - `docs/trellis-v3-parity-contract.md`
-- the default `trellis init`, `trellis deploy`, `trellis smoke`, `trellis connect`, and `trellis docs add` CLI path
+- the default `trellis init`, `trellis deploy`, `trellis verify`, `trellis smoke`, `trellis connect`, and `trellis docs add` CLI path
 
-Migration compatibility stays out of the default help, scaffold, docs, and deploy story.
+Migration compatibility stays out of the default help, scaffold, docs, deploy story, and CLI escape hatches.
 
 ## Verify
 
@@ -119,4 +122,5 @@ npm run trellis -- help
 npm run trellis -- doctor --json
 npm run trellis -- smoke --json
 npm run trellis -- deploy --json
+npm run trellis -- verify cloudflare --json
 ```

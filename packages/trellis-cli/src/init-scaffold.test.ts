@@ -12,6 +12,7 @@ describe("trellis init v3 scaffold", () => {
 
     expect(output).toContain("npm run trellis -- init <target-dir> [--name my-app]");
     expect(output).toContain("Cloudflare is the default deploy target.");
+    expect(output).toContain("npm run trellis -- verify cloudflare --json");
     expect(output).not.toContain("trellis add");
     expect(output).not.toContain("--legacy");
     expect(output).not.toContain("Convex");
@@ -63,6 +64,7 @@ describe("trellis init v3 scaffold", () => {
       expect(generatedPackage.scripts.doctor).toBe("trellis doctor");
       expect(generatedPackage.scripts.deploy).toBe("trellis deploy");
       expect(generatedPackage.scripts.smoke).toBe("trellis smoke");
+      expect(generatedPackage.scripts.verify).toBe("trellis verify cloudflare");
       expect(generatedPackage.devDependencies.tsx).toBeDefined();
       expect(readFileSync(cliPath, "utf8")).toMatch(/^#!\/usr\/bin\/env tsx/);
 
@@ -104,6 +106,22 @@ describe("trellis init v3 scaffold", () => {
       expect(existsSync(path.join(targetDir, "trellis.config.ts"))).toBe(false);
       expect(existsSync(path.join(targetDir, "src", "app-config.ts"))).toBe(false);
       expect(existsSync(path.join(targetDir, "TRELLIS_SETUP.md"))).toBe(false);
+    } finally {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects old architecture commands from the v3 CLI surface", () => {
+    const repoRoot = process.cwd();
+    const targetDir = mkdtempSync(path.join(tmpdir(), "trellis-legacy-reject-test."));
+
+    try {
+      expect(runCliFailure(repoRoot, ["add", "source", "apify", "--legacy"], repoRoot))
+        .toContain("trellis add is old composition tooling");
+      expect(runCliFailure(repoRoot, ["deploy", "vercel", "--legacy"], repoRoot))
+        .toContain("Deploy target \"vercel\" is old architecture");
+      expect(runCliFailure(repoRoot, ["init", targetDir, "--legacy"], repoRoot))
+        .toContain("trellis init --legacy/--kit is old composition tooling");
     } finally {
       rmSync(targetDir, { recursive: true, force: true });
     }
@@ -225,6 +243,48 @@ describe("trellis init v3 scaffold", () => {
       expect(deployResult.providers.agentmail).toMatchObject({ connected: false, status: "not_connected" });
       expect(deployResult.providers.firecrawl).toMatchObject({ connected: false, status: "not_connected" });
 
+      const verifyResult = JSON.parse(runCli(repoRoot, [
+        "verify",
+        "cloudflare",
+        "--json",
+      ], targetDir)) as {
+        ok: boolean;
+        target: string;
+        mode: string;
+        live: boolean;
+        endpoint: string | null;
+        checks: Array<{ id: string; status: string; detail: string }>;
+        cloudflare: {
+          autoProvisionable: boolean;
+          readyForDeploy: boolean;
+        };
+        packSync: {
+          syncable: boolean;
+          entries: Array<{ objectKey: string }>;
+        };
+      };
+      expect(verifyResult.ok).toBe(true);
+      expect(verifyResult.target).toBe("cloudflare");
+      expect(verifyResult.mode).toBe("local");
+      expect(verifyResult.live).toBe(false);
+      expect(verifyResult.endpoint).toBeNull();
+      expect(verifyResult.checks.find((check) => check.id === "source.agent")?.status).toBe("pass");
+      expect(verifyResult.checks.find((check) => check.id === "source.worker")?.status).toBe("pass");
+      expect(verifyResult.checks.find((check) => check.id === "source.flueAdapter")?.status).toBe("pass");
+      expect(verifyResult.checks.find((check) => check.id === "cloudflare.autoProvisionable")?.status).toBe("pass");
+      expect(verifyResult.checks.find((check) => check.id === "packSync.plan")?.status).toBe("pass");
+      expect(verifyResult.checks.find((check) => check.id === "smoke.local")?.status).toBe("pass");
+      expect(verifyResult.checks.find((check) => check.id === "wrangler.auth")?.status).toBe("skip");
+      expect(verifyResult.checks.find((check) => check.id === "remote.webhook.agent")?.status).toBe("skip");
+      expect(verifyResult.cloudflare.autoProvisionable).toBe(true);
+      expect(verifyResult.cloudflare.readyForDeploy).toBe(false);
+      expect(verifyResult.packSync.syncable).toBe(true);
+      expect(verifyResult.packSync.entries.map((entry) => entry.objectKey)).toEqual(expect.arrayContaining([
+        "knowledge/manifest.json",
+        "knowledge/files/icp.md",
+        "skills/files/icp-qualification/SKILL.md",
+      ]));
+
       const connectedProviders = [
         ["attio", "ATTIO_API_KEY"],
         ["agentmail", "AGENTMAIL_API_KEY"],
@@ -314,4 +374,20 @@ function runCli(repoRoot: string, args: string[], cwd: string) {
     env,
     encoding: "utf8",
   });
+}
+
+function runCliFailure(repoRoot: string, args: string[], cwd: string) {
+  try {
+    runCli(repoRoot, args, cwd);
+  } catch (error) {
+    const result = error as {
+      status?: number;
+      stdout?: string | Buffer;
+      stderr?: string | Buffer;
+    };
+    expect(result.status).not.toBe(0);
+    return `${result.stdout?.toString() ?? ""}${result.stderr?.toString() ?? ""}`;
+  }
+
+  throw new Error(`Expected CLI command to fail: ${args.join(" ")}`);
 }

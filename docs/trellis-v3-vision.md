@@ -769,6 +769,22 @@ Checks the generated Cloudflare app shape:
 - safe fixture smoke workflow
 - no-send and approval defaults
 
+### Verify
+
+```bash
+trellis verify cloudflare
+```
+
+Checks the generated app as a deployable Cloudflare artifact:
+
+- Trellis-only `src/agent.ts`
+- hidden Worker and Flue adapter wiring
+- required Cloudflare bindings
+- R2 pack sync plan
+- safe local smoke workflow
+- optional Wrangler auth and deployed route checks with `--live --url`
+- optional live safe webhook exercise with `--exercise-agent`
+
 ## GTM As The First Vertical
 
 GTM is the right first vertical because it has:

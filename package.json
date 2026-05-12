@@ -25,6 +25,7 @@
     "trellis": "tsx packages/trellis-cli/src/cli.ts",
     "doctor": "npm run trellis -- doctor",
     "smoke": "npm run trellis -- smoke",
+    "verify": "npm run trellis -- verify cloudflare",
     "legacy:dev": "tsx watch examples/reference-app/src/index.ts",
     "legacy:doctor": "tsx examples/reference-app/scripts/doctor.ts",
     "legacy:demo:check": "tsx examples/reference-app/scripts/demo-check.ts",

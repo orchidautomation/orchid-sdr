@@ -1,37 +1,14 @@
 #!/usr/bin/env tsx
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import process from "node:process";
 
-import type {
-  AiSdrCompositionProfileId,
-  AiSdrConfig,
-  AiSdrModuleDefinition,
-} from "../../framework/src/index.js";
 import { runTrellisSmoke } from "../../gtm/src/index.js";
 import { buildClaudeCodeMcpConfig, mergeClaudeCodeMcpConfig } from "./mcp-config.js";
-
-type LegacyFrameworkModule = typeof import("../../framework/src/index.js");
-type LegacyScaffoldModule = typeof import("../../framework/src/scaffold.js");
-type LegacyScaffoldSpec = ReturnType<LegacyScaffoldModule["buildScaffoldSpec"]>;
-type LegacyInstallPlan = ReturnType<LegacyFrameworkModule["buildModuleInstallPlan"]>;
-
-let legacyFrameworkPromise: Promise<LegacyFrameworkModule> | undefined;
-let legacyScaffoldPromise: Promise<LegacyScaffoldModule> | undefined;
-
-function loadLegacyFramework() {
-  legacyFrameworkPromise ??= import("../../framework/src/index.js");
-  return legacyFrameworkPromise;
-}
-
-function loadLegacyScaffold() {
-  legacyScaffoldPromise ??= import("../../framework/src/scaffold.js");
-  return legacyScaffoldPromise;
-}
 
 let envLoadedForCwd = new Set<string>();
 
@@ -112,46 +89,8 @@ const providerArg = parsedCliArgs.positionals[1];
 const cliFlags = parsedCliArgs.flags;
 const jsonOutput = isJsonOutput(cliFlags);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const referenceAppRoot = path.resolve(repoRoot, "examples/reference-app");
-const coreAppRoot = path.resolve(repoRoot, "examples/core-app");
-const meetingPrepRoot = path.resolve(repoRoot, "examples/meeting-prep");
 const trellisStateDirName = ".trellis";
 const knowledgePackManifestName = "knowledge-pack.json";
-const SHARED_SCAFFOLD_COPY_ENTRIES = [
-  ".dockerignore",
-  ".gitignore",
-  "Dockerfile",
-  "docker-compose.example.yml",
-  "docs",
-  "packages",
-  "tsconfig.json",
-  "vercel.json",
-];
-const CORE_SCAFFOLD_COPY_ENTRIES = [
-  "convex",
-  "knowledge",
-  "scripts",
-  "skills",
-  "src",
-  "tests",
-];
-
-const DOMAIN_KITS = {
-  sdr: {
-    id: "sdr",
-    displayName: "AI SDR",
-    root: referenceAppRoot,
-    copyEntries: ["convex", "knowledge", "scripts", "skills", "src", "tests"],
-  },
-  "meeting-prep": {
-    id: "meeting-prep",
-    displayName: "Meeting prep",
-    root: meetingPrepRoot,
-    copyEntries: ["convex", "knowledge", "skills", "src", "tests"],
-  },
-} as const;
-
-type DomainKitId = keyof typeof DOMAIN_KITS;
 
 const V3_CONNECTIONS = {
   attio: {
@@ -199,7 +138,6 @@ const V3_CONNECTIONS = {
 type V3ConnectionId = keyof typeof V3_CONNECTIONS;
 const REQUIRED_V3_PROVIDER_IDS = ["attio", "agentmail", "firecrawl"] as const;
 const OPTIONAL_V3_PROVIDER_IDS = ["langfuse", "braintrust"] as const;
-let activeConfigPromise: Promise<AiSdrConfig> | undefined;
 
 type CloudflareResourceConfig = {
   configPath: string | null;
@@ -280,15 +218,13 @@ async function main() {
         printHelp();
         break;
       case "modules":
-        requireLegacyCommand("modules", "Use `trellis connect <provider>` and `trellis docs add <path>` in v3.");
-        await listModules();
+        rejectLegacyCommand("modules", "Use `trellis connect <provider>` and `trellis docs add <path>` in v3.");
         break;
       case "add":
-        await printAddPlan(arg);
+        rejectLegacyCommand("add", "Use `trellis connect <provider>` or `trellis docs add <path>` in v3.");
         break;
       case "check":
-        requireLegacyCommand("check", "Use `trellis doctor` for the v3 reliability check.");
-        await printCompositionCheck();
+        rejectLegacyCommand("check", "Use `trellis doctor` for the v3 reliability check.");
         break;
       case "connect":
         await handleConnectCommand(arg);
@@ -305,23 +241,23 @@ async function main() {
       case "deploy":
         await handleDeployCommand(arg, cliFlags);
         break;
+      case "verify":
+        await handleVerifyCommand(arg, cliFlags);
+        break;
       case "admin":
-        requireLegacyCommand("admin", "The v3 operator surface is the generated dashboard and MCP routes.");
-        await handleAdminCommand(arg, cliFlags);
+        rejectLegacyCommand("admin", "The v3 operator surface is the generated dashboard and MCP routes.");
         break;
       case "discovery":
-        requireLegacyCommand("discovery", "The v3 path ingests signals through Cloudflare webhooks and queues.");
-        await handleDiscoveryCommand(arg, providerArg, cliFlags);
+        rejectLegacyCommand("discovery", "The v3 path ingests signals through Cloudflare webhooks and queues.");
         break;
       case "mcp":
         await handleMcpCommand(arg, cliFlags);
         break;
       case "init":
         if (cliFlags.legacy === true || typeof cliFlags.kit === "string") {
-          await scaffoldProject(arg, cliFlags);
-        } else {
-          await scaffoldV3Project(arg, cliFlags);
+          rejectLegacyCommand("init --legacy/--kit", "Trellis init now emits the Cloudflare-first v3 scaffold only.");
         }
+        await scaffoldV3Project(arg, cliFlags);
         break;
       default:
         console.error(`Unknown command: ${command}`);
@@ -365,6 +301,8 @@ Examples:
   npm run trellis -- smoke
   npm run trellis -- deploy
   npm run trellis -- deploy --json
+  npm run trellis -- verify cloudflare --json
+  npm run trellis -- verify cloudflare --live --url https://your-worker.workers.dev --exercise-agent
 
 Simple labels stay short in the CLI: attio, agentmail, firecrawl, langfuse, braintrust.
 
@@ -374,318 +312,8 @@ Business providers are connected after first boot.
 Use --json when a plugin or coding agent is orchestrating the setup.`);
 }
 
-function requireLegacyCommand(commandName: string, replacement: string) {
-  if (cliFlags.legacy === true) {
-    return;
-  }
-  throw new Error(`trellis ${commandName} is legacy composition tooling. ${replacement} Re-run with --legacy only while maintaining the old reference app.`);
-}
-
-async function handleAdminCommand(subcommand: string | undefined, flags: Record<string, string | boolean>) {
-  switch (subcommand) {
-    case "cleanup-stale":
-    case "cleanup":
-      await handleCleanupStaleAdminCommand(flags);
-      return;
-    default:
-      throw new Error("Unknown admin command. Use: npm run trellis -- admin cleanup-stale [--apply]");
-  }
-}
-
-async function handleCleanupStaleAdminCommand(flags: Record<string, string | boolean>) {
-  const [{ ConvexHttpClient }, { convexMutations, convexQueries }] = await Promise.all([
-    import("convex/browser"),
-    import("../../default-sdr/src/convex-repository.js"),
-  ]);
-  const convexUrl = requireEnv("CONVEX_URL");
-  const client = new ConvexHttpClient(convexUrl);
-  const limit = Number(flags["limit"] ?? "50");
-  const staleMinutes = Number(flags["stale-minutes"] ?? "90");
-  const apply = Boolean(flags.apply);
-  const pauseReason = typeof flags["pause-reason"] === "string"
-    ? flags["pause-reason"]
-    : "stale capture_signal cleanup";
-
-  const audit = await client.query(convexQueries.auditDataQuality, {
-    limit,
-    staleMinutes,
-  });
-
-  if (jsonOutput) {
-    if (!apply) {
-      emitJson({
-        ok: true,
-        command: "admin",
-        subcommand: "cleanup-stale",
-        applied: false,
-        audit,
-      });
-      return;
-    }
-
-    const cleanup = await client.mutation(convexMutations.cleanupDataQuality, {
-      limit,
-      staleMinutes,
-      pauseReason,
-      dryRun: false,
-    });
-    emitJson({
-      ok: true,
-      command: "admin",
-      subcommand: "cleanup-stale",
-      applied: true,
-      audit,
-      cleanup,
-    });
-    return;
-  }
-
-  console.log("Stale-state cleanup audit:");
-  console.log(JSON.stringify(audit, null, 2));
-  if (!apply) {
-    console.log("");
-    console.log("Dry run only. Re-run with --apply to patch noisy titles and pause stale capture_signal rows.");
-    return;
-  }
-
-  const cleanup = await client.mutation(convexMutations.cleanupDataQuality, {
-    limit,
-    staleMinutes,
-    pauseReason,
-    dryRun: false,
-  });
-  console.log("");
-  console.log("Applied cleanup:");
-  console.log(JSON.stringify(cleanup, null, 2));
-}
-
-function requireEnv(name: string) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
-}
-
-async function handleDiscoveryCommand(
-  subcommand: string | undefined,
-  value: string | undefined,
-  flags: Record<string, string | boolean>,
-) {
-  const { createClient } = await import("rivetkit/client");
-  const endpoint = String(flags.endpoint ?? process.env.RIVET_CLIENT_ENDPOINT ?? `http://127.0.0.1:${process.env.PORT ?? "3000"}/api/rivet`);
-  const source = String(flags.source ?? "linkedin_public_post") as "linkedin_public_post" | "x_public_post";
-  const campaignId = String(flags.campaign ?? "cmp_default");
-
-  const registry = await loadDiscoveryRegistry();
-  const client = createClient<typeof registry>({
-    endpoint,
-    disableMetadataLookup: true,
-  });
-  const discoveryActor = (client as any).discoveryCoordinator;
-  if (!discoveryActor) {
-    throw new Error("Discovery commands require the SDR kit or reference app runtime. This scaffold does not expose discovery actors.");
-  }
-  const actor = discoveryActor.getOrCreate([campaignId, source]) as any;
-
-  switch (subcommand) {
-    case "seed": {
-      const term = value ?? (typeof flags.term === "string" ? flags.term : undefined);
-      if (!term) {
-        throw new Error("Missing discovery term. Example: npm run trellis -- discovery seed \"clay workflow\"");
-      }
-
-      const result = await actor.addSeedTerms({
-        source,
-        terms: [term],
-      });
-      const snapshot = await actor.getSnapshot() as any;
-      console.log(JSON.stringify({ endpoint, result, latestTerm: snapshot.terms[0] ?? null }, null, 2));
-      return;
-    }
-    case "run": {
-      const term = value ?? (typeof flags.term === "string" ? flags.term : undefined);
-      if (!term) {
-        throw new Error("Missing discovery term. Example: npm run trellis -- discovery run \"https://www.linkedin.com/feed/update/urn:li:activity:123/\"");
-      }
-
-      const reason = String(flags.reason ?? "manual_cli");
-      const result = await actor.runTerm({
-        source,
-        campaignId,
-        term,
-        reason,
-      });
-      const snapshot = await actor.getSnapshot() as any;
-      console.log(JSON.stringify({ endpoint, result, latestRun: snapshot.runs[0] ?? null, state: snapshot.state }, null, 2));
-      return;
-    }
-    case "tick": {
-      const reason = String(flags.reason ?? "manual_cli");
-      const result = await actor.enqueueTick({ reason });
-      const snapshot = await actor.getSnapshot() as any;
-      console.log(JSON.stringify({ endpoint, result, latestRun: snapshot.runs[0] ?? null, state: snapshot.state }, null, 2));
-      return;
-    }
-    default:
-      throw new Error(
-        "Unknown discovery command. Use one of: seed, run, tick",
-      );
-  }
-}
-
-async function listModules() {
-  const legacy = await loadLegacyFramework();
-  const config = await getActiveConfig();
-  const installed = new Set((config.modules ?? []).map((module: AiSdrModuleDefinition) => module.id));
-  if (jsonOutput) {
-    emitJson({
-      ok: true,
-      command: "modules",
-      modules: legacy.defaultTrellisModules().map((module: AiSdrModuleDefinition) => ({
-        id: module.id,
-        displayName: module.displayName,
-        packageName: module.packageName ?? null,
-        providerKey: module.providerKey ?? null,
-        capabilityIds: module.capabilityIds ?? [],
-        contracts: module.contracts ?? [],
-        installed: installed.has(module.id),
-      })),
-    });
-    return;
-  }
-  for (const module of legacy.defaultTrellisModules()) {
-    const status = installed.has(module.id) ? "installed" : "available";
-    const pkg = module.packageName ? ` ${module.packageName}` : "";
-    console.log(`${module.id}\t${status}\t${module.displayName}${pkg}`);
-  }
-}
-
-async function printCompositionCheck() {
-  const legacy = await loadLegacyFramework();
-  const config = await getActiveConfig();
-  const evaluations = resolveConfiguredCompositionProfiles(config, legacy.aiSdrCompositionProfileIds).map((profile: AiSdrCompositionProfileId) =>
-    legacy.evaluateModuleComposition(config.modules ?? [], { profile }),
-  );
-  if (jsonOutput) {
-    emitJson({
-      ok: evaluations.every((evaluation) => evaluation.ok),
-      command: "check",
-      profiles: evaluations.map((evaluation) => ({
-        profileId: evaluation.profile.id,
-        displayName: evaluation.profile.displayName,
-        ok: evaluation.ok,
-        missingCapabilities: evaluation.missingCapabilities,
-        missingContracts: evaluation.missingContracts,
-        providedCapabilities: evaluation.providedCapabilities,
-        providedContracts: evaluation.providedContracts,
-      })),
-    });
-    return;
-  }
-  for (const evaluation of evaluations) {
-    console.log(`${evaluation.ok ? "ok" : "error"}: ${evaluation.profile.displayName}`);
-    printList("  Missing capabilities", evaluation.missingCapabilities);
-    printList("  Missing contracts", evaluation.missingContracts);
-  }
-}
-
-function resolveConfiguredCompositionProfiles(config: AiSdrConfig, profileIds: readonly string[]) {
-  const supportedProfiles = new Set(profileIds);
-  const configured = (config.compositionTargets ?? []).filter((profile: string): profile is AiSdrCompositionProfileId =>
-    supportedProfiles.has(profile as AiSdrCompositionProfileId),
-  );
-  return configured.length > 0 ? configured : (["minimum", "productionParity"] as const);
-}
-
-async function importConfigFrom(filePath: string): Promise<AiSdrConfig> {
-  const module = await import(pathToFileURL(filePath).href);
-  return module.default as AiSdrConfig;
-}
-
-async function loadActiveConfig(): Promise<AiSdrConfig> {
-  const localConfigPath = tryResolveScaffoldConfigPath(process.cwd());
-  if (localConfigPath) {
-    return await importConfigFrom(localConfigPath);
-  }
-
-  const fallbackPath = path.join(repoRoot, "examples/reference-app/trellis.config.ts");
-  return await importConfigFrom(fallbackPath);
-}
-
-async function getActiveConfig(): Promise<AiSdrConfig> {
-  activeConfigPromise ??= loadActiveConfig();
-  return activeConfigPromise;
-}
-
-async function loadBundledBaseConfig(kitIds: DomainKitId[]): Promise<AiSdrConfig> {
-  const root = kitIds[0] ? DOMAIN_KITS[kitIds[0]].root : coreAppRoot;
-  return await importConfigFrom(path.join(root, "trellis.config.ts"));
-}
-
-async function loadDiscoveryRegistry() {
-  const localRegistryPath = path.join(process.cwd(), "src/registry.ts");
-  const registryPath = pathExistsSync(localRegistryPath)
-    ? localRegistryPath
-    : path.join(repoRoot, "examples/reference-app/src/registry.ts");
-  const module = await import(pathToFileURL(registryPath).href);
-  return module.registry;
-}
-
-async function printAddPlan(moduleId: string | undefined) {
-  if (!moduleId) {
-    console.error("Missing module or capability. In v3, use connect <provider> or docs add <path>. Legacy add requires --legacy.");
-    process.exitCode = 1;
-    return;
-  }
-
-  if (cliFlags.legacy !== true) {
-    throw new Error(
-      "trellis add is a legacy composition command. Use trellis connect <provider> for v3, or re-run add with --legacy while maintaining the old reference app.",
-    );
-  }
-
-  if (moduleId === "kit") {
-    const kitId = providerArg;
-    if (!kitId || !(kitId in DOMAIN_KITS)) {
-      console.error(`Unknown or missing kit. Available kits: ${Object.keys(DOMAIN_KITS).join(", ")}`);
-      process.exitCode = 1;
-      return;
-    }
-
-    if (cliFlags.apply === true || cliFlags.write === true) {
-      await applyKitToScaffold(kitId as DomainKitId);
-      return;
-    }
-
-    console.log(`Kit: ${kitId}`);
-    console.log(`Run: npm run trellis -- add kit ${kitId} --apply`);
-    return;
-  }
-
-  if (moduleId === "langfuse") {
-    await printLangfuseConnectionGuide();
-    return;
-  }
-
-  const legacy = await loadLegacyFramework();
-  const module = legacy.findModuleForAddCommand(legacy.defaultTrellisModules(), {
-    capabilityOrModule: moduleId,
-    provider: providerArg,
-  });
-  if (!module) {
-    const requested = providerArg ? `${moduleId} ${providerArg}` : moduleId;
-    console.error(`Unknown module or provider capability: ${requested}`);
-    process.exitCode = 1;
-    return;
-  }
-
-  if (cliFlags.apply === true || cliFlags.write === true) {
-    await applyModuleToScaffold(module);
-    return;
-  }
-
-  await printPlan(module);
+function rejectLegacyCommand(commandName: string, replacement: string): never {
+  throw new Error(`trellis ${commandName} is old composition tooling and is not part of the v3 architecture. ${replacement}`);
 }
 
 async function handleConnectCommand(moduleId: string | undefined) {
@@ -719,46 +347,9 @@ Provider credentials can be connected after the first Cloudflare deploy.`);
     return;
   }
 
-  if (cliFlags.legacy !== true) {
-    throw new Error(
-      `Non-v3 provider/module setup is legacy. Use one of: ${Object.keys(V3_CONNECTIONS).join(", ")}. Re-run with --legacy only if you are maintaining the old reference app.`,
-    );
-  }
-
-  const legacy = await loadLegacyFramework();
-  const module = legacy.findModuleForAddCommand(legacy.defaultTrellisModules(), {
-    capabilityOrModule: moduleId,
-    provider: providerArg,
-  });
-  if (!module) {
-    const requested = providerArg ? `${moduleId} ${providerArg}` : moduleId;
-    throw new Error(`Unknown module or provider capability: ${requested}`);
-  }
-
-  const applyResult = cliFlags.apply === true || cliFlags.write === true
-    ? await applyModuleToScaffold(module)
-    : null;
-  if (applyResult) {
-    if (!jsonOutput) {
-      console.log("");
-    }
-  }
-
-  if (jsonOutput) {
-    const config = await getActiveConfig();
-    const plan = legacy.buildModuleInstallPlan(module, {
-      installedModuleIds: (config.modules ?? []).map((item: AiSdrModuleDefinition) => item.id),
-    });
-    emitJson({
-      ok: true,
-      command: "connect",
-      apply: applyResult,
-      module: summarizeInstallPlan(plan),
-    });
-    return;
-  }
-
-  await printConnectionGuide(module);
+  throw new Error(
+    `Only curated v3 providers can be connected here. Use one of: ${Object.keys(V3_CONNECTIONS).join(", ")}.`,
+  );
 }
 
 function resolveV3Connection(moduleId: string, provider: string | undefined) {
@@ -957,6 +548,236 @@ function doctorCheck(
     id,
     status: passed ? "pass" : failureStatus,
     detail,
+  };
+}
+
+type VerifyCheckStatus = "pass" | "warn" | "fail" | "skip";
+
+type VerifyCheck = {
+  id: string;
+  status: VerifyCheckStatus;
+  detail: string;
+  evidence?: unknown;
+};
+
+function verifyCheck(
+  id: string,
+  status: VerifyCheckStatus,
+  detail: string,
+  evidence?: unknown,
+): VerifyCheck {
+  return {
+    id,
+    status,
+    detail,
+    ...(evidence === undefined ? {} : { evidence }),
+  };
+}
+
+function verifyGeneratedSourceChecks(strict: boolean): VerifyCheck[] {
+  const agentPath = path.join(process.cwd(), "src", "agent.ts");
+  const workerPath = path.join(process.cwd(), "src", "index.ts");
+  const fluePath = path.join(process.cwd(), "src", "trellis-flue.ts");
+  const agentSource = existsSync(agentPath) ? readFileSync(agentPath, "utf8") : "";
+  const workerSource = existsSync(workerPath) ? readFileSync(workerPath, "utf8") : "";
+  const flueSource = existsSync(fluePath) ? readFileSync(fluePath, "utf8") : "";
+
+  return [
+    verifyCheck("source.agent", agentSource.includes("trellis.agent(")
+      && agentSource.includes("app.skill(")
+      && !agentSource.includes("@flue/sdk")
+      && !agentSource.includes("FlueContext")
+      && !agentSource.includes("Cloudflare")
+      ? "pass"
+      : strict ? "fail" : "warn", agentSource
+      ? "src/agent.ts is Trellis-first and hides Flue/Cloudflare imports"
+      : "src/agent.ts not found"),
+    verifyCheck("source.worker", workerSource.includes("trellis.cloudflare(agent)")
+      && workerSource.includes("withTrellisFlue(env")
+      && workerSource.includes("runtime.worker.fetch")
+      ? "pass"
+      : strict ? "fail" : "warn", workerSource
+      ? "src/index.ts wraps the hidden Cloudflare runtime"
+      : "src/index.ts not found"),
+    verifyCheck("source.flueAdapter", flueSource.includes("@flue/sdk/cloudflare")
+      && flueSource.includes("getCloudflareAIBindingApiProvider")
+      && flueSource.includes("getVirtualSandbox")
+      && flueSource.includes("trellis_flue_sessions")
+      && flueSource.includes("readPackFiles(input.packs, \"knowledge\")")
+      && flueSource.includes("readPackFiles(input.packs, \"skills\")")
+      ? "pass"
+      : strict ? "fail" : "warn", flueSource
+      ? "src/trellis-flue.ts mounts R2 packs, Cloudflare AI, virtual sandbox, and D1 sessions"
+      : "src/trellis-flue.ts not found"),
+  ];
+}
+
+async function verifyRemoteCloudflareRoutes(input: {
+  endpoint: string;
+  exerciseAgent: boolean;
+  webhookToken?: string;
+}): Promise<VerifyCheck[]> {
+  const checks: VerifyCheck[] = [];
+  const health = await fetchVerifyJson(verifyRouteUrl(input.endpoint, "/healthz"));
+  const healthBody = asCliRecord(health.body);
+  checks.push(verifyCheck("remote.healthz", health.status === 200
+    && healthBody?.ok === true
+    && healthBody.stack === "trellis-v3-cloudflare"
+    ? "pass"
+    : "fail", health.status
+    ? `/healthz returned ${health.status}`
+    : `could not fetch /healthz: ${health.error ?? "unknown error"}`, summarizeRemoteEvidence(health)));
+
+  const mcp = await fetchVerifyJson(verifyRouteUrl(input.endpoint, "/mcp/trellis"));
+  const mcpBody = asCliRecord(mcp.body);
+  const tools = Array.isArray(mcpBody?.tools) ? mcpBody.tools : [];
+  checks.push(verifyCheck("remote.mcp", mcp.status === 200
+    && mcpBody?.ok === true
+    && tools.includes("trellis.health")
+    ? "pass"
+    : "fail", mcp.status
+    ? `/mcp/trellis returned ${mcp.status}`
+    : `could not fetch /mcp/trellis: ${mcp.error ?? "unknown error"}`, summarizeRemoteEvidence(mcp)));
+
+  const smoke = await fetchVerifyJson(verifyRouteUrl(input.endpoint, "/smoke"));
+  const smokeBody = asCliRecord(smoke.body);
+  checks.push(verifyCheck("remote.smoke", smoke.status === 200
+    && smokeBody?.ok === true
+    && smokeBody.externalWrites === false
+    ? "pass"
+    : "fail", smoke.status
+    ? `/smoke returned ${smoke.status}`
+    : `could not fetch /smoke: ${smoke.error ?? "unknown error"}`, summarizeRemoteEvidence(smoke)));
+
+  if (!input.exerciseAgent) {
+    checks.push(verifyCheck("remote.webhook.agent", "skip", "live Flue/Cloudflare agent exercise skipped; pass --exercise-agent to post a safe signal webhook"));
+    return checks;
+  }
+
+  const signalId = `sig_verify_${Date.now()}`;
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  if (input.webhookToken) {
+    headers.authorization = `Bearer ${input.webhookToken}`;
+  }
+  const webhook = await fetchVerifyJson(verifyRouteUrl(input.endpoint, "/webhooks/signals"), {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      id: signalId,
+      workspaceId: "wrk_verify",
+      threadId: `thr_${signalId}`,
+      campaignId: "cmp_verify",
+      provider: "trellis.verify",
+      source: "verify.webhook",
+      payload: {
+        account: "Trellis Verify",
+        signal: "Safe Cloudflare verification signal. Do not send.",
+      },
+    }),
+  });
+  const webhookBody = asCliRecord(webhook.body);
+  const auditTypes = Array.isArray(webhookBody?.auditEvents)
+    ? webhookBody.auditEvents.flatMap((event) => {
+        const record = asCliRecord(event);
+        return typeof record?.type === "string" ? [record.type] : [];
+      })
+    : [];
+  checks.push(verifyCheck("remote.webhook.agent", webhook.status === 202
+    && webhookBody?.ok === true
+    && webhookBody.accepted === true
+    && auditTypes.includes("skill.completed")
+    ? "pass"
+    : "fail", webhook.status === 401
+    ? "safe signal webhook was rejected; pass --webhook-token or configure TRELLIS_WEBHOOK_SECRET locally"
+    : webhook.status
+      ? `/webhooks/signals returned ${webhook.status}; this is the live Flue/Cloudflare harness check and may use one model call`
+      : `could not post /webhooks/signals: ${webhook.error ?? "unknown error"}`, summarizeRemoteEvidence(webhook)));
+
+  return checks;
+}
+
+async function fetchVerifyJson(url: string, init?: RequestInit) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    return {
+      status: response.status,
+      ok: response.ok,
+      body: parseJsonText(text),
+      text: text.slice(0, 1_000),
+    };
+  } catch (error) {
+    return {
+      status: 0,
+      ok: false,
+      body: null,
+      text: "",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function summarizeRemoteEvidence(result: Awaited<ReturnType<typeof fetchVerifyJson>>) {
+  const body = asCliRecord(result.body);
+  return {
+    status: result.status,
+    ok: result.ok,
+    bodyOk: body?.ok ?? null,
+    text: result.ok ? undefined : result.text,
+    error: "error" in result ? result.error : undefined,
+  };
+}
+
+function verifyRouteUrl(endpoint: string, route: string) {
+  return new URL(route, endpoint).href;
+}
+
+function normalizeVerifyUrl(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+  try {
+    const url = new URL(value);
+    return url.href.endsWith("/") ? url.href : `${url.href}/`;
+  } catch {
+    throw new Error(`Invalid Cloudflare verify URL: ${value}`);
+  }
+}
+
+function asCliRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : undefined;
+}
+
+function parseJsonText(text: string) {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeCommandResult(result: ReturnType<typeof runCommand> | null) {
+  if (!result) {
+    return null;
+  }
+  return {
+    command: result.command,
+    args: result.args,
+    status: result.status,
+    signal: result.signal,
+    error: result.error,
+    stderr: result.status === 0 ? undefined : result.stderr,
   };
 }
 
@@ -1239,163 +1060,135 @@ Result:
 
 async function handleDeployCommand(target: string | undefined, flags: Record<string, string | boolean>) {
   const resolvedTarget = (target ?? "cloudflare").toLowerCase();
-  if (resolvedTarget !== "cloudflare" && flags.legacy !== true) {
+  if (resolvedTarget !== "cloudflare") {
     throw new Error(
-      `Deploy target "${resolvedTarget}" is legacy. Trellis v3 deploys to Cloudflare by default. Re-run with --legacy only for old local/Vercel/self-hosted migration paths.`,
+      `Deploy target "${resolvedTarget}" is old architecture. Trellis v3 deploys to Cloudflare only.`,
     );
   }
 
-  switch (resolvedTarget) {
-    case "cloudflare":
-      await handleCloudflareDeploy(flags);
-      return;
-    case "local":
-      if (jsonOutput) {
-        emitJson({
-          ok: true,
-          command: "deploy",
-          target: "local",
-          steps: [
-            "npm install",
-            "cp .env.example .env",
-            "npm run doctor",
-            "npm run dev",
-          ],
-          smokeMode: {
-            env: {
-              TRELLIS_LOCAL_SMOKE_MODE: "true",
-              TRELLIS_SANDBOX_TOKEN: "local-sandbox-token",
-              HANDOFF_WEBHOOK_SECRET: "local-handoff-secret",
-              DASHBOARD_PASSWORD: "dev",
-              DISCOVERY_LINKEDIN_ENABLED: "false",
-            },
-            steps: [
-              "npm run doctor",
-              "npm run dev",
-            ],
-          },
-          urls: {
-            dashboard: "http://localhost:3000/dashboard",
-          },
-        });
-        return;
-      }
-      console.log(`Local deploy path:
+  await handleCloudflareDeploy(flags);
+}
 
-  1. npm install
-  2. cp .env.example .env
-  3. npm run doctor
-  4. npm run dev
+async function handleVerifyCommand(target: string | undefined, flags: Record<string, string | boolean>) {
+  const resolvedTarget = (target ?? "cloudflare").toLowerCase();
+  if (resolvedTarget !== "cloudflare") {
+    throw new Error(`Verify target "${resolvedTarget}" is not supported in v3. Use: trellis verify cloudflare`);
+  }
 
-Smoke-mode boot only:
+  await handleCloudflareVerify(flags);
+}
 
-  export TRELLIS_LOCAL_SMOKE_MODE=true
-  export TRELLIS_SANDBOX_TOKEN=local-sandbox-token
-  export HANDOFF_WEBHOOK_SECRET=local-handoff-secret
-  export DASHBOARD_PASSWORD=dev
-  export DISCOVERY_LINKEDIN_ENABLED=false
-  npm run doctor
-  npm run dev
+async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
+  const wranglerConfigPath = findWranglerConfig(process.cwd());
+  const wranglerSource = wranglerConfigPath ? readFileSync(wranglerConfigPath, "utf8") : "";
+  const cloudflareResources = readCloudflareResourceConfig(wranglerConfigPath);
+  const provisioning = buildCloudflareProvisioningPlan(cloudflareResources);
+  const knowledgePack = await loadKnowledgePackManifest(process.cwd());
+  const skillPack = await loadSkillPack(process.cwd());
+  const packSync = await buildCloudflarePackSyncPlan(process.cwd(), wranglerConfigPath);
+  const smoke = await runTrellisSmoke();
+  const endpoint = normalizeVerifyUrl(readFlagString(flags, ["url", "endpoint", "origin"]) ?? process.env.TRELLIS_VERIFY_URL);
+  const live = flags.live === true || Boolean(endpoint);
+  const exerciseAgent = flags["exercise-agent"] === true || flags.signal === true;
+  const webhookToken = readFlagString(flags, ["webhook-token", "token"]) ?? process.env.TRELLIS_WEBHOOK_SECRET ?? process.env.SIGNAL_WEBHOOK_SECRET;
+  const checks: VerifyCheck[] = [
+    ...verifyGeneratedSourceChecks(Boolean(wranglerConfigPath)),
+    verifyCheck("cloudflare.config", wranglerConfigPath ? "pass" : "warn", wranglerConfigPath
+      ? `found ${path.basename(wranglerConfigPath)}`
+      : "no Wrangler config found in this directory"),
+    ...[
+      "TRELLIS_AGENT",
+      "TRELLIS_DB",
+      "TRELLIS_PACKS",
+      "TRELLIS_ARTIFACTS",
+      "TRELLIS_EVENTS",
+      "PROSPECT_WORKFLOW",
+      "AI",
+      "BROWSER",
+    ].map((binding) =>
+      verifyCheck(`binding.${binding}`, wranglerSource.includes(binding) ? "pass" : "warn", `${binding} binding ${wranglerSource.includes(binding) ? "declared" : "not declared"}`),
+    ),
+    ...provisioning.summary.resources.map((resource) =>
+      verifyCheck(`cloudflare.${resource.id}`, resource.ready ? "pass" : "warn", resource.detail),
+    ),
+    verifyCheck("cloudflare.autoProvisionable", provisioning.summary.autoProvisionable ? "pass" : "warn", provisioning.summary.autoProvisionable
+      ? "Trellis can resolve/create first-run Cloudflare resources from this Wrangler config"
+      : "Wrangler config is missing one or more resources Trellis needs before apply"),
+    verifyCheck("packSync.plan", packSync.summary.syncable ? "pass" : "warn", packSync.summary.syncable
+      ? `pack sync has ${packSync.summary.entries.length} R2 object(s) for ${packSync.summary.bucketName}`
+      : "pack sync needs a TRELLIS_PACKS bucket_name and at least one knowledge or skill file"),
+    verifyCheck("knowledge.pack", knowledgePack.ok ? "pass" : "warn", knowledgePack.detail),
+    verifyCheck("skills.pack", skillPack.ok ? "pass" : "warn", skillPack.detail),
+    verifyCheck("smoke.local", smoke.ok ? "pass" : "fail", smoke.ok
+      ? "safe local fixture workflow passed"
+      : "safe local fixture workflow failed"),
+  ];
 
-Then open http://localhost:3000/dashboard`);
-      return;
-    case "vercel":
-      if (jsonOutput) {
-        emitJson({
-          ok: true,
-          command: "deploy",
-          target: "vercel",
-          requiredEnv: [
-            "APP_URL",
-            "CONVEX_URL or NEXT_PUBLIC_CONVEX_URL",
-            "TRELLIS_SANDBOX_TOKEN",
-            "TRELLIS_MCP_TOKEN",
-            "DASHBOARD_PASSWORD",
-            "SIGNAL_WEBHOOK_SECRET",
-            "HANDOFF_WEBHOOK_SECRET",
-            "Vercel sandbox / AI Gateway credentials",
-            "RIVET_ENDPOINT when running on Vercel with remote Rivet",
-          ],
-          steps: [
-            "use Node 22+",
-            "run npx convex dev from the repo root",
-            "boot locally first",
-            "run npm run doctor until boot blockers are clear",
-            "run npx convex deploy",
-            "set hosted env vars in Vercel",
-            "run vercel --prod",
-            "verify /healthz, /dashboard, and /mcp/trellis",
-            "only then wire discovery webhooks and live providers",
-          ],
-        });
-        return;
-      }
-      console.log(`Vercel deploy path:
+  const wranglerAuth = live
+    ? runCommand("npx", ["wrangler", "whoami"], { stdio: "pipe" })
+    : null;
+  checks.push(live
+    ? verifyCheck("wrangler.auth", wranglerAuth?.status === 0 ? "pass" : "fail", wranglerAuth?.status === 0
+      ? "Wrangler authenticated successfully"
+      : "Wrangler auth failed; run wrangler login or set CLOUDFLARE_API_TOKEN")
+    : verifyCheck("wrangler.auth", "skip", "live Wrangler auth check skipped; pass --live to verify account access"));
 
-Required before deploy:
-  - APP_URL
-  - CONVEX_URL or NEXT_PUBLIC_CONVEX_URL
-  - TRELLIS_SANDBOX_TOKEN
-  - TRELLIS_MCP_TOKEN
-  - DASHBOARD_PASSWORD
-  - SIGNAL_WEBHOOK_SECRET
-  - HANDOFF_WEBHOOK_SECRET
-  - Vercel sandbox / AI Gateway credentials
-  - RIVET_ENDPOINT when running on Vercel with remote Rivet
+  if (endpoint) {
+    checks.push(...await verifyRemoteCloudflareRoutes({
+      endpoint,
+      exerciseAgent,
+      webhookToken,
+    }));
+  } else {
+    checks.push(verifyCheck("remote.healthz", "skip", "deployed route checks skipped; pass --url https://<worker>"));
+    checks.push(verifyCheck("remote.mcp", "skip", "deployed route checks skipped; pass --url https://<worker>"));
+    checks.push(verifyCheck("remote.smoke", "skip", "deployed route checks skipped; pass --url https://<worker>"));
+    checks.push(verifyCheck("remote.webhook.agent", "skip", "live Flue/Cloudflare agent exercise skipped; pass --url and --exercise-agent"));
+  }
 
-Recommended sequence:
-  1. use Node 22+
-  2. run npx convex dev from the repo root
-  3. boot locally first
-  4. run npm run doctor until boot blockers are clear
-  5. run npx convex deploy
-  6. set hosted env vars in Vercel
-  7. run vercel --prod
-  8. verify /healthz, /dashboard, and /mcp/trellis
-  9. only then wire discovery webhooks and live providers`);
-      return;
-    case "self-hosted":
-    case "selfhosted":
-      if (jsonOutput) {
-        emitJson({
-          ok: true,
-          command: "deploy",
-          target: "self-hosted",
-          required: [
-            "public HTTPS APP_URL",
-            "Node 22+",
-            "reachable provider APIs",
-            "reachable webhook paths for enabled providers",
-          ],
-          steps: [
-            "npm install",
-            "npm run build",
-            "set production env vars",
-            "npm run doctor",
-            "npm run start",
-            "verify /healthz, /dashboard, and /mcp/trellis",
-          ],
-        });
-        return;
-      }
-      console.log(`Self-hosted deploy path:
+  const ok = checks.every((check) => check.status !== "fail");
+  const result = {
+    ok,
+    command: "verify",
+    target: "cloudflare",
+    mode: live ? "live" : "local",
+    live,
+    endpoint,
+    exerciseAgent,
+    checks,
+    smoke: {
+      ok: smoke.ok,
+      fixture: smoke.fixture.id,
+      auditEvents: smoke.auditEvents.map((event) => event.type),
+    },
+    cloudflare: provisioning.summary,
+    packSync: packSync.summary,
+    knowledgePack: knowledgePack.summary,
+    skillPack: skillPack.summary,
+    wranglerAuth: sanitizeCommandResult(wranglerAuth),
+    next: live
+      ? [
+          "inspect failed checks before connecting live providers",
+          "run trellis connect attio / agentmail / firecrawl after first boot is green",
+        ]
+      : [
+          "trellis deploy",
+          "trellis verify cloudflare --live --url https://<worker>",
+          "trellis verify cloudflare --live --url https://<worker> --exercise-agent",
+        ],
+  };
 
-Required:
-  - public HTTPS APP_URL
-  - Node 22+
-  - reachable provider APIs
-  - reachable webhook paths for enabled providers
+  if (jsonOutput) {
+    emitJson(result);
+  } else {
+    console.log(`Trellis Cloudflare verification (${result.mode}):`);
+    for (const check of checks) {
+      console.log(`  - ${check.status}: ${check.id} - ${check.detail}`);
+    }
+  }
 
-Recommended sequence:
-  1. npm install
-  2. npm run build
-  3. set production env vars
-  4. npm run doctor
-  5. npm run start
-  6. verify /healthz, /dashboard, and /mcp/trellis`);
-      return;
-    default:
-      throw new Error("Unknown deploy target. Use one of: cloudflare, local, vercel, self-hosted");
+  if (!ok) {
+    process.exitCode = 1;
   }
 }
 
@@ -2014,6 +1807,7 @@ function buildV3ScaffoldPackage(packageName: string) {
       doctor: "trellis doctor",
       deploy: "trellis deploy",
       smoke: "trellis smoke",
+      verify: "trellis verify cloudflare",
       typecheck: "tsc --noEmit",
       "cf:deploy": "wrangler deploy",
       "cf:tail": "wrangler tail",
@@ -2558,279 +2352,6 @@ Deploy syncs the verified knowledge manifest, markdown files, and tracked \`SKIL
 `;
 }
 
-async function scaffoldProject(targetArg: string | undefined, flags: Record<string, string | boolean>) {
-  const legacyScaffold = await loadLegacyScaffold();
-  const initInput = await resolveInitInput(targetArg, flags, legacyScaffold);
-  const targetDir = path.resolve(process.cwd(), initInput.targetDirArg);
-  const profile = initInput.profile;
-  const appName = initInput.appName;
-  const packageName = sanitizePackageName(appName);
-  const baseConfig = await loadBundledBaseConfig(initInput.kitIds);
-  const spec = legacyScaffold.buildScaffoldSpec(baseConfig, {
-    name: packageName,
-    description: `${appName} generated from the Trellis ${initInput.kitIds.length > 0 ? `${initInput.kitIds.join(", ")} kit` : "core"} scaffold.`,
-    profile,
-    moduleIds: initInput.moduleIds,
-    kitIds: initInput.kitIds,
-  });
-
-  await ensureEmptyDirectory(targetDir);
-  await mkdir(targetDir, { recursive: true });
-
-  for (const entry of SHARED_SCAFFOLD_COPY_ENTRIES) {
-    await cp(path.join(repoRoot, entry), path.join(targetDir, entry), {
-      recursive: true,
-    });
-  }
-
-  for (const entry of CORE_SCAFFOLD_COPY_ENTRIES) {
-    await cp(path.join(coreAppRoot, entry), path.join(targetDir, entry), {
-      recursive: true,
-    });
-  }
-
-  for (const kitId of initInput.kitIds) {
-    const kit = DOMAIN_KITS[kitId];
-    for (const entry of kit.copyEntries) {
-      await cp(path.join(kit.root, entry), path.join(targetDir, entry), {
-        recursive: true,
-      });
-    }
-  }
-
-  const rootPackage = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8")) as {
-    version: string;
-    license: string;
-    type: string;
-    engines: Record<string, string>;
-    scripts: Record<string, string>;
-    dependencies: Record<string, string>;
-    devDependencies: Record<string, string>;
-    workspaces?: string[];
-  };
-  const scaffoldPackage = buildScaffoldPackage(rootPackage, spec);
-
-  await writeFile(
-    path.join(targetDir, "package.json"),
-    JSON.stringify(scaffoldPackage, null, 2) + "\n",
-  );
-  await writeFile(path.join(targetDir, spec.configFileName), legacyScaffold.renderScaffoldConfigModule(spec));
-  await writeFile(path.join(targetDir, "src", "app-config.ts"), legacyScaffold.renderScaffoldAppConfigModule(spec));
-  await writeFile(path.join(targetDir, ".env.example"), legacyScaffold.renderScaffoldEnvExample(spec));
-  await writeFile(path.join(targetDir, "README.md"), renderScaffoldReadme(appName, targetDir, spec));
-  await writeFile(path.join(targetDir, "TRELLIS_SETUP.md"), legacyScaffold.renderScaffoldSetupChecklist(spec));
-
-  const nextSteps = [
-    `cd ${targetDir}`,
-    "npm install",
-    "cp .env.example .env",
-    "npm run typecheck",
-    "npm test",
-    "npm run doctor",
-    "npm run dev",
-    "open TRELLIS_SETUP.md",
-  ];
-
-  if (jsonOutput) {
-    emitJson({
-      ok: true,
-      command: "init",
-      targetDir,
-      appName,
-      packageName,
-      profile,
-      kits: initInput.kitIds,
-      selection: {
-        id: spec.selection.id,
-        displayName: spec.selection.displayName,
-        description: spec.selection.description,
-      },
-      modules: spec.selectedModules.map((module) => ({
-        id: module.id,
-        displayName: module.displayName,
-        packageName: module.packageName ?? null,
-      })),
-      filesWritten: [
-        "package.json",
-        spec.configFileName,
-        "src/app-config.ts",
-        ".env.example",
-        "README.md",
-        "TRELLIS_SETUP.md",
-      ],
-      nextSteps,
-    });
-    return;
-  }
-
-  console.log(`Initialized ${appName} in ${targetDir}`);
-  console.log(`Scaffold: ${spec.selection.displayName}`);
-  console.log(`Composition targets: ${(spec.config.compositionTargets ?? []).join(", ")}`);
-  console.log("Modules:");
-  for (const module of spec.selectedModules) {
-    console.log(`  - ${module.id}`);
-  }
-  console.log("");
-  console.log("Next steps:");
-  console.log(`  1. cd ${targetDir}`);
-  console.log("  2. npm install");
-  console.log("  3. cp .env.example .env");
-  console.log("  4. npm run typecheck");
-  console.log("  5. npm test");
-  console.log("  6. npm run doctor");
-  console.log("  7. npm run dev");
-  console.log("  8. open TRELLIS_SETUP.md");
-}
-
-async function resolveInitInput(
-  targetArg: string | undefined,
-  flags: Record<string, string | boolean>,
-  legacyScaffold: LegacyScaffoldModule,
-) {
-  if (flags.interactive === true || flags.wizard === true) {
-    throw new Error(
-      "Interactive init has been removed. Use a Pluxx-guided Trellis onboarding plugin or run init with explicit flags, for example: npm run trellis -- init ../trellis-app --name trellis-app --with-discovery --with-deep-research --with-enrichment",
-    );
-  }
-
-  if (!targetArg) {
-    throw new Error(
-      "Missing target directory. Run init explicitly, for example: npm run trellis -- init ../trellis-core --name trellis-core. Guided onboarding should happen through the Trellis Pluxx plugin.",
-    );
-  }
-
-  if (typeof flags.profile === "string") {
-    throw new Error(
-      "Init profiles were removed. Trellis init now creates the core app only. Add optional lanes with --with-discovery, --with-deep-research, --with-enrichment, --with-crm, --with-email, or --with-handoff.",
-    );
-  }
-
-  const profile = "core";
-  const resolvedTargetArg = targetArg;
-  const appName = String(flags.name ?? path.basename(path.resolve(process.cwd(), resolvedTargetArg)));
-  const kitIds = resolveKitFlags(flags);
-  const moduleIds = legacyScaffold.resolveInitModuleIds(profile, resolveModuleChoiceFlags(flags, legacyScaffold.aiSdrInitModuleChoices));
-  const selection = legacyScaffold.describeScaffoldSelection({
-    profile: legacyScaffold.resolveInitProfile(profile),
-    selectedModuleIds: moduleIds,
-  });
-
-  if (!jsonOutput) {
-    console.log(`Scaffold target: ${resolvedTargetArg}`);
-    console.log(`App name: ${appName}`);
-    printList("Domain kits", kitIds.length > 0 ? kitIds : ["core only"]);
-    printList("Optional lanes", summarizeOptionalModuleChoices(moduleIds, legacyScaffold.aiSdrInitModuleChoices));
-    console.log(`Resulting scaffold: ${selection.displayName}`);
-    console.log("");
-  }
-
-  return {
-    targetDirArg: resolvedTargetArg,
-    profile,
-    appName,
-    moduleIds,
-    kitIds,
-  };
-}
-
-function resolveKitFlags(flags: Record<string, string | boolean>): DomainKitId[] {
-  const raw = typeof flags.kit === "string" ? flags.kit : "";
-  if (!raw) {
-    return [];
-  }
-
-  const values = raw.split(",").map((value) => value.trim()).filter(Boolean);
-  const normalized = [...new Set(values)];
-
-  if (normalized.length > 1) {
-    throw new Error(`Only one domain kit can be applied during init right now. Received: ${normalized.join(", ")}`);
-  }
-
-  const unknown = normalized.filter((value) => !(value in DOMAIN_KITS));
-  if (unknown.length > 0) {
-    throw new Error(`Unknown kit: ${unknown.join(", ")}. Available kits: ${Object.keys(DOMAIN_KITS).join(", ")}`);
-  }
-
-  return normalized as DomainKitId[];
-}
-
-function resolveModuleChoiceFlags(
-  flags: Record<string, string | boolean>,
-  choices: LegacyScaffoldModule["aiSdrInitModuleChoices"],
-) {
-  const include: string[] = [];
-  const exclude: string[] = [];
-
-  for (const choice of choices) {
-    if (flags[`with-${choice.id}`] === true) {
-      include.push(choice.id);
-    }
-    if (flags[`without-${choice.id}`] === true) {
-      exclude.push(choice.id);
-    }
-  }
-
-  return { include, exclude };
-}
-
-async function printPlan(module: AiSdrModuleDefinition) {
-  const legacy = await loadLegacyFramework();
-  const config = await getActiveConfig();
-  const plan = legacy.buildModuleInstallPlan(module, {
-    installedModuleIds: (config.modules ?? []).map((item: AiSdrModuleDefinition) => item.id),
-  });
-
-  console.log(`Module: ${plan.displayName} (${plan.moduleId})`);
-  console.log(`Package: ${plan.packageName ?? "not assigned"}`);
-  console.log(`Status: ${plan.alreadyInstalled ? "installed" : "available"}`);
-  console.log(`Provider: ${plan.providerKey ?? "not assigned"}`);
-  printList("Capabilities", plan.capabilityIds);
-  printList("Contracts", plan.contracts);
-  printList("Providers", plan.providers);
-  printList("MCP servers", plan.mcpServers);
-  printList("MCP tools", plan.mcpTools);
-  printList("Env", plan.envVars);
-  printList("Docs", plan.docs);
-  printList("Smoke checks", plan.smokeChecks);
-  printList("Next steps", plan.nextSteps);
-}
-
-async function printConnectionGuide(module: AiSdrModuleDefinition) {
-  const legacy = await loadLegacyFramework();
-  const config = await getActiveConfig();
-  const plan = legacy.buildModuleInstallPlan(module, {
-    installedModuleIds: (config.modules ?? []).map((item: AiSdrModuleDefinition) => item.id),
-  });
-
-  console.log(`Connection guide: ${plan.displayName} (${plan.moduleId})`);
-  console.log(`Provider: ${plan.providerKey ?? "not assigned"}`);
-  console.log(`Package:  ${plan.packageName ?? "not assigned"}`);
-  console.log(`Status:   ${plan.alreadyInstalled ? "installed" : "available"}`);
-  printList("Env", plan.envVars);
-  printList("Docs", plan.docs);
-  printList("Smoke checks", plan.smokeChecks);
-  printList("Next steps", plan.nextSteps);
-}
-
-function summarizeInstallPlan(plan: LegacyInstallPlan) {
-  return {
-    moduleId: plan.moduleId,
-    displayName: plan.displayName,
-    packageName: plan.packageName ?? null,
-    status: plan.alreadyInstalled ? "installed" : "available",
-    providerKey: plan.providerKey ?? null,
-    capabilityIds: plan.capabilityIds,
-    contracts: plan.contracts,
-    providers: plan.providers,
-    mcpServers: plan.mcpServers,
-    mcpTools: plan.mcpTools,
-    envVars: plan.envVars,
-    docs: plan.docs,
-    smokeChecks: plan.smokeChecks,
-    nextSteps: plan.nextSteps,
-  };
-}
-
 async function handleClaudeCodeMcp(flags: Record<string, string | boolean>) {
   if (flags.local === true && flags.remote === true) {
     throw new Error("Choose either --local or --remote, not both.");
@@ -2914,156 +2435,14 @@ async function handleClaudeCodeMcp(flags: Record<string, string | boolean>) {
   console.log("  3. Reload Claude Code MCP servers");
 }
 
-async function applyModuleToScaffold(module: AiSdrModuleDefinition) {
-  const legacyScaffold = await loadLegacyScaffold();
-  const scaffoldConfigPath = resolveScaffoldConfigPath(process.cwd());
-  const scaffoldConfigSource = readFileSyncSafe(scaffoldConfigPath);
-  const metadata = parseScaffoldConfigMetadata(scaffoldConfigSource);
-  if (!metadata) {
-    throw new Error(
-      `Cannot apply module "${module.id}" automatically. This works only for scaffold-generated <app>.config.ts files.`,
-    );
-  }
-
-  const selectedModuleIds = new Set(metadata.selectedModuleIds);
-  selectedModuleIds.add(module.id);
-
-  const currentConfig = await importConfigFrom(scaffoldConfigPath);
-  const spec = legacyScaffold.buildScaffoldSpec(currentConfig, {
-    name: metadata.scaffoldName,
-    description: metadata.scaffoldDescription,
-    profile: metadata.selectedProfileId,
-    moduleIds: [...selectedModuleIds],
-    kitIds: metadata.selectedKitIds,
-  });
-
-  writeFileSyncSafe(scaffoldConfigPath, legacyScaffold.renderScaffoldConfigModule(spec));
-  writeFileSyncSafe(path.join(process.cwd(), "src", "app-config.ts"), legacyScaffold.renderScaffoldAppConfigModule(spec));
-  writeFileSyncSafe(path.join(process.cwd(), ".env.example"), legacyScaffold.renderScaffoldEnvExample(spec));
-  writeFileSyncSafe(path.join(process.cwd(), "TRELLIS_SETUP.md"), legacyScaffold.renderScaffoldSetupChecklist(spec));
-  writeFileSyncSafe(path.join(process.cwd(), "README.md"), renderScaffoldReadme(metadata.scaffoldName, process.cwd(), spec));
-
-  const updatedFiles = [
-    path.basename(scaffoldConfigPath),
-    "src/app-config.ts",
-    ".env.example",
-    "TRELLIS_SETUP.md",
-    "README.md",
-  ];
-
-  if (jsonOutput) {
-    return {
-      moduleId: module.id,
-      scaffoldConfigPath,
-      updatedFiles,
-      nextSteps: [
-        "Fill any new env vars from .env.example",
-        "npm run trellis -- check",
-        "npm run doctor",
-      ],
-    };
-  }
-
-  console.log(`Applied module "${module.id}" to ${scaffoldConfigPath}`);
-  console.log("Updated:");
-  for (const file of updatedFiles) {
-    console.log(`  - ${file}`);
-  }
-  console.log("");
-  console.log("Next steps:");
-  console.log("  1. Fill any new env vars from .env.example");
-  console.log("  2. npm run trellis -- check");
-  console.log("  3. npm run doctor");
-
-  return {
-    moduleId: module.id,
-    scaffoldConfigPath,
-    updatedFiles,
-    nextSteps: [
-      "Fill any new env vars from .env.example",
-      "npm run trellis -- check",
-      "npm run doctor",
-    ],
-  };
-}
-
-function parseScaffoldConfigMetadata(source: string) {
-  const scaffoldName = parseQuotedConst(source, "scaffoldName");
-  const scaffoldDescription = parseQuotedConst(source, "scaffoldDescription");
-  const selectedProfileId = parseQuotedConst(source, "selectedProfileId");
-  const selectedKitIds = parseJsonConst<string[]>(source, "selectedKitIds") ?? [];
-  const selectedModuleIds = parseJsonConst<string[]>(source, "selectedModuleIds");
-
-  if (!scaffoldName || !scaffoldDescription || !selectedProfileId || !selectedModuleIds) {
-    return null;
-  }
-
-  return {
-    scaffoldName,
-    scaffoldDescription,
-    selectedProfileId,
-    selectedKitIds,
-    selectedModuleIds,
-  };
-}
-
-function summarizeOptionalModuleChoices(
-  selectedModuleIds: string[],
-  choices: LegacyScaffoldModule["aiSdrInitModuleChoices"],
-) {
-  const selected = choices
-    .filter((choice) => selectedModuleIds.includes(choice.moduleId))
-    .map((choice) => `${choice.displayName} (${choice.id})`);
-
-  return selected.length > 0 ? selected : ["core only"];
-}
-
 function resolveLocalMcpUrl(flags: Record<string, string | boolean>) {
   const port = typeof flags.port === "string" ? flags.port : (process.env.PORT ?? "3000");
   return `http://localhost:${port}/mcp/trellis`;
 }
 
 function resolveRemoteMcpUrl() {
-  const appUrl = process.env.APP_URL
-    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://your-app.example.com");
+  const appUrl = process.env.TRELLIS_WORKER_URL ?? process.env.APP_URL ?? "https://your-worker.workers.dev";
   return `${appUrl.replace(/\/$/, "")}/mcp/trellis`;
-}
-
-function parseQuotedConst(source: string, constantName: string) {
-  const match = source.match(new RegExp(`const ${constantName} = (["'\`])([\\s\\S]*?)\\1;`));
-  return match?.[2] ?? null;
-}
-
-function parseJsonConst<T>(source: string, constantName: string) {
-  const match = source.match(new RegExp(`const ${constantName} = ([\\s\\S]*?);\\n`));
-  if (!match?.[1]) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(match[1]) as T;
-  } catch {
-    return null;
-  }
-}
-
-function readFileSyncSafe(filePath: string) {
-  return readFileSync(filePath, "utf8");
-}
-
-function writeFileSyncSafe(filePath: string, contents: string) {
-  writeFileSync(filePath, contents);
-}
-
-function printList(label: string, values: string[]) {
-  console.log(`${label}:`);
-  if (values.length === 0) {
-    console.log("  none");
-    return;
-  }
-  for (const value of values) {
-    console.log(`  - ${value}`);
-  }
 }
 
 function parseCliArgs(values: string[]) {
@@ -3092,6 +2471,16 @@ function parseCliArgs(values: string[]) {
   }
 
   return { flags, positionals };
+}
+
+function readFlagString(flags: Record<string, string | boolean>, names: string[]) {
+  for (const name of names) {
+    const value = flags[name];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 function isJsonOutput(flags: Record<string, string | boolean>) {
@@ -3356,187 +2745,4 @@ function sanitizePackageName(value: string) {
     .replace(/[^a-z0-9-_]+/g, "-")
     .replace(/^-+|-+$/g, "")
     || "trellis-app";
-}
-
-function renderScaffoldReadme(
-  appName: string,
-  targetDir: string,
-  spec: LegacyScaffoldSpec,
-) {
-  return `# ${appName}
-
-This project was scaffolded from the Trellis ${spec.kitIds.length > 0 ? `${spec.kitIds.join(", ")} kit` : "core app"}.
-
-- Stack: \`${spec.selection.id}\` (${spec.selection.displayName})
-- Generated in: \`${targetDir}\`
-
-## Stack Summary
-
-${spec.selection.description}
-
-## Quick Start
-
-\`\`\`bash
-npm install
-cp .env.example .env
-npm run typecheck
-npm test
-npm run doctor
-npm run dev
-\`\`\`
-
-Then open:
-
-\`\`\`text
-http://localhost:3000/dashboard
-\`\`\`
-
-## Auth And URLs
-
-- dashboard login uses \`DASHBOARD_PASSWORD\`, or falls back to \`TRELLIS_SANDBOX_TOKEN\`
-- remote MCP auth uses bearer token \`TRELLIS_MCP_TOKEN\`, or falls back to \`TRELLIS_SANDBOX_TOKEN\`
-- local MCP URL is \`http://localhost:3000/mcp/trellis\`
-- deployed MCP URL is \`\${APP_URL}/mcp/trellis\`
-- if you deploy on Vercel and leave \`APP_URL\` unset, the app falls back to \`https://$VERCEL_URL\`
-
-## Add Providers Later
-
-Examples:
-
-\`\`\`bash
-npm run trellis -- add source apify --apply
-npm run trellis -- add deep-research parallel --apply
-npm run trellis -- add enrichment prospeo --apply
-npm run trellis -- connect source apify
-npm run trellis -- mcp claude-code --local --write
-\`\`\`
-
-## Notes
-
-- follow \`TRELLIS_SETUP.md\` for the first boot and verification path
-- \`${spec.configFileName}\` controls the active modules and provider bindings
-- \`packages/\` contains the extracted Trellis workspace packages used by this scaffold
-- optional providers can be removed or added by editing the config and env
-- this scaffold keeps the framework and provider packages local to the workspace
-`;
-}
-
-async function applyKitToScaffold(kitId: DomainKitId) {
-  const legacyScaffold = await loadLegacyScaffold();
-  const scaffoldConfigPath = resolveScaffoldConfigPath(process.cwd());
-  const scaffoldConfigSource = readFileSyncSafe(scaffoldConfigPath);
-  const metadata = parseScaffoldConfigMetadata(scaffoldConfigSource);
-  if (!metadata) {
-    throw new Error(
-      `Cannot apply kit "${kitId}" automatically. This works only for scaffold-generated <app>.config.ts files.`,
-    );
-  }
-
-  const kit = DOMAIN_KITS[kitId];
-  for (const entry of kit.copyEntries) {
-    cpSync(path.join(kit.root, entry), path.join(process.cwd(), entry), {
-      recursive: true,
-      force: true,
-    });
-  }
-
-  const baseConfig = await loadBundledBaseConfig([kitId]);
-  const spec = legacyScaffold.buildScaffoldSpec(baseConfig, {
-    name: metadata.scaffoldName,
-    description: metadata.scaffoldDescription,
-    profile: metadata.selectedProfileId,
-    moduleIds: metadata.selectedModuleIds,
-    kitIds: [kitId],
-  });
-
-  writeFileSyncSafe(scaffoldConfigPath, legacyScaffold.renderScaffoldConfigModule(spec));
-  writeFileSyncSafe(path.join(process.cwd(), "src", "app-config.ts"), legacyScaffold.renderScaffoldAppConfigModule(spec));
-  writeFileSyncSafe(path.join(process.cwd(), ".env.example"), legacyScaffold.renderScaffoldEnvExample(spec));
-  writeFileSyncSafe(path.join(process.cwd(), "TRELLIS_SETUP.md"), legacyScaffold.renderScaffoldSetupChecklist(spec));
-  writeFileSyncSafe(path.join(process.cwd(), "README.md"), renderScaffoldReadme(metadata.scaffoldName, process.cwd(), spec));
-
-  console.log(`Applied kit "${kitId}" to ${scaffoldConfigPath}`);
-}
-
-function resolveScaffoldConfigPath(cwd: string) {
-  const candidates = readdirSync(cwd)
-    .filter((entry) => entry.endsWith(".config.ts"))
-    .filter((entry) => !entry.startsWith("vitest.") && !entry.startsWith("tsup."));
-
-  if (candidates.length === 1) {
-    return path.join(cwd, candidates[0] ?? "");
-  }
-
-  if (candidates.length === 0) {
-    throw new Error("No scaffold config found. Expected one <app>.config.ts file in the project root.");
-  }
-
-  throw new Error(`Multiple config files found: ${candidates.join(", ")}. Expected exactly one scaffold <app>.config.ts file in the project root.`);
-}
-
-function tryResolveScaffoldConfigPath(cwd: string) {
-  try {
-    return resolveScaffoldConfigPath(cwd);
-  } catch {
-    return null;
-  }
-}
-
-function pathExistsSync(candidate: string) {
-  try {
-    return readdirSync(path.dirname(candidate)) && Boolean(readFileSync(candidate, "utf8"));
-  } catch {
-    return false;
-  }
-}
-
-function buildScaffoldPackage(
-  rootPackage: {
-    version: string;
-    license: string;
-    type: string;
-    engines: Record<string, string>;
-    scripts: Record<string, string>;
-    dependencies: Record<string, string>;
-    devDependencies: Record<string, string>;
-    workspaces?: string[];
-  },
-  spec: LegacyScaffoldSpec,
-) {
-  const workspaceDependencies: Record<string, string> = {
-    "@trellis/default-sdr": "workspace:*",
-    "@trellis/framework": "workspace:*",
-  };
-
-  for (const module of spec.selectedModules) {
-    if (module.packageName?.startsWith("@trellis/")) {
-      workspaceDependencies[module.packageName] = "workspace:*";
-    }
-  }
-
-  return {
-    name: spec.config.name,
-    version: rootPackage.version,
-    private: true,
-    license: rootPackage.license,
-    type: rootPackage.type,
-    engines: rootPackage.engines,
-    workspaces: rootPackage.workspaces ?? ["packages/*"],
-    scripts: {
-      dev: "tsx watch src/index.ts",
-      build: "tsup src/index.ts src/mcp/trellis-server.ts --format esm --target node22 --outDir dist --clean",
-      start: "node dist/index.js",
-      typecheck: "tsc --noEmit",
-      test: "vitest run",
-      "test:watch": "vitest",
-      trellis: "tsx packages/trellis-cli/src/cli.ts",
-      doctor: "tsx scripts/doctor.ts",
-      "trellis:sandbox:probe": "tsx scripts/sandbox-probe.ts",
-    },
-    dependencies: {
-      ...rootPackage.dependencies,
-      ...workspaceDependencies,
-    },
-    devDependencies: rootPackage.devDependencies,
-  };
 }

@@ -149,6 +149,7 @@ npm test
 npm run trellis -- doctor --json
 npm run trellis -- smoke --json
 npm run trellis -- deploy --json
+npm run trellis -- verify cloudflare --json
 ```
 
 Generated app verification:
@@ -157,6 +158,8 @@ Generated app verification:
 npm run trellis -- doctor
 npm run trellis -- smoke
 npm run trellis -- deploy
+npm run trellis -- verify cloudflare
+npm run trellis -- verify cloudflare --live --url https://<worker>
 ```
 
 ## Migration Material
