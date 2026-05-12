@@ -13,7 +13,7 @@ This branch is converting Trellis from a generic composition framework into the 
 
 1. Run `trellis verify cloudflare --live --url <worker> --exercise-agent` against a real Cloudflare account to prove the generated Flue harness against Cloudflare AI and R2 packs.
 2. Verify R2 pack sync and Cloudflare Workflow execution against a real Cloudflare account.
-3. Verify operator replay/requeue controls against a real Cloudflare Workflow and dead-letter queue.
+3. Run the live verifier's operator replay/requeue checks against a real Cloudflare Workflow and dead-letter queue.
 4. Keep legacy Convex/Vercel/Rivet paths as migration-only behavior fixtures until parity is proven; they should stay unreachable from the v3 CLI surface.
 
 ## Local Parity Audit

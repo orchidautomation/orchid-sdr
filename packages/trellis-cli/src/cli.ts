@@ -737,6 +737,88 @@ async function verifyRemoteCloudflareRoutes(input: {
     packs,
   }));
 
+  checks.push(verifyCheck("remote.webhook.safety", webhook.status === 202
+    && webhookBody?.noSendsMode === true
+    ? "pass"
+    : "fail", "safe live verification requires no-send mode before approval/replay checks", {
+    noSendsMode: webhookBody?.noSendsMode,
+  }));
+
+  if (webhook.status === 202 && workflowDispatch?.enabled === true && typeof workflowDispatch.instanceId === "string") {
+    const workflowReplay = await fetchVerifyJson(verifyRouteUrl(input.endpoint, `/operator/workflows/${encodeURIComponent(workflowDispatch.instanceId)}/replay`), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        actor: "trellis.verify",
+        reason: "live Cloudflare verifier workflow replay check",
+        replayId: `${workflowDispatch.instanceId}_verify_replay`,
+      }),
+    });
+    const workflowReplayBody = asCliRecord(workflowReplay.body);
+    const workflowReplayPersistence = asCliRecord(workflowReplayBody?.persistence);
+    checks.push(verifyCheck("remote.operator.workflowReplay", workflowReplay.status === 200
+      && workflowReplayBody?.ok === true
+      && workflowReplayPersistence?.enabled === true
+      ? "pass"
+      : "fail", "operator workflow replay should redispatch a stored Cloudflare Workflow run", summarizeRemoteEvidence(workflowReplay)));
+  } else {
+    checks.push(verifyCheck("remote.operator.workflowReplay", "fail", "workflow replay requires a dispatched workflow instance id", {
+      workflowDispatch,
+    }));
+  }
+
+  const approval = readVerifyApproval(webhookBody, "email.send");
+  if (webhook.status === 202 && webhookBody?.noSendsMode === true && approval) {
+    const approvalResponse = await fetchVerifyJson(verifyRouteUrl(input.endpoint, `/approvals/${encodeURIComponent(approval.id)}/approve`), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        signalId: approval.signalId,
+        draftId: approval.draftId,
+        action: approval.action,
+        actor: "trellis.verify",
+        reason: "live Cloudflare verifier provider-action replay check",
+      }),
+    });
+    const approvalBody = asCliRecord(approvalResponse.body);
+    const providerAction = asCliRecord(approvalBody?.providerAction);
+    const providerActionId = typeof providerAction?.id === "string" ? providerAction.id : undefined;
+    checks.push(verifyCheck("remote.operator.approvalGate", approvalResponse.status === 200
+      && approvalBody?.ok === true
+      && providerActionId
+      && providerAction?.status === "blocked_no_send"
+      ? "pass"
+      : "fail", "approval should create a no-send-blocked provider action intent", summarizeRemoteEvidence(approvalResponse)));
+
+    if (providerActionId) {
+      const providerReplay = await fetchVerifyJson(verifyRouteUrl(input.endpoint, `/operator/provider-actions/${encodeURIComponent(providerActionId)}/replay`), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          actor: "trellis.verify",
+          reason: "live Cloudflare verifier provider-action requeue check",
+        }),
+      });
+      const providerReplayBody = asCliRecord(providerReplay.body);
+      const replayedAction = asCliRecord(providerReplayBody?.providerAction);
+      const replayQueue = asCliRecord(providerReplayBody?.queue);
+      checks.push(verifyCheck("remote.operator.providerActionReplay", providerReplay.status === 200
+        && providerReplayBody?.ok === true
+        && replayedAction?.status === "queued"
+        && replayQueue?.enabled === true
+        ? "pass"
+        : "fail", "operator provider-action replay should requeue a no-send-safe provider action", summarizeRemoteEvidence(providerReplay)));
+    } else {
+      checks.push(verifyCheck("remote.operator.providerActionReplay", "fail", "provider-action replay requires an approval-created provider action id", summarizeRemoteEvidence(approvalResponse)));
+    }
+  } else {
+    checks.push(verifyCheck("remote.operator.approvalGate", "fail", "approval gate replay check requires no-send mode and an email.send approval", {
+      noSendsMode: webhookBody?.noSendsMode,
+      approval,
+    }));
+    checks.push(verifyCheck("remote.operator.providerActionReplay", "fail", "provider-action replay requires a no-send-blocked provider action"));
+  }
+
   const mcpAfterWebhook = await fetchVerifyJson(verifyRouteUrl(input.endpoint, "/mcp/trellis"));
   const mcpAfterWebhookBody = asCliRecord(mcpAfterWebhook.body);
   const snapshot = asCliRecord(mcpAfterWebhookBody?.snapshot);
@@ -753,6 +835,23 @@ async function verifyRemoteCloudflareRoutes(input: {
   }));
 
   return checks;
+}
+
+function readVerifyApproval(webhookBody: Record<string, unknown> | undefined, action: string) {
+  const approvals = Array.isArray(webhookBody?.approvals) ? webhookBody.approvals : [];
+  for (const value of approvals) {
+    const approval = asCliRecord(value);
+    if (approval?.action !== action || typeof approval.id !== "string") {
+      continue;
+    }
+    return {
+      id: approval.id,
+      action,
+      signalId: typeof approval.signalId === "string" ? approval.signalId : undefined,
+      draftId: typeof approval.draftId === "string" ? approval.draftId : undefined,
+    };
+  }
+  return null;
 }
 
 async function fetchVerifyJson(url: string, init?: RequestInit) {

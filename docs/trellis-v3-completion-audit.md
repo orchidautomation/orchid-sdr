@@ -74,7 +74,7 @@ Observed results:
 
 These are not complete enough to mark the whole objective achieved:
 
-1. Live Cloudflare verification has not been run. The verifier now checks remote health, MCP, smoke, safe signal execution, D1 persistence, provider-run state, Queue fanout, Workflow dispatch, R2 pack visibility, and the post-run MCP snapshot.
+1. Live Cloudflare verification has not been run. The verifier now checks remote health, MCP, smoke, safe signal execution, D1 persistence, provider-run state, Queue fanout, Workflow dispatch, R2 pack visibility, operator workflow replay, no-send approval gating, provider-action requeue, and the post-run MCP snapshot.
    Required command:
    ```bash
    trellis verify cloudflare --live --url https://<worker> --exercise-agent
@@ -82,7 +82,7 @@ These are not complete enough to mark the whole objective achieved:
 
 2. R2 pack sync and real Cloudflare Workflow execution have not been proven against a live Cloudflare account in this workspace.
 
-3. Operator replay/requeue behavior is locally covered with fake D1, fake Queue, and fake Workflow bindings, but not verified against a real Cloudflare Workflow plus dead-letter queue.
+3. Operator replay/requeue behavior is exercised by the live verifier routes and locally covered with fake D1, fake Queue, and fake Workflow bindings, but the command has not been run against a real Cloudflare Workflow plus dead-letter queue in this workspace.
 
 4. The generated Flue adapter is source/test validated, but a real Flue session using Cloudflare AI binding and R2-mounted packs has not been exercised remotely.
 

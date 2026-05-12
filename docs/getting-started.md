@@ -99,7 +99,7 @@ npm run trellis -- verify cloudflare --live --url https://<your-worker>.workers.
 
 When you are ready to spend one safe model call to prove the hidden Flue/Cloudflare harness, add `--exercise-agent`.
 
-That live exercise also checks the production plumbing around the agent turn: D1 persistence, provider-run recording, Queue fanout, Workflow dispatch, R2 pack visibility, and the MCP snapshot after the signal is processed.
+That live exercise also checks the production plumbing around the agent turn: D1 persistence, provider-run recording, Queue fanout, Workflow dispatch, R2 pack visibility, operator workflow replay, no-send approval gating, provider-action requeue, and the MCP snapshot after the signal is processed.
 
 Use JSON output when another agent or setup tool is orchestrating the flow:
 

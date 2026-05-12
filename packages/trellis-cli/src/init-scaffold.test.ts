@@ -412,6 +412,15 @@ describe("trellis init v3 scaffold", () => {
             { type: "signal.accepted" },
             { type: "skill.completed" },
           ],
+          approvals: [
+            {
+              id: "approval_draft_sig_verify_email_send",
+              signalId: body.id ?? "sig_verify",
+              draftId: "draft_sig_verify",
+              action: "email.send",
+              status: "pending",
+            },
+          ],
           persistence: {
             enabled: true,
           },
@@ -433,7 +442,49 @@ describe("trellis init v3 scaffold", () => {
             knowledge: { objects: 1 },
             skills: { objects: 5 },
           },
+          noSendsMode: true,
         }, 202);
+        return;
+      }
+      if (url.pathname === "/operator/workflows/trellis_sig_verify_prospect/replay" && request.method === "POST") {
+        writeJson(response, {
+          ok: true,
+          workflowRunId: "trellis_sig_verify_prospect",
+          replayId: "trellis_sig_verify_prospect_verify_replay",
+          workflow: "prospect",
+          persistence: {
+            enabled: true,
+            status: "replayed",
+          },
+        });
+        return;
+      }
+      if (url.pathname === "/approvals/approval_draft_sig_verify_email_send/approve" && request.method === "POST") {
+        writeJson(response, {
+          ok: true,
+          approval: {
+            id: "approval_draft_sig_verify_email_send",
+            status: "approved",
+          },
+          providerAction: {
+            id: "provider_action_approval_draft_sig_verify_email_send",
+            status: "blocked_no_send",
+          },
+        });
+        return;
+      }
+      if (url.pathname === "/operator/provider-actions/provider_action_approval_draft_sig_verify_email_send/replay" && request.method === "POST") {
+        writeJson(response, {
+          ok: true,
+          providerAction: {
+            id: "provider_action_approval_draft_sig_verify_email_send",
+            status: "queued",
+          },
+          queue: {
+            enabled: true,
+            messages: 1,
+          },
+        });
         return;
       }
       writeJson(response, { ok: false, error: "not_found" }, 404);
@@ -495,6 +546,10 @@ describe("trellis init v3 scaffold", () => {
       expect(checks.get("remote.webhook.workflow")).toBe("pass");
       expect(checks.get("remote.webhook.queue")).toBe("pass");
       expect(checks.get("remote.webhook.packs")).toBe("pass");
+      expect(checks.get("remote.webhook.safety")).toBe("pass");
+      expect(checks.get("remote.operator.workflowReplay")).toBe("pass");
+      expect(checks.get("remote.operator.approvalGate")).toBe("pass");
+      expect(checks.get("remote.operator.providerActionReplay")).toBe("pass");
       expect(checks.get("remote.state.snapshot")).toBe("pass");
     } finally {
       await close(server);
