@@ -50,6 +50,22 @@ describe("@trellis/gtm v3 API", () => {
       ok: true,
       workflow: "prospect",
     });
+    expect(schema.replyPolicy().parse({
+      classification: "positive",
+      action: "handoff",
+      reason: "Buyer asked for next steps.",
+      confidence: 0.9,
+    })).toMatchObject({
+      classification: "positive",
+      action: "handoff",
+    });
+    expect(schema.handoffPolicy().parse({
+      shouldHandoff: true,
+      reason: "Positive buying signal.",
+    })).toMatchObject({
+      shouldHandoff: true,
+      urgency: "normal",
+    });
   });
 
   it("runs the v3 smoke workflow as a real safe fixture", async () => {

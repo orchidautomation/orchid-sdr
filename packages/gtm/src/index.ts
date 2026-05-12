@@ -337,6 +337,33 @@ export const schema = {
       rationale: z.string().optional(),
     });
   },
+  replyPolicy() {
+    return z.object({
+      classification: z.enum([
+        "positive",
+        "objection",
+        "referral",
+        "needs_human",
+        "neutral",
+        "unsubscribe",
+        "bounce",
+        "wrong_person",
+        "spam_risk",
+      ]),
+      action: z.enum(["reply", "handoff", "pause"]),
+      reason: z.string().min(1),
+      confidence: z.number().min(0).max(1),
+      nextStep: z.string().optional(),
+    });
+  },
+  handoffPolicy() {
+    return z.object({
+      shouldHandoff: z.boolean(),
+      reason: z.string().min(1),
+      destination: z.string().optional(),
+      urgency: z.enum(["low", "normal", "high"]).default("normal"),
+    });
+  },
 };
 
 export const trellis = {
@@ -665,6 +692,21 @@ function defaultSkillResult(name: string) {
         subject: "GTM agent workflow",
         body: "Saw your note about operationalizing GTM agents. Worth comparing notes on how teams are making the workflow reliable before letting anything send.",
         rationale: "Anchored to the signal while staying in no-send mode.",
+      };
+    case "reply-policy":
+      return {
+        classification: "needs_human",
+        action: "handoff",
+        reason: "Fixture reply needs an operator before Trellis sends anything.",
+        confidence: 0.72,
+        nextStep: "Create a handoff or approved reply draft.",
+      };
+    case "handoff-policy":
+      return {
+        shouldHandoff: true,
+        reason: "Fixture reply should be reviewed by a human operator.",
+        destination: "sales",
+        urgency: "normal",
       };
     case "icp-qualification":
     default:

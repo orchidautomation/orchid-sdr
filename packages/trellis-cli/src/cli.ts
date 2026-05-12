@@ -1794,6 +1794,8 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
   await mkdir(path.join(targetDir, "skills", "icp-qualification"), { recursive: true });
   await mkdir(path.join(targetDir, "skills", "research-brief"), { recursive: true });
   await mkdir(path.join(targetDir, "skills", "sdr-copy"), { recursive: true });
+  await mkdir(path.join(targetDir, "skills", "reply-policy"), { recursive: true });
+  await mkdir(path.join(targetDir, "skills", "handoff-policy"), { recursive: true });
 
   await writeFile(
     path.join(targetDir, "package.json"),
@@ -1808,6 +1810,8 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
   await writeFile(path.join(targetDir, "skills", "icp-qualification", "SKILL.md"), renderV3QualificationSkill());
   await writeFile(path.join(targetDir, "skills", "research-brief", "SKILL.md"), renderV3ResearchSkill());
   await writeFile(path.join(targetDir, "skills", "sdr-copy", "SKILL.md"), renderV3CopySkill());
+  await writeFile(path.join(targetDir, "skills", "reply-policy", "SKILL.md"), renderV3ReplyPolicySkill());
+  await writeFile(path.join(targetDir, "skills", "handoff-policy", "SKILL.md"), renderV3HandoffPolicySkill());
   await writeFile(path.join(targetDir, "README.md"), renderV3Readme(appName));
 
   const nextSteps = [
@@ -1841,6 +1845,8 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
         "skills/icp-qualification/SKILL.md",
         "skills/research-brief/SKILL.md",
         "skills/sdr-copy/SKILL.md",
+        "skills/reply-policy/SKILL.md",
+        "skills/handoff-policy/SKILL.md",
         "README.md",
       ],
       nextSteps,
@@ -2005,6 +2011,21 @@ export default trellis.agent("sdr", {
 }, async (app) => {
   const signal = await app.signal();
   const context = await app.context(signal);
+
+  if (signal.source === "reply.webhook") {
+    const reply = await app.skill("reply-policy", {
+      context,
+      schema: schema.replyPolicy(),
+    });
+    const handoff = await app.skill("handoff-policy", {
+      context,
+      args: { reply },
+      schema: schema.handoffPolicy(),
+    });
+
+    return app.workflow("reply").start({ signal, reply, handoff });
+  }
+
   const qualification = await app.skill("icp-qualification", {
     context,
     schema: schema.qualification(),
@@ -2096,6 +2117,39 @@ Return structured output matching the outbound draft schema:
 - rationale
 
 Do not send the email. The workflow will keep the draft blocked behind Trellis approvals.
+`;
+}
+
+function renderV3ReplyPolicySkill() {
+  return `# Reply Policy
+
+Classify an inbound reply and decide whether Trellis should draft a reply, pause, or hand off.
+
+Return structured output matching the reply policy schema:
+
+- classification
+- action
+- reason
+- confidence
+- nextStep
+
+Choose \`handoff\` for positive replies, objections, referrals, or anything that needs human judgment. Choose \`pause\` for hard stops such as unsubscribe, bounce, wrong person, or spam risk.
+`;
+}
+
+function renderV3HandoffPolicySkill() {
+  return `# Handoff Policy
+
+Decide whether an inbound reply should create a human handoff.
+
+Return structured output matching the handoff policy schema:
+
+- shouldHandoff
+- reason
+- destination
+- urgency
+
+Do not notify Slack or send webhooks from this skill. Trellis will turn the decision into an approval-gated provider action.
 `;
 }
 
