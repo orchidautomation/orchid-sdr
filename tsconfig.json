@@ -16,7 +16,31 @@
     "declaration": false,
     "sourceMap": true,
     "outDir": "dist",
-    "types": ["node", "vitest/globals"]
+    "types": ["node", "vitest/globals"],
+    "baseUrl": ".",
+    "paths": {
+      "@trellis/agentmail": ["packages/agentmail/src/index.ts"],
+      "@trellis/apify-linkedin": ["packages/apify-linkedin/src/index.ts"],
+      "@trellis/attio": ["packages/attio/src/index.ts"],
+      "@trellis/cli": ["packages/trellis-cli/src/cli.ts"],
+      "@trellis/convex": ["packages/convex/src/index.ts"],
+      "@trellis/convex/*": ["packages/convex/src/*"],
+      "@trellis/default-sdr": ["packages/default-sdr/src/index.ts"],
+      "@trellis/default-sdr/*": ["packages/default-sdr/src/*"],
+      "@trellis/firecrawl": ["packages/firecrawl/src/index.ts"],
+      "@trellis/framework": ["packages/framework/src/index.ts"],
+      "@trellis/framework/*": ["packages/framework/src/*"],
+      "@trellis/gtm": ["packages/gtm/src/index.ts"],
+      "@trellis/mcp": ["packages/mcp/src/index.ts"],
+      "@trellis/parallel": ["packages/parallel/src/index.ts"],
+      "@trellis/prospeo": ["packages/prospeo/src/index.ts"],
+      "@trellis/providers": ["packages/providers/src/index.ts"],
+      "@trellis/rivet": ["packages/rivet/src/index.ts"],
+      "@trellis/slack": ["packages/slack/src/index.ts"],
+      "@trellis/vercel-ai-gateway": ["packages/vercel-ai-gateway/src/index.ts"],
+      "@trellis/vercel-sandbox": ["packages/vercel-sandbox/src/index.ts"],
+      "@trellis/webhooks": ["packages/webhooks/src/index.ts"]
+    }
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"]
+  "include": ["examples/reference-app/trellis.config.ts", "examples/reference-app/src/**/*.ts", "examples/reference-app/scripts/**/*.ts", "examples/reference-app/tests/**/*.ts", "packages/**/*.ts"]
 }

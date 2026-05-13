@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+node_modules
+dist
+coverage
+npm-debug.log*
+.DS_Store
+.codex
+.claude
+.agents
+future-ideas

@@ -1,0 +1,532 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  aiSdrConfigSchema,
+  buildProviderMap,
+  collectConfigEnv,
+  collectAppSurfaceEnv,
+  collectKnowledgePaths,
+  collectWebhookDefinitions,
+  collectWebhookEnv,
+  collectPackageBoundaries,
+  collectModuleDocs,
+  collectModuleMcpServers,
+  collectSkillPaths,
+  defaultTrellisModules,
+  defineAiSdr,
+  providersFromModules,
+  resolveMcpExposure,
+  resolveProviderForCapability,
+  validateAiSdrConfigReferences,
+} from "@trellis/framework";
+
+describe("AI SDR framework config helpers", () => {
+  it("collects knowledge and skill paths", () => {
+    const config = defineAiSdr({
+      name: "test-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      skills: [
+        {
+          id: "qualification",
+          path: "skills/qualification",
+        },
+      ],
+    });
+
+    expect(collectKnowledgePaths(config)).toEqual(["knowledge/product.md", "knowledge/icp.md"]);
+    expect(collectSkillPaths(config)).toEqual(["skills/qualification"]);
+  });
+
+  it("deduplicates env vars and preserves required flags", () => {
+    const config = defineAiSdr({
+      name: "test-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      requiredEnv: [
+        {
+          name: "CONVEX_URL",
+          required: true,
+        },
+      ],
+      providers: [
+        {
+          id: "crm",
+          kind: "crm",
+          displayName: "CRM",
+          env: [
+            {
+              name: "CONVEX_URL",
+            },
+            {
+              name: "CRM_API_KEY",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(collectConfigEnv(config)).toEqual([
+      {
+        name: "CONVEX_URL",
+        required: true,
+        description: undefined,
+      },
+      {
+        name: "CRM_API_KEY",
+      },
+    ]);
+  });
+
+  it("collects MCP server env and derives app-surface env from webhooks and resolved MCP exposure", () => {
+    const config = defineAiSdr({
+      name: "test-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      modules: [
+        {
+          id: "custom-runtime",
+          displayName: "Custom runtime",
+          mcpServers: [
+            {
+              id: "custom-mcp",
+              displayName: "Custom MCP",
+              transport: "http",
+              url: "https://example.com/mcp",
+              requiredEnv: [{ name: "CUSTOM_MCP_TOKEN", required: true }],
+              optionalEnv: [{ name: "CUSTOM_MCP_REGION" }],
+            },
+          ],
+        },
+      ],
+      capabilityBindings: [
+        {
+          capabilityId: "runtime",
+          providerId: "rivet",
+        },
+        {
+          capabilityId: "mcp",
+          providerId: "trellis-mcp",
+        },
+      ],
+      webhooks: [
+        {
+          id: "incoming",
+          displayName: "Incoming webhook",
+          method: "POST",
+          path: "/webhooks/incoming",
+          auth: "shared-secret-query-or-header",
+          secretEnv: "INCOMING_WEBHOOK_SECRET",
+          fallbackSecretEnv: "FALLBACK_INCOMING_SECRET",
+        },
+      ],
+    });
+
+    expect(collectWebhookEnv(config)).toEqual([
+      {
+        name: "INCOMING_WEBHOOK_SECRET",
+        required: true,
+        description: "Secret for Incoming webhook.",
+      },
+      {
+        name: "FALLBACK_INCOMING_SECRET",
+        description: "Fallback secret for Incoming webhook.",
+      },
+    ]);
+    expect(collectAppSurfaceEnv(config)).toEqual([
+      {
+        name: "APP_URL",
+        required: true,
+        description: "Public app URL used by Trellis webhooks, MCP, and sandbox callbacks.",
+      },
+      {
+        name: "TRELLIS_MCP_TOKEN",
+        description: "Optional bearer token for remote Trellis MCP access.",
+      },
+      {
+        name: "DASHBOARD_PASSWORD",
+        description: "Optional dashboard password. Falls back to TRELLIS_SANDBOX_TOKEN when unset.",
+      },
+    ]);
+    expect(collectConfigEnv(config)).toEqual([
+      {
+        name: "APP_URL",
+        required: true,
+        description: "Public app URL used by Trellis webhooks, MCP, and sandbox callbacks.",
+      },
+      {
+        name: "CUSTOM_MCP_REGION",
+      },
+      {
+        name: "CUSTOM_MCP_TOKEN",
+        required: true,
+      },
+      {
+        name: "DASHBOARD_PASSWORD",
+        description: "Optional dashboard password. Falls back to TRELLIS_SANDBOX_TOKEN when unset.",
+      },
+      {
+        name: "FALLBACK_INCOMING_SECRET",
+        description: "Fallback secret for Incoming webhook.",
+      },
+      {
+        name: "INCOMING_WEBHOOK_SECRET",
+        required: true,
+        description: "Secret for Incoming webhook.",
+      },
+      {
+        name: "TRELLIS_MCP_TOKEN",
+        description: "Optional bearer token for remote Trellis MCP access.",
+      },
+    ]);
+  });
+
+  it("derives default MCP tool groups from capabilities and applies source-aware exclusions", () => {
+    const config = defineAiSdr({
+      name: "derived-mcp-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      capabilityBindings: [
+        {
+          capabilityId: "mcp",
+          providerId: "trellis-mcp",
+        },
+        {
+          capabilityId: "runtime",
+          providerId: "rivet",
+        },
+        {
+          capabilityId: "crm",
+          providerId: "attio",
+        },
+        {
+          capabilityId: "email",
+          providerId: "agentmail",
+        },
+      ],
+    });
+
+    expect(resolveMcpExposure(config)).toEqual({
+      toolGroups: [
+        "knowledge",
+        "records",
+        "workflows",
+        "runtime",
+        "control",
+        "crm",
+        "email",
+        "mail",
+      ],
+      includeTools: undefined,
+      excludeTools: [
+        "runtime.discovery",
+        "runtime.discoveryHealth",
+        "control.runDiscovery",
+      ],
+    });
+  });
+
+  it("lets manifest overrides extend derived MCP exposure", () => {
+    const config = defineAiSdr({
+      name: "override-mcp-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      capabilityBindings: [
+        {
+          capabilityId: "mcp",
+          providerId: "trellis-mcp",
+        },
+        {
+          capabilityId: "runtime",
+          providerId: "rivet",
+        },
+      ],
+      mcp: {
+        toolGroups: ["handoff"],
+        includeTools: ["runtime.discoveryHealth"],
+        excludeTools: ["runtime.sandboxJobs"],
+      },
+    });
+
+    expect(resolveMcpExposure(config)).toEqual({
+      toolGroups: [
+        "knowledge",
+        "records",
+        "workflows",
+        "runtime",
+        "control",
+        "handoff",
+      ],
+      includeTools: ["runtime.discoveryHealth"],
+      excludeTools: [
+        "runtime.sandboxJobs",
+        "runtime.discovery",
+        "control.runDiscovery",
+      ],
+    });
+  });
+
+  it("exposes a runtime schema for framework configs", () => {
+    const parsed = aiSdrConfigSchema.parse({
+      name: "schema-backed-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      providers: [
+        {
+          id: "attio",
+          kind: "crm",
+          displayName: "Attio",
+        },
+      ],
+    });
+
+    expect(parsed.providers?.[0]?.kind).toBe("crm");
+    expect(() =>
+      aiSdrConfigSchema.parse({
+        name: "broken",
+        knowledge: {},
+      }),
+    ).toThrow();
+  });
+
+  it("validates composition references", () => {
+    const config = defineAiSdr({
+      name: "test-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      providers: [
+        {
+          id: "hubspot",
+          kind: "signal-source",
+          displayName: "HubSpot",
+        },
+      ],
+      campaigns: [
+        {
+          id: "default",
+          sources: ["hubspot", "missing-provider"],
+        },
+      ],
+      webhooks: [
+        {
+          id: "missing",
+          displayName: "Missing provider webhook",
+          method: "POST",
+          path: "/webhooks/missing",
+          providerId: "missing-provider",
+          auth: "none",
+        },
+      ],
+    });
+
+    expect(buildProviderMap(config).has("hubspot")).toBe(true);
+    expect(validateAiSdrConfigReferences(config)).toEqual([
+      {
+        severity: "error",
+        code: "unknown_campaign_source",
+        message: 'Campaign "default" references source provider "missing-provider", but no provider with that id exists',
+      },
+      {
+        severity: "error",
+        code: "unknown_webhook_provider",
+        message: 'Webhook "missing" references provider "missing-provider", but no provider with that id exists',
+      },
+    ]);
+  });
+
+  it("builds provider config from modules", () => {
+    const modules = defaultTrellisModules();
+    const config = defineAiSdr({
+      name: "module-backed-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      modules,
+      providers: providersFromModules(modules),
+    });
+
+    expect(config.modules?.some((item) => item.id === "attio")).toBe(true);
+    expect(config.modules?.some((item) => item.id === "convex")).toBe(true);
+    expect(config.modules?.some((item) => item.id === "neon")).toBe(false);
+    expect(config.modules?.some((item) => item.id === "rivet")).toBe(true);
+    expect(config.providers?.some((item) => item.id === "attio")).toBe(true);
+    expect(config.providers?.some((item) => item.id === "parallel")).toBe(true);
+    expect(config.providers?.some((item) => item.id === "prospeo")).toBe(true);
+    expect(collectConfigEnv(config).some((envVar) => envVar.name === "ATTIO_API_KEY")).toBe(true);
+    expect(collectConfigEnv(config).some((envVar) => envVar.name === "NEXT_PUBLIC_CONVEX_URL")).toBe(true);
+    expect(collectConfigEnv(config).some((envVar) => envVar.name === "RIVET_ENDPOINT")).toBe(true);
+    expect(collectConfigEnv(config).some((envVar) => envVar.name === "PARALLEL_API_KEY")).toBe(true);
+    expect(collectConfigEnv(config).some((envVar) => envVar.name === "PROSPEO_API_KEY")).toBe(true);
+    expect(config.modules?.find((item) => item.id === "convex")?.contracts).toEqual([
+      "state.reactive.v1",
+      "state.workflow.v1",
+      "state.agentThreads.v1",
+      "state.auditLog.v1",
+    ]);
+    expect(config.modules?.find((item) => item.id === "firecrawl")?.capabilityIds).toEqual([
+      "source",
+      "search",
+      "extract",
+      "enrichment",
+      "runtime",
+      "observability",
+    ]);
+    expect(config.modules?.find((item) => item.id === "parallel")?.capabilityIds).toEqual([
+      "search",
+      "extract",
+      "enrichment",
+      "source",
+      "observability",
+    ]);
+    expect(config.modules?.find((item) => item.id === "rivet")?.contracts).toContain("runtime.actor.v1");
+    expect(config.modules?.find((item) => item.id === "parallel")?.contracts).toContain("research.monitor.v1");
+    expect(config.modules?.find((item) => item.id === "prospeo")?.contracts).toContain("research.enrich.v1");
+    expect(collectModuleDocs(config).some((doc) => doc.path === "docs/self-hosting.md")).toBe(true);
+    expect(collectModuleMcpServers(config).some((server) => server.id === "parallel-search")).toBe(true);
+    expect(collectModuleMcpServers(config).some((server) => server.id === "firecrawl")).toBe(true);
+    expect(collectWebhookDefinitions(config)).toEqual([]);
+    expect(config.modules?.flatMap((item) => item.contracts ?? [])).toContain("crm.prospectSync.v1");
+    expect(validateAiSdrConfigReferences(config)).toEqual([]);
+  });
+
+  it("resolves stack providers from capability bindings and package boundaries", () => {
+    const modules = defaultTrellisModules();
+    const config = defineAiSdr({
+      name: "composable-sdr",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      modules,
+      providers: providersFromModules(modules),
+      capabilityBindings: [
+        {
+          capabilityId: "search",
+          providerId: "firecrawl",
+          contractId: "research.search.v1",
+          default: true,
+        },
+        {
+          capabilityId: "search",
+          providerId: "parallel",
+          contractId: "research.deepResearch.v1",
+          purpose: "deep_research",
+        },
+        {
+          capabilityId: "extract",
+          providerId: "firecrawl",
+          contractId: "research.extract.v1",
+          default: true,
+        },
+        {
+          capabilityId: "observability",
+          providerId: "parallel",
+          contractId: "research.monitor.v1",
+          purpose: "monitor",
+        },
+        {
+          capabilityId: "enrichment",
+          providerId: "prospeo",
+          contractId: "research.enrich.v1",
+          default: true,
+        },
+      ],
+      packageBoundaries: [
+        {
+          id: "framework-core",
+          packageName: "@trellis/framework",
+          visibility: "public",
+          moduleIds: ["parallel", "firecrawl", "prospeo"],
+          providerIds: ["parallel", "firecrawl", "prospeo"],
+        },
+      ],
+    });
+
+    expect(resolveProviderForCapability(config, {
+      capabilityId: "search",
+      contractId: "research.search.v1",
+    })?.id).toBe("firecrawl");
+    expect(resolveProviderForCapability(config, {
+      capabilityId: "search",
+      contractId: "research.deepResearch.v1",
+    })?.id).toBe("parallel");
+    expect(resolveProviderForCapability(config, {
+      capabilityId: "extract",
+      contractId: "research.extract.v1",
+    })?.id).toBe("firecrawl");
+    expect(resolveProviderForCapability(config, {
+      capabilityId: "observability",
+      contractId: "research.monitor.v1",
+    })?.id).toBe("parallel");
+    expect(resolveProviderForCapability(config, {
+      capabilityId: "enrichment",
+      contractId: "research.enrich.v1",
+    })?.id).toBe("prospeo");
+    expect(collectPackageBoundaries(config).map((boundary) => boundary.id)).toEqual(["framework-core"]);
+    expect(validateAiSdrConfigReferences(config)).toEqual([]);
+  });
+
+  it("rejects capability bindings that are not backed by module contracts", () => {
+    const modules = defaultTrellisModules();
+    const config = defineAiSdr({
+      name: "broken-bindings",
+      knowledge: {
+        product: "knowledge/product.md",
+        icp: "knowledge/icp.md",
+      },
+      modules,
+      providers: providersFromModules(modules),
+      capabilityBindings: [
+        {
+          capabilityId: "search",
+          providerId: "attio",
+          contractId: "research.search.v1",
+          default: true,
+        },
+      ],
+      packageBoundaries: [
+        {
+          id: "broken-boundary",
+          packageName: "@trellis/framework",
+          visibility: "public",
+          moduleIds: ["missing-module"],
+          providerIds: ["missing-provider"],
+        },
+      ],
+    });
+
+    expect(validateAiSdrConfigReferences(config)).toEqual([
+      {
+        severity: "error",
+        code: "unsupported_capability_binding",
+        message:
+          'Capability binding "search" -> "attio" declares contract "research.search.v1", but no module for that provider exposes both the capability and contract',
+      },
+      {
+        severity: "error",
+        code: "unknown_package_boundary_module",
+        message: 'Package boundary "broken-boundary" references unknown module "missing-module"',
+      },
+      {
+        severity: "error",
+        code: "unknown_package_boundary_provider",
+        message: 'Package boundary "broken-boundary" references unknown provider "missing-provider"',
+      },
+    ]);
+  });
+});

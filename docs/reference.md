@@ -1,350 +1,175 @@
-# Orchid SDR Reference
+# Trellis Reference
 
-This page keeps the implementation and setup detail that does not need to live on the front page.
+This page describes the v3 public surface. Historical Convex/Vercel/Rivet reference-app details are legacy parity material and should not be used as the default setup path.
 
-## Stack
-
-- `RivetKit` for durable actors, scheduling, and actor-local SQLite
-- `Hono` for HTTP routing
-- `Postgres` as the shared system of record
-- `sandbox-agent` + `@vercel/sandbox` for turn-scoped agent execution
-- `@ai-sdk/gateway` for structured model calls
-- `@modelcontextprotocol/sdk` for the first-party `orchid-sdr` MCP surface
-- `Attio` as the optional CRM sync target
-- `AgentMail` as the optional outbound and inbound email provider
-
-## Required Env
-
-Minimum local env:
-
-- `DATABASE_URL`
-- `NO_SENDS_MODE=true` if you want append-only mode with outbound blocked
-- `DEFAULT_CAMPAIGN_TIMEZONE=America/New_York` if you want new campaigns to inherit a local quiet-hours timezone
-- `HANDOFF_WEBHOOK_SECRET`
-- `ORCHID_SDR_SANDBOX_TOKEN`
-- `ORCHID_SDR_MCP_TOKEN` if you want a dedicated token for remote MCP access
-
-For the full sandbox lane:
-
-- `AI_GATEWAY_API_KEY` or `VERCEL_AI_GATEWAY_KEY`
-- Vercel Sandbox auth: `VERCEL_OIDC_TOKEN` or `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`
-- provider keys such as `APIFY_TOKEN`, `FIRECRAWL_API_KEY`, `AGENTMAIL_API_KEY`, `ATTIO_API_KEY`
-- discovery config such as `APIFY_LINKEDIN_TASK_ID` or `APIFY_LINKEDIN_ACTOR_ID`
-- `DISCOVERY_WEEKDAYS_ONLY=true` if you want discovery to skip weekends (enabled by default)
-- `SIGNAL_WEBHOOK_SECRET` if you want to post normalized signals from arbitrary sources
-
-Important runtime notes:
-
-- `APP_URL` must be reachable from Vercel Sandboxes because the sandbox connects back to the repo MCP endpoint.
-- `APP_URL` must also be reachable from Apify and AgentMail because they post webhooks into the app.
-
-## Commands
+## CLI
 
 ```bash
-npm install
-npm run db:migrate
-npm run dev
+trellis init <target>
+trellis docs add <path>
+trellis doctor
+trellis smoke
+trellis deploy
+trellis connect <provider>
 ```
 
-Useful checks:
+Use `--json` when another agent, plugin, or setup UI is driving the flow.
+
+## Runtime Routes
+
+The generated Cloudflare app should expose:
+
+- `GET /healthz`
+- `GET /smoke`
+- `POST /webhooks/signals`
+- `POST /webhooks/apify`
+- `POST /webhooks/agentmail`
+- `POST /approvals/:id/approve`
+- `POST /approvals/:id/reject`
+- `POST /provider-actions/:id/execute`
+- `POST /provider-actions/:id/complete`
+- `POST /provider-actions/:id/fail`
+- `GET /operator/controls`
+- `POST /operator/kill-switch/enable`
+- `POST /operator/kill-switch/disable`
+- `POST /operator/campaigns/:id/pause`
+- `POST /operator/campaigns/:id/resume`
+- `POST /operator/threads/:id/pause`
+- `POST /operator/threads/:id/resume`
+- `POST /operator/workflows/:id/replay`
+- `POST /operator/provider-actions/:id/replay`
+- `POST /mcp/trellis`
+- `GET /dashboard`
+- `POST /agents/*` for durable agent dispatch
+
+## Runtime State
+
+The v3 baseline persists:
+
+- signals
+- prospects
+- drafts
+- approvals
+- provider actions
+- workflow runs
+- audit events
+- trace events
+
+Those records are enough to prove the GTM control loop is observable and safe before any provider writes happen. Trellis derives or accepts a stable `traceId` at signal ingest, carries it through workflow dispatch, approvals, provider action intents, queue messages, and side-effect execution, and records the timeline in `trellis_trace_events`. Generated audit and trace event ids are scoped to the signal or workflow/action id so repeated webhook runs do not overwrite each other.
+
+`trellis_trace_events` is the canonical trace log. Optional exporters can mirror each trace event to a bound `TRELLIS_TRACE_EXPORTER`, a generic `TRELLIS_TRACE_EXPORT_URL`, Langfuse, or Braintrust. Export failures are swallowed after the D1 write so signal ingest, approvals, workflow replay, and provider action execution keep moving. `/healthz`, `/mcp/trellis`, and the dashboard expose whether trace export is configured without leaking secrets.
+
+Approval decisions update D1, append an audit event, and enqueue a runtime event. Approved side effects create provider action intents. If no-send mode is still enabled, those intents are recorded as `blocked_no_send` instead of calling the provider.
+
+After a webhook run is persisted and enqueued, Trellis starts the configured `PROSPECT_WORKFLOW` binding with a stable instance id and params containing the signal, workflow name, prospect ids, draft ids, approval ids, and audit event ids. Dispatch and workflow checkpoints are recorded in `trellis_workflow_runs`; dispatch errors are returned as `workflowDispatch.ok: false` but do not make webhook ingestion fail.
+
+Queued provider actions can be executed through `POST /provider-actions/:id/execute`. The executor refuses to run while no-send mode is enabled, refuses actions that are not `queued`, dispatches through a bound `TRELLIS_PROVIDER_EXECUTOR` when present, and includes built-in AgentMail `email.send` / `mail.reply`, Attio `crm.update`, and `handoff.webhook` executors. Execution success or failure updates D1, appends audit, and emits queue events.
+
+Completed `email.send` actions automatically schedule a `follow_up` run on `PROSPECT_WORKFLOW`. The schedule uses `TRELLIS_FOLLOW_UP_DELAY` when set, defaults to `3 days`, carries the provider message/thread ids into the workflow params, and records `scheduled`, `follow_up_scheduled`, and `follow_up_due` checkpoints in `trellis_workflow_runs`.
+
+Operator controls live in `trellis_operator_controls`. The global kill switch and campaign/thread pause records are exposed through `/operator/*` routes, the dashboard, and the MCP snapshot. Active controls block workflow dispatch before Cloudflare Workflows start and block queued provider-action execution before side effects run. Each control change writes audit, trace, and queue events.
+
+Replay controls use the existing durable records instead of asking operators to understand the queue substrate. `POST /operator/workflows/:id/replay` reads the stored workflow params from `trellis_workflow_runs`, creates a new Cloudflare Workflow instance, and records the replay. `POST /operator/provider-actions/:id/replay` moves a failed or blocked provider action back to `queued` and emits a new `trellis.provider.action.queued` message for recovery.
+
+The MCP snapshot and dashboard include compact recent D1 projections for signals, prospects, drafts, approvals, provider actions, workflow runs, audit events, trace events, and smoke runs. This backs the inspection tools with durable Trellis state instead of only showing aggregate counts.
+
+The hidden `TrellisAgent` Durable Object also returns a read-only snapshot when routed through `/agents/*`. If the Durable Object storage exposes KV-style `trellis:snapshot` / `trellis:memory` records or Cloudflare SQLite, Trellis reports that local agent memory without requiring users to call Cloudflare primitives directly.
+
+The generated Worker also exposes a Cloudflare Queues consumer through the same hidden runtime object. `trellis.provider.action.queued` messages are drained by the executor and acknowledged on handled outcomes. Provider execution failures are recorded, reset to `queued` for the Cloudflare retry attempt, and can still be requeued manually through the operator replay route after DLQ inspection.
+
+`GET /smoke` remains safe to run before provider credentials are connected. When `TRELLIS_DB` is bound, it writes a row to `trellis_smoke_runs`, appends a `smoke.pass` or `smoke.fail` trace event, and surfaces the count through MCP and the dashboard.
+
+The Flue harness boundary receives a Trellis-generated tool catalog by default. The catalog starts with `trellis.health` and, when Firecrawl is the configured research provider, executable `research.search` and `research.extract` tools. When `PROSPEO_API_KEY` is configured, the catalog also exposes executable `email.enrich` for verified contact enrichment. `TRELLIS_MCP_TOOLS` can still override that catalog for advanced hosts.
+
+Signal webhooks support optional shared-secret verification through `TRELLIS_WEBHOOK_SECRET` or `SIGNAL_WEBHOOK_SECRET`. If a secret is configured, callers must send either `Authorization: Bearer <secret>`, `x-trellis-webhook-secret`, or `x-webhook-secret`.
+
+Apify discovery webhooks can be posted to `POST /webhooks/apify`. `ACTOR.RUN.SUCCEEDED` events with inline `items`, `signals`, or dataset metadata are normalized into Trellis signals with `provider: "apify"` and a source such as `linkedin_public_post`, then processed through the same D1, Queue, Workflow, MCP, and dashboard path as generic signal webhooks. If the webhook only includes a dataset id, Trellis fetches dataset items when `APIFY_TOKEN` is configured. If `APIFY_WEBHOOK_SECRET` is configured, Trellis accepts `?secret=...`, `Authorization: Bearer <secret>`, `x-apify-webhook-secret`, or the shared Trellis webhook secret headers.
+
+AgentMail reply webhooks can be posted to `POST /webhooks/agentmail`. `message.received` events are normalized into Trellis signals with `provider: "agentmail"` and `source: "reply.webhook"`, then processed through the same pack, harness, D1, queue, draft, approval, and audit path as generic signals. If `AGENTMAIL_WEBHOOK_SECRET` is configured, Trellis accepts either a bound `TRELLIS_AGENTMAIL_WEBHOOK_VERIFIER(rawBody, headers, secret)` verifier or a shared-secret `Authorization: Bearer <secret>` / `x-agentmail-webhook-secret` header.
+
+Signal webhooks also accept `Idempotency-Key`, `x-trellis-idempotency-key`, or `idempotencyKey` in the JSON body. If the payload does not provide a signal id, Trellis derives a stable id from that key.
+
+## Knowledge And Skills
+
+Knowledge lives in markdown:
+
+- `knowledge/icp.md`
+- `knowledge/product.md`
+- `knowledge/usp.md`
+- `knowledge/compliance.md`
+- any additional product or market docs
+
+Skills live in tracked `SKILL.md` files:
+
+- `skills/icp-qualification/SKILL.md`
+- `skills/research-brief/SKILL.md`
+- `skills/sdr-copy/SKILL.md`
+- `skills/reply-policy/SKILL.md`
+- `skills/handoff-policy/SKILL.md`
+
+Run:
+
+```bash
+trellis docs add ./knowledge
+```
+
+to create the local manifest that deploy can verify and upload into the Cloudflare-backed pack store.
+
+`trellis deploy` syncs:
+
+- `.trellis/knowledge-pack.json` to `knowledge/manifest.json`
+- verified knowledge markdown to `knowledge/files/*`
+- tracked `skills/**/SKILL.md` files to `skills/files/*`
+
+For generated Cloudflare apps, deploy also provisions the first-run infrastructure it can safely own: D1 database resolution/creation, `database_id` config updates, R2 bucket creation/verification, and events queue plus dead-letter queue creation/verification.
+
+At runtime, the Worker reads `TRELLIS_PACKS`, hydrates bounded markdown contents from `knowledge/files/*` and `skills/files/*`, passes that pack context into the agent run, and exposes pack counts through the webhook response, MCP snapshot, and dashboard.
+
+`app.skill(...)` first checks for a hidden harness binding. Generated v3 apps provide `TRELLIS_FLUE_CONTEXT_FACTORY`, which builds a real `@flue/sdk` context after Trellis has parsed the signal and hydrated R2 packs. The generated adapter preloads `AGENTS.md`, `knowledge/*`, and `.agents/skills/*/SKILL.md` into Flue's virtual sandbox, registers the Cloudflare AI binding through the configured `TRELLIS_AI_GATEWAY_ID` (default `default`), and stores Flue session state in `TRELLIS_DB`. Advanced hosts can still provide a structural `TRELLIS_HARNESS` or direct `TRELLIS_FLUE_CONTEXT`. If no harness is present, smoke and local tests use the deterministic safe fixture path.
+
+## Provider Manifests
+
+Provider connection manifests live under `.trellis/providers/`. They are intentionally non-secret.
+
+Supported v3 provider IDs:
+
+- `attio`
+- `agentmail`
+- `firecrawl`
+- `apify`
+- `prospeo`
+- `langfuse`
+- `braintrust`
+
+Provider credentials belong in Cloudflare secrets, local env, or the deployment environment.
+
+## Verification
+
+Local repository verification:
 
 ```bash
 npm run typecheck
-npm test
 npm run build
-npm run discovery:tick
-npm run sandbox:probe
+npm test
+npm run trellis -- doctor --json
+npm run trellis -- smoke --json
+npm run trellis -- deploy --json
+npm run trellis -- verify cloudflare --json
 ```
 
-## Campaign Timezones and Quiet Hours
+Generated app verification:
 
-Campaign quiet hours are evaluated in the campaign's local IANA timezone, not UTC.
-
-- each campaign stores a `timezone` value
-- new campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE`
-- you can update a live campaign through the first-party MCP tool `control.setCampaignTimezone`
-- quiet-hours start/end remain integer hours, but they are interpreted in that campaign-local timezone
-
-Example:
-
-```text
-control.setCampaignTimezone({"campaignId":"cmp_default","timezone":"America/New_York"})
+```bash
+npm run trellis -- doctor
+npm run trellis -- smoke
+npm run trellis -- deploy
+npm run trellis -- verify cloudflare
+npm run trellis -- verify cloudflare --live --url https://<worker>
+npm run trellis -- verify cloudflare --live --url https://<worker> --exercise-agent
 ```
 
-## Changing the Model
+`--exercise-agent` posts one safe signal webhook and verifies the deployed worker records D1 persistence, provider-run state, queue fanout, workflow dispatch, R2 pack visibility, operator workflow replay, no-send approval gating, provider-action requeue, and the post-run MCP snapshot.
 
-The current default model is `moonshotai/kimi-k2.6`.
+## Migration Material
 
-There are two places to change it:
-
-- sandbox turns: `src/orchestration/sandbox-broker.ts`
-- structured classification / qualification / policy calls: `src/services/ai-service.ts`
-
-When changing models:
-
-- keep the sandbox and structured paths aligned unless you intentionally want different models
-- keep routing through Vercel AI Gateway
-- rerun `npm run sandbox:probe`, `npm run typecheck`, and `npm test`
-
-## Skills
-
-Tracked AISDR skills live in `skills/`.
-
-Current tracked skills:
-
-- `skills/icp-qualification`
-- `skills/research-brief`
-- `skills/research-checks`
-- `skills/sdr-copy`
-- `skills/reply-policy`
-- `skills/handoff-policy`
-
-How skills are loaded:
-
-- repo skills from `skills/` are copied into each sandbox session
-- local-only skills from `.claude/skills/` are also mounted if they exist, but they are not part of the OSS repo
-
-Recommended pattern:
-
-- put AISDR-specific, reusable behavior in tracked `skills/`
-- put personal or vendor/dev-only helper skills in local `.claude/skills/` or ignored folders like `.agents/`
-
-To add a new tracked skill:
-
-1. create `skills/<skill-name>/SKILL.md`
-2. keep it focused on one repeatable behavior
-3. reference it in the relevant sandbox prompt in `src/orchestration/prospect-workflow.ts`
-4. redeploy so new sandbox sessions pick it up
-
-## Knowledge Pack
-
-The markdown files in `knowledge/` are part of the live runtime.
-
-- `knowledge/icp.md`
-  Main source of truth for who should qualify.
-- `knowledge/product.md`
-  What the product is and what it helps with.
-- `knowledge/usp.md`
-  How the product should be positioned.
-- `knowledge/compliance.md`
-  Hard safety and policy constraints.
-- `knowledge/negative-signals.md`
-  Poor-fit cues and disqualifying patterns.
-- `knowledge/handoff.md`
-  When the agent should escalate to a human.
-
-Practical rule:
-
-- update `icp.md` when you change who should qualify
-- update `product.md` when you change what is being sold
-- update `usp.md` when you change how it should be framed
-
-If those drift apart, qualification and copy quality drift too.
-
-## MCP
-
-There are two MCP layers:
-
-1. sandbox-mounted MCP servers
-2. the first-party `orchid-sdr` MCP server
-
-### Add a Sandbox-Mounted MCP
-
-Sandbox MCP servers are written into `.mcp.json` during sandbox setup in `src/orchestration/sandbox-broker.ts`.
-
-Current defaults:
-
-- `orchid-sdr` first-party MCP
-- `parallel-search` via `https://search.parallel.ai/mcp`
-- `firecrawl` when `FIRECRAWL_API_KEY` is set
-
-To add another one:
-
-1. update the `mcpServers` object written in sandbox setup
-2. pass any needed secrets into the sandbox env
-3. mention the tool in the relevant prompt or skill
-
-### Add a First-Party `orchid-sdr` Tool
-
-If you want a tool to run through your backend instead of directly hitting a vendor MCP:
-
-1. add the behavior in `src/services/mcp-tools.ts`
-2. expose it in `src/mcp/server-factory.ts`
-3. back it with an adapter, repository method, or service
-
-Use the first-party MCP for:
-
-- CRM mutations
-- stateful internal tools
-- provider abstraction
-- anything you want behind your own typed boundary
-
-Current `orchid-sdr` tool groups:
-
-Operator and pipeline tools:
-
-- `pipeline.summary`
-- `pipeline.activeThreads`
-- `pipeline.qualifiedLeads`
-- `pipeline.providerRuns`
-- `pipeline.failures`
-- `pipeline.workflowFeed`
-- `lead.getContext`
-- `lead.inspect`
-- `lead.updateState`
-- `thread.inspect`
-- `runtime.discovery`
-- `runtime.discoveryHealth`
-- `runtime.sandboxJobs`
-- `runtime.flags`
-- `control.runDiscovery`
-- `control.setNoSendsMode`
-- `control.setCampaignTimezone`
-
-Workflow and actuation tools:
-
-- `knowledge.search`
-- `research.search`
-- `research.extract`
-- `email.enrich`
-- `crm.syncProspect`
-- `mail.send`
-- `mail.reply`
-- `mail.pause`
-- `mail.preview`
-- `handoff.slack`
-- `handoff.webhook`
-
-Example remote MCP config:
-
-```json
-{
-  "mcpServers": {
-    "orchid-sdr": {
-      "type": "http",
-      "url": "https://your-app.example.com/mcp/orchid-sdr",
-      "headers": {
-        "Authorization": "Bearer ${ORCHID_SDR_MCP_TOKEN}"
-      }
-    }
-  }
-}
-```
-
-Auth model:
-
-- endpoint: `/mcp/orchid-sdr`
-- bearer-token protected
-- preferred token: `ORCHID_SDR_MCP_TOKEN`
-- fallback token: `ORCHID_SDR_SANDBOX_TOKEN`
-
-See also: `docs/email-providers.md` for the recommended email provider shape for Orchid SDR.
-
-## Attio
-
-There are two clean ways to use Attio with this stack.
-
-### 1. Deterministic app-side sync
-
-This repo exposes `crm.syncProspect` through the first-party MCP. When `ATTIO_API_KEY` is configured, the backend can:
-
-- create or update a company record
-- create or update a person record
-- link the person to the company
-- attach a qualification note to the company
-- optionally assert the company into `ATTIO_DEFAULT_LIST_ID`
-- optionally set the Attio list status using `ATTIO_DEFAULT_LIST_STAGE`
-- optionally set the list entry `main_point_of_contact`
-- automatically run that sync after the first outbound using `ATTIO_AUTO_OUTBOUND_STAGE`
-- automatically promote the Attio stage after reply classification using `ATTIO_AUTO_POSITIVE_REPLY_STAGE` and `ATTIO_AUTO_NEGATIVE_REPLY_STAGE`
-
-Current Attio flow for a qualified prospect:
-
-1. first outbound can auto-sync the prospect into Attio at `ATTIO_AUTO_OUTBOUND_STAGE`
-2. upsert company
-3. upsert person linked to the company
-4. create a qualification note on the company
-5. add the company to the configured AISDR list
-6. set the list stage, such as `Prospecting` or `Qualification`
-7. set the list entry main point of contact to the synced person
-8. later inbound replies can auto-promote the stage based on reply class
-
-Current reply-stage promotion defaults:
-
-- `positive`, `soft_interest`, `objection`, `referral`, `needs_human` -> `ATTIO_AUTO_POSITIVE_REPLY_STAGE`
-- `not_now`, `wrong_person`, `unsubscribe`, `bounce`, `spam_risk` -> `ATTIO_AUTO_NEGATIVE_REPLY_STAGE`
-- `ooo` -> no automatic stage change
-
-Current idempotency and dedupe order:
-
-1. stored Attio IDs from Postgres
-2. email, if present
-3. canonical LinkedIn profile URL
-4. canonical Twitter/X profile URL
-5. exact name plus company as a weak fallback
-
-The first successful sync stores:
-
-Manual operator sync still exists through `crm.syncProspect`. The automatic behavior is just a deterministic wrapper around the same path.
-
-- `prospects.attio_company_record_id`
-- `prospects.attio_person_record_id`
-- `prospects.attio_list_entry_id`
-
-### 2. Direct Attio MCP
-
-Attio also exposes a hosted remote MCP.
-
-Use that when:
-
-- you want local conversational CRM access
-- you want a sandboxed agent to search or inspect your live CRM
-- you want direct vendor tooling without wrapping it first
-
-## Normalized Signal Contract
-
-`/webhooks/signals` accepts a normalized signal shape from any source.
-
-It is source-agnostic, but not schema-agnostic. Raw vendor payloads should be mapped into this structure before ingestion.
-
-Example:
-
-```json
-{
-  "provider": "custom-source",
-  "source": "reddit_post",
-  "externalId": "batch_123",
-  "signals": [
-    {
-      "url": "https://example.com/post/1",
-      "authorName": "Jane Doe",
-      "authorTitle": "Head of RevOps",
-      "authorCompany": "Northstar",
-      "companyDomain": "northstar.ai",
-      "topic": "signal-based outbound",
-      "content": "We are rebuilding our GTM workflow stack around agentic tooling."
-    }
-  ]
-}
-```
-
-Why normalize explicitly:
-
-- dedupe needs stable fields
-- audits and replays are cleaner
-- provider schema drift is isolated to the mapper
-- the agent reasons after normalization, not instead of normalization
-
-The raw vendor object can still be preserved under `metadata.raw`.
-
-## Operational Notes
-
-- the sandbox lane is turn-scoped; durable memory lives in Postgres, Rivet actor state, and actor-local SQLite
-- only AISDR-specific skills should live in tracked `skills/`
-- if `.claude/skills/` exists locally, those skill bundles are also mounted into the sandbox
-- the sandbox gets the free hosted Parallel Search MCP by default
-- if `PARALLEL_API_KEY` is set, the same Parallel MCP is mounted with bearer auth for higher limits
-- if `FIRECRAWL_API_KEY` is set, the sandbox gets the hosted Firecrawl MCP
-- `discoveryCoordinator` is keyed by `[campaignId, source]` and keeps term frontier and run memory in Rivet SQLite
-- Postgres remains the shared CRM and reporting layer
-- qualified leads are persisted in Postgres and exposed through the `qualified_leads` view
+The old AI SDR reference app and composition packages are behavior source material while v3 reaches full parity. They are intentionally omitted from the public CLI reference because the default product path is Trellis v3 on Cloudflare.

@@ -1,186 +1,130 @@
-# Orchid SDR
+# Trellis
 
-`orchid-sdr` is an agent-native outbound control plane.
+Trellis is a vertical GTM agent stack.
 
-It wakes up on a schedule, finds leads from public signals, researches the person and company, qualifies them against `knowledge/icp.md`, writes everything to Postgres, and can optionally draft, send, and track outreach.
+It is not trying to be a universal agent framework. The v3 direction is one curated path for shipping reliable GTM agents: Trellis owns the GTM product contract, Flue handles the agent harness under the hood, and Cloudflare supplies the durable runtime, storage, workflows, queues, and observability substrate.
 
-## What It Does
-
-- runs hourly weekday discovery with Rivet actors
-- ingests signals from Apify or any normalized webhook source
-- researches the source post, person, company, and company news
-- qualifies leads against the repo knowledge pack
-- writes the full audit trail to Postgres
-- exposes the system through a dashboard and a remote MCP server
-- enforces quiet hours in the campaign's local IANA timezone
-- can auto-sync outbound accounts into Attio and promote CRM stages on replies
-- can optionally send and reply through AgentMail
-
-## Data Flow
-
-```text
-                           +----------------------+
-                           |  knowledge/icp.md    |
-                           |  product.md / usp.md |
-                           |  repo skills/        |
-                           +----------+-----------+
-                                      |
-                                      v
-                    +--------------------------------------+
-                    |  discoveryCoordinator (Rivet actor)  |
-                    |  wakes on a schedule                 |
-                    +----------------+---------------------+
-                                     |
-                                     | picks search terms
-                                     v
-                           +----------------------+
-                           |  Apify or other      |
-                           |  source systems      |
-                           +----------+-----------+
-                                      |
-                                      | webhook payload
-                                      v
-                +------------------------------------------------+
-                | /webhooks/apify or /webhooks/signals           |
-                +----------------------+-------------------------+
-                                       |
-                                       v
-                         +----------------------------+
-                         | sourceIngest (Rivet actor) |
-                         | normalize + persist signal |
-                         +-------------+--------------+
-                                       |
-                                       v
-                         +-----------------------------+
-                         | prospectThread (Rivet actor)|
-                         | one workflow per prospect   |
-                         +-------------+---------------+
-                                       |
-                                       | research
-                                       v
-                     +-------------------------------------------+
-                     | Firecrawl + sandbox-agent on Vercel      |
-                     | post + profile + company + news          |
-                     +------------------+------------------------+
-                                        |
-                                        | qualification + drafting
-                                        v
-                           +-----------------------------+
-                           | Postgres system of record   |
-                           | signals / prospects /       |
-                           | threads / briefs / messages |
-                           +------+----------------------+
-                                  |
-                +-----------------+------------------+
-                |                                    |
-                v                                    v
-        +---------------+                    +------------------+
-        | Dashboard     |                    | MCP server       |
-        | /dashboard    |                    | /mcp/orchid-sdr  |
-        +---------------+                    +------------------+
-                                  |
-                                  | optional
-                                  v
-                        +-----------------------+
-                        | AgentMail / Attio     |
-                        | send, replies, CRM    |
-                        +-----------------------+
-```
-
-## Core Surfaces
-
-- `GET /dashboard`
-  Operator console for pipeline state, actor health, sandbox jobs, provider runs, and qualified leads.
-- `POST|GET|DELETE /mcp/orchid-sdr`
-  Remote MCP server for querying and controlling the system from a local agent.
-- `POST /webhooks/apify`
-  Discovery ingest for Apify run completions.
-- `POST /webhooks/signals`
-  Generic ingest for normalized signals from any source.
-- `POST /webhooks/agentmail`
-  Inbound email wake-up path.
-- `GET /healthz`
-  Liveness check.
-
-## Quick Start
-
-1. Install dependencies.
+## The Shape
 
 ```bash
-npm install
+trellis init acme-sdr
+trellis deploy
+trellis verify cloudflare
+trellis doctor
+trellis smoke
+trellis connect attio
+trellis connect agentmail
+trellis connect firecrawl
+trellis connect apify      # optional discovery
+trellis connect prospeo    # optional enrichment
+trellis docs add ./product-docs
 ```
 
-2. Copy env values into `.env`.
+The first deploy should require only Cloudflare auth. CRM, email, research, optional discovery/enrichment, and optional trace providers connect after the app is alive.
 
-At minimum you usually want:
+`trellis connect` writes non-secret provider manifests under `.trellis/providers/` so readiness can be checked without storing credentials.
 
-- `DATABASE_URL`
-- `HANDOFF_WEBHOOK_SECRET`
-- `ORCHID_SDR_SANDBOX_TOKEN`
-- `NO_SENDS_MODE=true`
+`trellis deploy` auto-packs the default `knowledge/**/*.md` files. `trellis docs add` is still available when you want an explicit `.trellis/knowledge-pack.json` with markdown file hashes. Deploy syncs that manifest when present, markdown files, and tracked `SKILL.md` files into `TRELLIS_PACKS`, and the runtime hydrates those markdown files into bounded agent context.
 
-3. Run migrations and start the app.
+`trellis deploy` also owns the first Cloudflare provisioning pass for the generated app: it resolves or creates the D1 database and writes the `database_id`, creates or verifies the R2 buckets, creates or verifies the events queue and dead-letter queue, then runs the pack sync and Wrangler deploy.
+
+`trellis verify cloudflare` checks the generated app shape, local smoke path, pack sync plan, and Cloudflare resource posture. With `--live --url <worker-url>` it also verifies Wrangler auth and deployed `/healthz`, `/mcp/trellis`, and `/smoke`; add `--exercise-agent` to post a safe signal through the live Flue/Cloudflare harness. Add `--attio-smoke --provider-smoke-token <token>` to run the explicit Attio provider smoke at `POST /smoke/attio`; that route requires `ATTIO_API_KEY` and writes a deterministic smoke company/person through the configured field map.
+
+## What Trellis Owns
+
+- GTM app layout
+- markdown knowledge and skill packs
+- normalized signal contracts
+- prospect, thread, approval, and audit schemas
+- provider setup conventions
+- no-send and approval gates
+- provider action execution with no-send/status guards
+- smoke tests
+- MCP and dashboard inspection surfaces
+- Cloudflare deploy wiring
+
+## What Trellis Uses
+
+| Concern | Default |
+| --- | --- |
+| Agent harness | Flue, hidden behind Trellis |
+| Runtime | Cloudflare Workers |
+| Durable identity | Cloudflare Agents / Durable Objects |
+| Workflows | Cloudflare Workflows |
+| Queryable state | D1 |
+| Per-agent state | Durable Object SQLite |
+| Markdown and artifacts | R2 |
+| Background work | Queues |
+| Model routing | AI Gateway |
+| Filesystem context | just-bash |
+| Full sandbox | Cloudflare Sandbox when needed |
+| Browser automation | Browser Run / sandbox provider slot |
+| Observability | D1 trace events, Workers logs, AI Gateway logs, audit events, optional generic/Langfuse/Braintrust export |
+
+Generated apps install `@flue/sdk` and create a hidden Flue context factory in the Worker wrapper. `app.skill(...)` stays Trellis-only: Trellis hydrates R2 markdown packs, passes Firecrawl/Trellis MCP tools into Flue, opens the session by thread id, and validates returned `data` or JSON text with Zod.
+
+## Public API Target
+
+```ts
+import { trellis, schema } from "@trellis/gtm";
+import { agentmail, attio, firecrawl } from "@trellis/providers";
+import attioMap from "./crm/attio.map";
+
+export default trellis.agent("sdr", {
+  crm: attio({ map: attioMap }),
+  email: agentmail(),
+  research: firecrawl(),
+  model: "anthropic/claude-sonnet-4.6",
+  knowledge: "knowledge/**/*.md",
+  skills: "skills/**/SKILL.md",
+  safety: trellis.safeOutbound(),
+}, async (app) => {
+  const signal = await app.signal();
+  const context = await app.context(signal);
+  const qualification = await app.skill("icp-qualification", {
+    context,
+    schema: schema.qualification(),
+  });
+  const research = await app.skill("research-brief", {
+    context,
+    args: { qualification },
+    schema: schema.researchBrief(),
+  });
+  const draft = await app.skill("sdr-copy", {
+    context,
+    args: { qualification, research },
+    schema: schema.outboundDraft(),
+  });
+
+  return app.workflow("prospect").start({ signal, qualification, research, draft });
+});
+```
+
+## Current Branch Status
+
+The repo still contains the older reference app and framework-composition packages. They are behavior/parity source material only, not the v3 public architecture.
+
+Root npm scripts now follow that boundary. `npm run build`, `npm run doctor`, `npm run smoke`, `npm run verify`, and `npm run dev` exercise the v3 Trellis/Cloudflare path. The v3 CLI rejects old composition commands even when a legacy flag is passed. The old AI SDR baseline is still available only through explicit `legacy:*` scripts and `npm run build:all`.
+
+The v3 surface now lives in:
+
+- `packages/gtm`
+- `packages/providers`
+- `docs/trellis-v3-vision.md`
+- `docs/trellis-v3-parity-contract.md`
+- the default `trellis init`, `trellis deploy`, `trellis verify`, `trellis smoke`, `trellis connect`, and `trellis docs add` CLI path
+
+Migration compatibility stays out of the default help, scaffold, docs, deploy story, and CLI escape hatches.
+
+## Verify
 
 ```bash
-npm run db:migrate
-npm run dev
+npm run typecheck
+npm test
+npm run build
+npm run trellis -- help
+npm run trellis -- doctor --json
+npm run trellis -- smoke --json
+npm run trellis -- deploy --json
+npm run trellis -- verify cloudflare --json
 ```
-
-4. Open the operator console.
-
-```text
-http://localhost:3000/dashboard
-```
-
-If you want the full runtime, add provider keys such as Apify, Firecrawl, Vercel AI Gateway, AgentMail, and Attio. When Attio is configured, the first outbound can auto-create or update the company and contact, and classified replies can automatically promote the Attio stage.
-
-Campaign quiet hours are evaluated in the campaign's local timezone. New campaigns inherit `DEFAULT_CAMPAIGN_TIMEZONE` and you can update a live campaign later through the remote MCP tool `control.setCampaignTimezone`.
-
-Parallel Search MCP is mounted into sandbox turns by default using the free `https://search.parallel.ai/mcp` endpoint. If you set `PARALLEL_API_KEY`, the sandbox uses the same MCP with a bearer token for higher rate limits.
-
-By default, discovery runs once per hour on weekdays only, and LinkedIn discovery will fetch up to 50 posts per run.
-
-## Multiple Campaigns
-
-One deployment can run multiple campaigns.
-
-That is the right model when you want multiple outbound agents for the same product, for example:
-
-- different ICP slices
-- different discovery sources
-- different sender identities
-- different outreach strategies
-- different timezones and quiet-hour windows
-
-In that setup, keep one deployed control plane and create multiple campaigns inside it.
-
-Separate deploys are safer when the underlying product or knowledge pack is different, because the current `knowledge/` files and tracked `skills/` are still repo-global rather than campaign-scoped.
-
-## Repo Layout
-
-- `src/`
-  API, actors, orchestration, adapters, MCP server, and dashboard.
-- `knowledge/`
-  Product context that feeds qualification, research, and drafting.
-- `skills/`
-  Sandbox skill instructions for qualification, research, copy, reply policy, and handoff policy.
-- `docs/reference.md`
-  Full setup, env, MCP, skill, knowledge-pack, Attio, and webhook details.
-- `docs/email-providers.md`
-  Email provider guidance for agent-native outbound and why AgentMail is the default fit.
-- `blog/`
-  Long-form posts on the architecture, product thesis, and category.
-- `docs/blog/`
-  Blog and launch writing.
-
-## Read Next
-
-- [Reference](docs/reference.md)
-- [Email Providers](docs/email-providers.md)
-- [Blog Series](blog/README.md)
-- [The AI SDR Market Is Broken](docs/blog/the-ai-sdr-market-is-broken.md)
-- [LinkedIn Post Draft](docs/blog/linkedin-post-built-an-ai-sdr-in-eight-hours.md)
-
-## License
-
-AGPL-3.0-only. See [LICENSE](LICENSE).

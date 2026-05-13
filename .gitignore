@@ -3,6 +3,8 @@ dist
 .DS_Store
 .env
 .env.local
+.env.vercel
+.mcp.json
 .rivet
 coverage
 *.log
@@ -31,3 +33,4 @@ skills-lock.json
 .trae/
 .windsurf/
 .zencoder/
+.vercel

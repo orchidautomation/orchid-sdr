@@ -1,0 +1,326 @@
+# Trellis v3 AI SDR Parity Contract
+
+This document defines what "parity with the existing AI SDR" means for the v3 rewrite.
+
+The existing reference app is a baseline for behavior only.
+
+It is not the target architecture.
+
+## Rule
+
+Rebuild the AI SDR with Trellis v3 primitives.
+
+Do not preserve Rivet, Vercel Sandbox, Convex, or generic framework-composability layers as public architecture.
+
+Those pieces are migration source material.
+
+The v3 happy path is:
+
+```bash
+trellis init acme-sdr
+trellis deploy
+trellis doctor
+trellis smoke
+trellis connect attio
+trellis connect agentmail
+trellis docs add ./product-docs
+```
+
+The first deploy should require only Cloudflare credentials.
+
+Provider credentials are connected after boot.
+
+## Target Stack
+
+| Concern | v3 Primitive |
+| --- | --- |
+| Agent harness | Flue, hidden behind Trellis |
+| HTTP app | Cloudflare Workers |
+| Durable business identity | Cloudflare Agents / Durable Objects |
+| Durable workflows | Cloudflare Workflows |
+| Queryable app state | D1 |
+| Per-agent memory/state | Durable Object SQLite |
+| Markdown and artifacts | R2 |
+| Background work | Cloudflare Queues |
+| Model routing | Cloudflare AI Gateway |
+| Lightweight filesystem context | just-bash |
+| Full sandboxed compute | Cloudflare Sandbox |
+| Web automation | Browser Run / Sandbox provider slot |
+| Operator control | Trellis dashboard + Trellis MCP |
+| Observability | AI Gateway logs, Workers logs/traces, audit events, optional Langfuse/Braintrust |
+
+## Public API Target
+
+The public API should look like Trellis, not Flue or Cloudflare:
+
+```ts
+import { trellis, schema } from "@trellis/gtm";
+import { attio, agentmail, firecrawl } from "@trellis/providers";
+
+export default trellis.agent("sdr", {
+  crm: attio(),
+  email: agentmail(),
+  research: firecrawl(),
+  knowledge: "knowledge/**/*.md",
+  skills: "skills/**/SKILL.md",
+  safety: trellis.safeOutbound(),
+}, async (app) => {
+  const signal = await app.signal();
+  const context = await app.context(signal);
+  const qualification = await app.skill("icp-qualification", {
+    context,
+    schema: schema.qualification(),
+  });
+  const research = await app.skill("research-brief", {
+    context,
+    args: { qualification },
+    schema: schema.researchBrief(),
+  });
+  const draft = await app.skill("sdr-copy", {
+    context,
+    args: { qualification, research },
+    schema: schema.outboundDraft(),
+  });
+
+  return app.workflow("prospect").start({ signal, qualification, research, draft });
+});
+```
+
+## Parity Checklist
+
+### 1. Boot And Deploy
+
+Existing behavior:
+
+- local dev boot
+- production deploy guidance
+- doctor readiness checks
+- dashboard login
+- `/healthz`
+- `/mcp/trellis`
+
+v3 parity:
+
+- `trellis init acme-sdr` generates the v3 GTM app
+- `trellis deploy` targets Cloudflare by default
+- first boot requires only Cloudflare credentials
+- provider credentials are optional until `trellis connect`
+- dashboard and MCP routes are present
+- approval approve/reject routes are present
+- `trellis doctor` validates Cloudflare bindings, D1, R2, Workflows, Queues, AI Gateway, and no-send mode
+- `trellis smoke` proves a safe fixture workflow
+
+Legacy to remove after replacement:
+
+- Vercel deploy as the default happy path
+- Convex deploy as required state plane
+- Rivet endpoint bootstrap
+- Vercel Sandbox auth as required sandbox path
+
+### 2. Knowledge And Skills
+
+Existing behavior:
+
+- `knowledge/*.md`
+- `skills/*/SKILL.md`
+- sandbox workspace mounting
+- skill-guided qualification, research, copy, reply policy, and handoff policy
+
+v3 parity:
+
+- repo or R2-backed pack loading
+- Trellis mounts knowledge and skills into the Flue/just-bash filesystem
+- `app.skill(...)` is the public API
+- generated apps install `@flue/sdk` and provide a hidden `TRELLIS_FLUE_CONTEXT_FACTORY` that mounts Trellis packs into Flue's virtual sandbox
+- hidden `TRELLIS_HARNESS` or direct Flue-compatible `TRELLIS_FLUE_CONTEXT` bindings remain available for advanced hosts and tests
+- skills can be versioned and traced
+- `trellis docs add <path>` writes `.trellis/knowledge-pack.json` with markdown file hashes as the local verification plan
+- `trellis deploy` syncs the knowledge manifest, markdown files, and tracked `SKILL.md` files to `TRELLIS_PACKS`
+- webhook processing, MCP, and dashboard can inspect `TRELLIS_PACKS` metadata
+
+Legacy to remove after replacement:
+
+- direct `.claude`/sandbox-agent coupling in the public happy path
+- manual `.mcp.json` assembly as a product-level concept
+
+### 3. Signal Ingest
+
+Existing behavior:
+
+- `/webhooks/signals`
+- `/webhooks/apify`
+- normalized signal schema
+- shared-secret verification
+- create signal
+- create or update prospect
+- downstream workflow failures do not make accepted ingest fail
+
+v3 parity:
+
+- Workers routes accept signal webhooks
+- `/webhooks/apify` accepts Apify discovery completion events, verifies `APIFY_WEBHOOK_SECRET` when configured, reads inline dataset items or fetches them with `APIFY_TOKEN`, and normalizes each item into the same Trellis signal path
+- `/webhooks/signals` accepts raw single records, nested `{ signal }` payloads, and mixed-source `{ signals: [...] }` batches
+- source payloads are normalized into a Trellis signal payload with `sourceRef`, author/account fields, content, metadata, and stable ids before agent execution
+- webhook verification is generated by Trellis
+- AgentMail reply webhooks have a first-class route and normalize `message.received` into Trellis signals
+- idempotency key is required or derived
+- optional shared-secret verification is enforced when `TRELLIS_WEBHOOK_SECRET` or `SIGNAL_WEBHOOK_SECRET` is configured
+- idempotency keys can derive stable signal ids for retry-safe webhook senders
+- accepted signal is durable before downstream workflow dispatch
+- webhook runs dispatch `PROSPECT_WORKFLOW` after persistence, and dispatch failures are reported without failing ingestion
+- workflow dispatches and checkpoints are queryable in D1 via `trellis_workflow_runs`
+- inbound source runs are queryable in D1 via `trellis_provider_runs`
+- completed outbound `email.send` actions schedule durable `follow_up` workflow runs with a configurable delay and due checkpoint
+- Queues handle fanout/retries/dead letters
+- failed queue drains reset provider actions to `queued` before retry so Cloudflare retry/DLQ recovery remains actionable
+- D1 records signal, provider run, audit event, and workflow dispatch
+
+Legacy to remove after replacement:
+
+- bespoke Hono/Rivet/Convex dispatch path as the primary route
+
+### 4. Prospect Lifecycle
+
+Existing behavior:
+
+- prospect thread actor
+- qualification
+- research brief
+- email enrichment
+- draft outbound
+- no-send mode
+- scheduled follow-ups
+- reply processing
+- handoff
+
+v3 parity:
+
+- `ProspectAgent` owns durable per-prospect identity
+- `prospect.workflow` owns durable stage progression
+- D1 stores queryable projection
+- Durable Object SQLite stores local thread memory
+- no-send mode and approval gates are enforced before every side effect
+- approvals can be approved or rejected as durable state transitions
+- approved side effects create provider action intents, and no-send mode records them as `blocked_no_send` instead of calling providers
+- queued provider action intents can be executed through the v3 executor route or Cloudflare queue consumer, with no-send/status guards, audit, and queue events
+- follow-ups use Workflows durable sleep/checkpoints
+
+Legacy to remove after replacement:
+
+- Rivet `prospectThread` as required orchestration substrate
+- actor-local SQLite as the public job model
+
+### 5. Provider Connections
+
+Existing behavior:
+
+- Attio CRM
+- AgentMail email
+- Firecrawl and Parallel research
+- Prospeo enrichment
+- Slack handoff
+- Apify discovery
+
+v3 parity:
+
+- first deploy does not require these credentials
+- `trellis connect attio`
+- `trellis connect agentmail`
+- `trellis connect firecrawl`
+- `trellis connect apify` for optional discovery webhooks
+- `trellis connect prospeo` for optional email enrichment
+- `trellis connect` writes non-secret provider manifests under `.trellis/providers/`
+- provider readiness checks are generated
+- provider side effects are approval-gated
+- provider action intents carry approval, signal, draft, operation, provider, and trace ids
+- provider action status transitions and executor outcomes emit audit and queue events for recovery
+- built-in executors cover the curated GTM stack first, including AgentMail `email.send` / `mail.reply`, Attio `crm.update`, and `handoff.webhook`
+- provider calls carry trace/workflow/prospect ids
+- provider failures are recorded, kept retryable for Cloudflare queue retry/DLQ handling, and recoverable through operator replay
+
+Legacy to remove after replacement:
+
+- provider modules that exist only to support arbitrary framework composition
+- provider credentials as boot blockers
+
+### 6. MCP And Dashboard
+
+Existing behavior:
+
+- `/mcp/trellis`
+- dashboard state
+- lead inspection
+- pipeline inspection
+- runtime controls
+- mail preview/send/reply tools
+- CRM tools
+- knowledge tools
+
+v3 parity:
+
+- Trellis MCP is generated from v3 state/workflow/provider contracts
+- the hidden Flue harness receives Trellis-generated runtime tools by default, including Firecrawl research tools when configured
+- dashboard reads D1 projections and agent snapshots
+- operator can inspect traces, audit events, approvals, operator controls, and workflow state
+- operator can pause/resume campaigns and threads, approve/reject side effects, and enable/disable the global kill switch
+- operator can replay stored workflow runs and requeue provider actions for recovery
+- remaining operator parity still needs verification against a real Cloudflare dead-letter queue
+
+Legacy to remove after replacement:
+
+- dashboard assumptions tied to Convex/Rivet state shape
+- MCP tools that expose old runtime details rather than Trellis concepts
+
+### 7. Observability And Reliability
+
+Existing behavior:
+
+- audit events
+- provider runs
+- sandbox job table
+- dashboard runtime state
+
+v3 parity:
+
+- trace id from webhook to final side effect, with D1 `trellis_trace_events` for signal, skill/model, workflow, approval, provider intent, and provider outcome spans
+- AI Gateway logs for model calls
+- Workers logs/traces for platform events
+- D1 audit events for product history
+- optional trace export to `TRELLIS_TRACE_EXPORTER`, `TRELLIS_TRACE_EXPORT_URL`, Langfuse, or Braintrust after the D1 trace write succeeds
+- workflow replay through stored `trellis_workflow_runs`
+- provider-action requeue for dead-letter-style recovery
+- real Cloudflare dead-letter queue recovery verification
+- smoke test history is recorded in D1 via `trellis_smoke_runs` and surfaced through MCP/dashboard snapshots
+
+Legacy to remove after replacement:
+
+- treating sandbox job logs as the main observability model
+- runtime-specific state as the operator-facing truth
+
+## Implementation Order
+
+1. Create v3 public API packages: `@trellis/gtm`, `@trellis/providers`.
+2. Add Cloudflare-first CLI shape: `deploy`, `connect`, `docs add`, `smoke`.
+3. Add v3 reliability checks through `doctor`.
+4. Build a Cloudflare app shell that boots with only Cloudflare credentials, including first-run D1/R2/Queue provisioning from the generated Trellis config.
+5. Implement R2-backed knowledge/skill pack loading in the runtime, including bounded markdown hydration into agent context.
+6. Implement `app.signal`, `app.context`, `app.skill`, and `app.workflow`.
+7. Port normalized signal ingest to Workers + Queues + D1.
+8. Port prospect lifecycle to Cloudflare Agents + Workflows.
+9. Port MCP/dashboard to D1 projections and agent snapshots.
+10. Port provider connections with readiness checks and approval gates.
+11. Delete or quarantine old Rivet/Vercel/Convex-first surfaces once parity is proven.
+
+## Completion Definition
+
+The v3 rewrite reaches AI SDR parity when:
+
+- the one-screen `@trellis/gtm` agent runs an end-to-end smoke workflow
+- `trellis deploy` is Cloudflare-first and requires only Cloudflare credentials for first boot
+- `trellis smoke` ingests a fixture signal, creates a prospect, runs qualification, creates a draft, records audit events, and stops before send
+- dashboard and MCP can inspect the fixture workflow
+- Attio, AgentMail, and Firecrawl can be connected after boot
+- no-send and approval gates are enforced before real side effects
+- observability links webhook, workflow, model, provider, approval, and side-effect events
+- optional trace export failures do not break signal ingest, approvals, workflow replay, or provider execution
+- legacy Rivet/Vercel/Convex-first paths are no longer required for the happy path

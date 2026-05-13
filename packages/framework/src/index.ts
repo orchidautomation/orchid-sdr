@@ -1,0 +1,572 @@
+import { z } from "zod";
+
+export const aiSdrProviderKindSchema = z.enum([
+  "crm",
+  "email",
+  "state",
+  "database",
+  "signal-source",
+  "research",
+  "model",
+  "runtime",
+  "mcp",
+  "handoff",
+]);
+
+export const aiSdrCapabilityIdSchema = z.enum([
+  "crm",
+  "email",
+  "source",
+  "state",
+  "search",
+  "extract",
+  "enrichment",
+  "runtime",
+  "model",
+  "handoff",
+  "observability",
+  "compliance",
+  "database",
+  "mcp",
+]);
+
+export const aiSdrEnvVarSchema = z.object({
+  name: z.string().min(1),
+  required: z.boolean().optional(),
+  description: z.string().optional(),
+});
+
+export const aiSdrProviderDefinitionSchema = z.object({
+  id: z.string().min(1),
+  kind: aiSdrProviderKindSchema,
+  displayName: z.string().min(1),
+  packageName: z.string().optional(),
+  env: z.array(aiSdrEnvVarSchema).optional(),
+  capabilities: z.array(z.string().min(1)).optional(),
+});
+
+export const aiSdrSkillDefinitionSchema = z.object({
+  id: z.string().min(1),
+  path: z.string().min(1),
+  description: z.string().optional(),
+});
+
+export const aiSdrKnowledgeDefinitionSchema = z.record(z.string().min(1), z.string().min(1))
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "knowledge must declare at least one markdown file",
+  });
+
+export const aiSdrCampaignDefinitionSchema = z.object({
+  id: z.string().min(1),
+  timezone: z.string().optional(),
+  noSendsMode: z.boolean().optional(),
+  sources: z.array(z.string().min(1)).optional(),
+});
+
+export const aiSdrWebhookAuthModeSchema = z.enum([
+  "none",
+  "shared-secret-query-or-header",
+  "svix-signature",
+  "hmac-header",
+]);
+
+export const aiSdrWebhookDefinitionSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  method: z.enum(["POST"]).default("POST"),
+  path: z.string().min(1),
+  providerId: z.string().min(1).optional(),
+  secretEnv: z.string().min(1).optional(),
+  fallbackSecretEnv: z.string().min(1).optional(),
+  auth: aiSdrWebhookAuthModeSchema.default("none"),
+  authKey: z.string().min(1).optional(),
+  eventTypes: z.array(z.string().min(1)).optional(),
+});
+
+export const aiSdrModuleDocSchema = z.object({
+  label: z.string().min(1),
+  path: z.string().min(1),
+});
+
+export const aiSdrModuleSmokeCheckSchema = z.object({
+  id: z.string().min(1),
+  description: z.string().optional(),
+  command: z.string().optional(),
+});
+
+export const aiSdrContractIdSchema = z.enum([
+  "signal.normalized.v1",
+  "signal.webhook.v1",
+  "signal.discovery.v1",
+  "crm.prospectSync.v1",
+  "crm.stageUpdate.v1",
+  "email.outbound.v1",
+  "email.inbound.v1",
+  "state.reactive.v1",
+  "state.workflow.v1",
+  "state.agentThreads.v1",
+  "state.auditLog.v1",
+  "research.search.v1",
+  "research.extract.v1",
+  "research.enrich.v1",
+  "research.deepResearch.v1",
+  "research.monitor.v1",
+  "model.gateway.v1",
+  "runtime.actor.v1",
+  "runtime.sandbox.v1",
+  "mcp.tools.v1",
+  "handoff.notify.v1",
+]);
+
+export const aiSdrCapabilityBindingSchema = z.object({
+  capabilityId: aiSdrCapabilityIdSchema,
+  providerId: z.string().min(1),
+  contractId: aiSdrContractIdSchema.optional(),
+  purpose: z.string().min(1).optional(),
+  default: z.boolean().optional(),
+});
+
+export const aiSdrPackageBoundaryVisibilitySchema = z.enum([
+  "public",
+  "private",
+  "internal",
+]);
+
+export const aiSdrPackageBoundarySchema = z.object({
+  id: z.string().min(1),
+  packageName: z.string().min(1),
+  visibility: aiSdrPackageBoundaryVisibilitySchema.default("public"),
+  description: z.string().optional(),
+  moduleIds: z.array(z.string().min(1)).optional(),
+  providerIds: z.array(z.string().min(1)).optional(),
+  capabilityIds: z.array(aiSdrCapabilityIdSchema).optional(),
+  contractIds: z.array(aiSdrContractIdSchema).optional(),
+});
+
+export const aiSdrMcpAuthModeSchema = z.enum([
+  "none",
+  "optional-bearer",
+  "bearer",
+  "url-token",
+]);
+
+export const aiSdrMcpToolCapabilitySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  capabilityIds: z.array(aiSdrCapabilityIdSchema),
+  contracts: z.array(aiSdrContractIdSchema).optional(),
+});
+
+export const aiSdrMcpServerDefinitionSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+  providerKey: z.string().min(1).optional(),
+  transport: z.enum(["http", "stdio"]),
+  url: z.string().min(1).optional(),
+  command: z.string().min(1).optional(),
+  args: z.array(z.string()).optional(),
+  auth: aiSdrMcpAuthModeSchema.optional(),
+  requiredEnv: z.array(aiSdrEnvVarSchema).optional(),
+  optionalEnv: z.array(aiSdrEnvVarSchema).optional(),
+  tools: z.array(aiSdrMcpToolCapabilitySchema).optional(),
+});
+
+export const aiSdrMcpExposureSchema = z.object({
+  toolGroups: z.array(z.string().min(1)).optional(),
+  includeTools: z.array(z.string().min(1)).optional(),
+  excludeTools: z.array(z.string().min(1)).optional(),
+});
+
+export {
+  createBootstrapRunner,
+  hasRemoteRuntimeEndpoint,
+  runNonFatalBootstrapTask,
+  shouldSkipLocalRuntimeOnVercel,
+} from "./runtime-bootstrap.js";
+export { loadProcessEnvFiles } from "./env-loader.js";
+
+export const aiSdrSandboxStageModelRoutingSchema = z.object({
+  discovery: z.string().min(1).optional(),
+  qualify: z.string().min(1).optional(),
+  build_research_brief: z.string().min(1).optional(),
+  first_outbound: z.string().min(1).optional(),
+  await_reply: z.string().min(1).optional(),
+  classify_reply: z.string().min(1).optional(),
+  respond_or_handoff: z.string().min(1).optional(),
+}).partial();
+
+export const aiSdrModelRoutingSchema = z.object({
+  defaultModel: z.string().min(1).optional(),
+  sandbox: z.object({
+    defaultModel: z.string().min(1).optional(),
+    stages: aiSdrSandboxStageModelRoutingSchema.optional(),
+  }).optional(),
+  structured: z.object({
+    classifyReply: z.string().min(1).optional(),
+    policyCheck: z.string().min(1).optional(),
+    qualifyProspect: z.string().min(1).optional(),
+  }).optional(),
+});
+
+export const aiSdrModuleDefinitionSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+  packageName: z.string().optional(),
+  description: z.string().optional(),
+  providerKey: z.string().min(1).optional(),
+  capabilityIds: z.array(aiSdrCapabilityIdSchema).optional(),
+  contracts: z.array(aiSdrContractIdSchema).optional(),
+  providers: z.array(aiSdrProviderDefinitionSchema).optional(),
+  skills: z.array(aiSdrSkillDefinitionSchema).optional(),
+  requiredEnv: z.array(aiSdrEnvVarSchema).optional(),
+  mcpServers: z.array(aiSdrMcpServerDefinitionSchema).optional(),
+  docs: z.array(aiSdrModuleDocSchema).optional(),
+  smokeChecks: z.array(aiSdrModuleSmokeCheckSchema).optional(),
+});
+
+export const aiSdrConfigSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  knowledge: aiSdrKnowledgeDefinitionSchema,
+  modelRouting: aiSdrModelRoutingSchema.optional(),
+  compositionTargets: z.array(z.string().min(1)).optional(),
+  modules: z.array(aiSdrModuleDefinitionSchema).optional(),
+  skills: z.array(aiSdrSkillDefinitionSchema).optional(),
+  providers: z.array(aiSdrProviderDefinitionSchema).optional(),
+  capabilityBindings: z.array(aiSdrCapabilityBindingSchema).optional(),
+  mcp: aiSdrMcpExposureSchema.optional(),
+  packageBoundaries: z.array(aiSdrPackageBoundarySchema).optional(),
+  campaigns: z.array(aiSdrCampaignDefinitionSchema).optional(),
+  webhooks: z.array(aiSdrWebhookDefinitionSchema).optional(),
+  requiredEnv: z.array(aiSdrEnvVarSchema).optional(),
+});
+
+export type AiSdrProviderKind =
+  z.infer<typeof aiSdrProviderKindSchema>;
+export type AiSdrCapabilityId = z.infer<typeof aiSdrCapabilityIdSchema>;
+export type AiSdrEnvVar = z.infer<typeof aiSdrEnvVarSchema>;
+export type AiSdrProviderDefinition = z.infer<typeof aiSdrProviderDefinitionSchema>;
+export type AiSdrSkillDefinition = z.infer<typeof aiSdrSkillDefinitionSchema>;
+export type AiSdrKnowledgeDefinition = z.infer<typeof aiSdrKnowledgeDefinitionSchema>;
+export type AiSdrCampaignDefinition = z.infer<typeof aiSdrCampaignDefinitionSchema>;
+export type AiSdrWebhookAuthMode = z.infer<typeof aiSdrWebhookAuthModeSchema>;
+export type AiSdrWebhookDefinition = z.infer<typeof aiSdrWebhookDefinitionSchema>;
+export type AiSdrModuleDoc = z.infer<typeof aiSdrModuleDocSchema>;
+export type AiSdrModuleSmokeCheck = z.infer<typeof aiSdrModuleSmokeCheckSchema>;
+export type AiSdrCapabilityBinding = z.infer<typeof aiSdrCapabilityBindingSchema>;
+export type AiSdrPackageBoundaryVisibility = z.infer<typeof aiSdrPackageBoundaryVisibilitySchema>;
+export type AiSdrPackageBoundary = z.infer<typeof aiSdrPackageBoundarySchema>;
+export type AiSdrContractId = z.infer<typeof aiSdrContractIdSchema>;
+export type AiSdrMcpAuthMode = z.infer<typeof aiSdrMcpAuthModeSchema>;
+export type AiSdrMcpToolCapability = z.infer<typeof aiSdrMcpToolCapabilitySchema>;
+export type AiSdrMcpServerDefinition = z.infer<typeof aiSdrMcpServerDefinitionSchema>;
+export type AiSdrMcpExposure = z.infer<typeof aiSdrMcpExposureSchema>;
+export type AiSdrSandboxStageModelRouting = z.infer<typeof aiSdrSandboxStageModelRoutingSchema>;
+export type AiSdrModelRouting = z.infer<typeof aiSdrModelRoutingSchema>;
+export type AiSdrModuleDefinition = z.infer<typeof aiSdrModuleDefinitionSchema>;
+export type AiSdrConfig = z.infer<typeof aiSdrConfigSchema>;
+
+export function defineAiSdr(config: AiSdrConfig): AiSdrConfig {
+  return aiSdrConfigSchema.parse(config);
+}
+
+const defaultCapabilityDrivenMcpToolGroups = [
+  "knowledge",
+  "records",
+  "workflows",
+  "runtime",
+] as const;
+
+const capabilityToMcpToolGroups: Partial<Record<AiSdrCapabilityId, string[]>> = {
+  crm: ["crm"],
+  email: ["email", "mail"],
+  enrichment: ["email"],
+  extract: ["research"],
+  handoff: ["handoff"],
+  runtime: ["runtime", "control"],
+  search: ["research"],
+  source: ["runtime", "control"],
+};
+
+const capabilityToDefaultExcludedTools: Partial<Record<AiSdrCapabilityId, string[]>> = {
+  runtime: [],
+  source: [],
+};
+
+const sourceRequiredTools = [
+  "runtime.discovery",
+  "runtime.discoveryHealth",
+  "control.runDiscovery",
+] as const;
+
+export function resolveMcpExposure(config: AiSdrConfig): AiSdrMcpExposure {
+  const includeTools = new Set<string>(config.mcp?.includeTools ?? []);
+  const excludeTools = new Set<string>(config.mcp?.excludeTools ?? []);
+
+  const capabilities = new Set<AiSdrCapabilityId>();
+  for (const binding of config.capabilityBindings ?? []) {
+    capabilities.add(binding.capabilityId);
+  }
+  for (const module of config.modules ?? []) {
+    for (const capabilityId of module.capabilityIds ?? []) {
+      capabilities.add(capabilityId);
+    }
+  }
+
+  const explicitManifestExposure = Boolean(
+    (config.mcp?.toolGroups?.length ?? 0) > 0
+    || includeTools.size > 0
+    || excludeTools.size > 0,
+  );
+  const hasMcpCapability = capabilities.has("mcp");
+
+  if (!hasMcpCapability && !explicitManifestExposure) {
+    return {};
+  }
+
+  const toolGroups = new Set<string>(defaultCapabilityDrivenMcpToolGroups);
+
+  for (const capabilityId of capabilities) {
+    for (const group of capabilityToMcpToolGroups[capabilityId] ?? []) {
+      toolGroups.add(group);
+    }
+    for (const toolName of capabilityToDefaultExcludedTools[capabilityId] ?? []) {
+      excludeTools.add(toolName);
+    }
+  }
+
+  if (!capabilities.has("source")) {
+    for (const toolName of sourceRequiredTools) {
+      excludeTools.add(toolName);
+    }
+  }
+
+  for (const group of config.mcp?.toolGroups ?? []) {
+    toolGroups.add(group);
+  }
+
+  for (const toolName of includeTools) {
+    excludeTools.delete(toolName);
+  }
+
+  return {
+    toolGroups: [...toolGroups],
+    includeTools: includeTools.size > 0 ? [...includeTools] : undefined,
+    excludeTools: excludeTools.size > 0 ? [...excludeTools] : undefined,
+  };
+}
+
+export function collectConfigEnv(config: AiSdrConfig): AiSdrEnvVar[] {
+  const seen = new Map<string, AiSdrEnvVar>();
+
+  for (const envVar of [
+    ...(config.requiredEnv ?? []),
+    ...collectModuleEnv(config),
+    ...collectProviderEnv(config),
+    ...collectWebhookEnv(config),
+    ...collectAppSurfaceEnv(config),
+  ]) {
+    mergeEnvVar(seen, envVar);
+  }
+
+  return [...seen.values()].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function collectProviderEnv(config: AiSdrConfig): AiSdrEnvVar[] {
+  return (config.providers ?? []).flatMap((provider) => provider.env ?? []);
+}
+
+export function collectModuleEnv(config: AiSdrConfig): AiSdrEnvVar[] {
+  return (config.modules ?? []).flatMap((module) => [
+    ...(module.requiredEnv ?? []),
+    ...(module.providers ?? []).flatMap((provider) => provider.env ?? []),
+    ...(module.mcpServers ?? []).flatMap((server) => [
+      ...(server.requiredEnv ?? []),
+      ...(server.optionalEnv ?? []),
+    ]),
+  ]);
+}
+
+export function collectWebhookEnv(config: AiSdrConfig): AiSdrEnvVar[] {
+  return collectWebhookDefinitions(config).flatMap((webhook) => {
+    const envVars: AiSdrEnvVar[] = [];
+
+    if (webhook.secretEnv) {
+      envVars.push({
+        name: webhook.secretEnv,
+        required: true,
+        description: `Secret for ${webhook.displayName}.`,
+      });
+    }
+
+    if (webhook.fallbackSecretEnv) {
+      envVars.push({
+        name: webhook.fallbackSecretEnv,
+        description: `Fallback secret for ${webhook.displayName}.`,
+      });
+    }
+
+    return envVars;
+  });
+}
+
+export function collectAppSurfaceEnv(config: AiSdrConfig): AiSdrEnvVar[] {
+  const envVars: AiSdrEnvVar[] = [];
+  const hasWebhooks = collectWebhookDefinitions(config).length > 0;
+  const resolvedMcpExposure = resolveMcpExposure(config);
+  const hasMcpExposure = Boolean(
+    (resolvedMcpExposure.toolGroups?.length ?? 0) > 0
+    || (resolvedMcpExposure.includeTools?.length ?? 0) > 0
+    || (resolvedMcpExposure.excludeTools?.length ?? 0) > 0,
+  );
+
+  if (hasWebhooks || hasMcpExposure) {
+    envVars.push({
+      name: "APP_URL",
+      required: true,
+      description: "Public app URL used by Trellis webhooks, MCP, and sandbox callbacks.",
+    });
+  }
+
+  if (hasMcpExposure) {
+    envVars.push({
+      name: "TRELLIS_MCP_TOKEN",
+      description: "Optional bearer token for remote Trellis MCP access.",
+    });
+    envVars.push({
+      name: "DASHBOARD_PASSWORD",
+      description: "Optional dashboard password. Falls back to TRELLIS_SANDBOX_TOKEN when unset.",
+    });
+  }
+
+  return envVars;
+}
+
+function mergeEnvVar(seen: Map<string, AiSdrEnvVar>, envVar: AiSdrEnvVar) {
+  const existing = seen.get(envVar.name);
+  if (!existing) {
+    seen.set(envVar.name, envVar);
+    return;
+  }
+
+  seen.set(envVar.name, {
+    ...existing,
+    ...envVar,
+    required: Boolean(existing.required || envVar.required),
+    description: existing.description ?? envVar.description,
+  });
+}
+
+export function collectModuleDocs(config: AiSdrConfig): AiSdrModuleDoc[] {
+  return (config.modules ?? []).flatMap((module) => module.docs ?? []);
+}
+
+export function collectModuleMcpServers(config: AiSdrConfig): AiSdrMcpServerDefinition[] {
+  return (config.modules ?? []).flatMap((module) => module.mcpServers ?? []);
+}
+
+export function collectKnowledgePaths(config: AiSdrConfig): string[] {
+  return Object.values(config.knowledge).filter((value): value is string => Boolean(value));
+}
+
+export function collectSkillPaths(config: AiSdrConfig): string[] {
+  return (config.skills ?? []).map((skill) => skill.path);
+}
+
+export function collectPackageBoundaries(config: AiSdrConfig): AiSdrPackageBoundary[] {
+  return config.packageBoundaries ?? [];
+}
+
+export function collectWebhookDefinitions(config: AiSdrConfig): AiSdrWebhookDefinition[] {
+  return config.webhooks ?? [];
+}
+
+export function buildCapabilityBindingMap(config: AiSdrConfig) {
+  const bindings = new Map<AiSdrCapabilityId, AiSdrCapabilityBinding[]>();
+
+  for (const binding of config.capabilityBindings ?? []) {
+    bindings.set(binding.capabilityId, [...(bindings.get(binding.capabilityId) ?? []), binding]);
+  }
+
+  return bindings;
+}
+
+export function resolveCapabilityBinding(
+  config: AiSdrConfig,
+  input: {
+    capabilityId: AiSdrCapabilityId;
+    contractId?: AiSdrContractId;
+    purpose?: string;
+  },
+): AiSdrCapabilityBinding | null {
+  const matches = (buildCapabilityBindingMap(config).get(input.capabilityId) ?? []).filter((binding) => {
+    if (input.contractId && binding.contractId !== input.contractId) {
+      return false;
+    }
+
+    if (input.purpose && binding.purpose !== input.purpose) {
+      return false;
+    }
+
+    return true;
+  });
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  if (matches.length === 1) {
+    return matches[0] ?? null;
+  }
+
+  const defaultMatch = matches.find((binding) => binding.default);
+  if (defaultMatch) {
+    return defaultMatch;
+  }
+
+  throw new Error(
+    `Multiple capability bindings match ${input.capabilityId}${input.contractId ? ` (${input.contractId})` : ""}; mark one as default`,
+  );
+}
+
+export function resolveProviderForCapability(
+  config: AiSdrConfig,
+  input: {
+    capabilityId: AiSdrCapabilityId;
+    contractId?: AiSdrContractId;
+    purpose?: string;
+  },
+): AiSdrProviderDefinition | null {
+  const binding = resolveCapabilityBinding(config, input);
+  if (!binding) {
+    return null;
+  }
+
+  return (config.providers ?? []).find((provider) => provider.id === binding.providerId) ?? null;
+}
+
+export function provider(
+  definition: AiSdrProviderDefinition,
+): AiSdrProviderDefinition {
+  return definition;
+}
+
+export function module(
+  definition: AiSdrModuleDefinition,
+): AiSdrModuleDefinition {
+  return aiSdrModuleDefinitionSchema.parse(definition);
+}
+
+export function providersFromModules(modules: AiSdrModuleDefinition[]): AiSdrProviderDefinition[] {
+  return modules.flatMap((item) => item.providers ?? []);
+}
+
+export * from "./signals.js";
+export * from "./state.js";
+export * from "./crm.js";
+export * from "./provider-contracts.js";
+export * from "./validation.js";
+export * from "./composition.js";
+export * from "./builtin-modules.js";
+export * from "./install-plan.js";
