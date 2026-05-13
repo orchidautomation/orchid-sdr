@@ -620,10 +620,10 @@ function verifyCheck(
 function verifyGeneratedSourceChecks(strict: boolean): VerifyCheck[] {
   const agentPath = path.join(process.cwd(), "src", "agent.ts");
   const workerPath = path.join(process.cwd(), "src", "index.ts");
-  const fluePath = path.join(process.cwd(), "src", "trellis-flue.ts");
+  const runtimePath = path.join(process.cwd(), "src", "trellis-runtime.ts");
   const agentSource = existsSync(agentPath) ? readFileSync(agentPath, "utf8") : "";
   const workerSource = existsSync(workerPath) ? readFileSync(workerPath, "utf8") : "";
-  const flueSource = existsSync(fluePath) ? readFileSync(fluePath, "utf8") : "";
+  const runtimeSource = existsSync(runtimePath) ? readFileSync(runtimePath, "utf8") : "";
 
   return [
     verifyCheck("source.agent", agentSource.includes("trellis.agent(")
@@ -633,25 +633,25 @@ function verifyGeneratedSourceChecks(strict: boolean): VerifyCheck[] {
       && !agentSource.includes("Cloudflare")
       ? "pass"
       : strict ? "fail" : "warn", agentSource
-      ? "src/agent.ts is Trellis-first and hides Flue/Cloudflare imports"
+      ? "src/agent.ts is Trellis-first and hides Trellis Cloudflare imports"
       : "src/agent.ts not found"),
     verifyCheck("source.worker", workerSource.includes("trellis.cloudflare(agent)")
-      && workerSource.includes("withTrellisFlue(env")
+      && workerSource.includes("withTrellisRuntime(env")
       && workerSource.includes("runtime.worker.fetch")
       ? "pass"
       : strict ? "fail" : "warn", workerSource
       ? "src/index.ts wraps the hidden Cloudflare runtime"
       : "src/index.ts not found"),
-    verifyCheck("source.flueAdapter", flueSource.includes("@flue/sdk/cloudflare")
-      && flueSource.includes("getCloudflareAIBindingApiProvider")
-      && flueSource.includes("getVirtualSandbox")
-      && flueSource.includes("trellis_flue_sessions")
-      && flueSource.includes("readPackFiles(input.packs, \"knowledge\")")
-      && flueSource.includes("readPackFiles(input.packs, \"skills\")")
+    verifyCheck("source.runtimeAdapter", runtimeSource.includes("@flue/sdk/cloudflare")
+      && runtimeSource.includes("getCloudflareAIBindingApiProvider")
+      && runtimeSource.includes("getVirtualSandbox")
+      && runtimeSource.includes("trellis_agent_sessions")
+      && runtimeSource.includes("readPackFiles(input.packs, \"knowledge\")")
+      && runtimeSource.includes("readPackFiles(input.packs, \"skills\")")
       ? "pass"
-      : strict ? "fail" : "warn", flueSource
-      ? "src/trellis-flue.ts mounts R2 packs, Cloudflare AI, virtual sandbox, and D1 sessions"
-      : "src/trellis-flue.ts not found"),
+      : strict ? "fail" : "warn", runtimeSource
+      ? "src/trellis-runtime.ts mounts R2 packs, Cloudflare AI, virtual sandbox, and D1 sessions"
+      : "src/trellis-runtime.ts not found"),
   ];
 }
 
@@ -716,7 +716,7 @@ async function verifyRemoteCloudflareRoutes(input: {
   }
 
   if (!input.exerciseAgent) {
-    checks.push(verifyCheck("remote.webhook.agent", "skip", "live Flue/Cloudflare agent exercise skipped; pass --exercise-agent to post a safe signal webhook"));
+    checks.push(verifyCheck("remote.webhook.agent", "skip", "live Trellis Cloudflare agent exercise skipped; pass --exercise-agent to post a safe signal webhook"));
     return checks;
   }
 
@@ -758,7 +758,7 @@ async function verifyRemoteCloudflareRoutes(input: {
     : "fail", webhook.status === 401
     ? "safe signal webhook was rejected; pass --webhook-token or configure TRELLIS_WEBHOOK_SECRET locally"
     : webhook.status
-      ? `/webhooks/signals returned ${webhook.status}; this is the live Flue/Cloudflare harness check and may use one model call`
+      ? `/webhooks/signals returned ${webhook.status}; this is the live Trellis Cloudflare harness check and may use one model call`
       : `could not post /webhooks/signals: ${webhook.error ?? "unknown error"}`, summarizeRemoteEvidence(webhook)));
 
   const persistence = asCliRecord(webhookBody?.persistence);
@@ -921,7 +921,7 @@ function readVerifyApproval(webhookBody: Record<string, unknown> | undefined, ac
 
 async function fetchVerifyJson(url: string, init?: RequestInit) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20_000);
+  const timeout = setTimeout(() => controller.abort(), 120_000);
   try {
     const response = await fetch(url, {
       ...init,
@@ -1122,21 +1122,21 @@ function readTraceExportReadiness() {
 }
 
 function readAiGatewayReadiness(cwd: string, wranglerSource: string) {
-  const fluePath = path.join(cwd, "src", "trellis-flue.ts");
+  const runtimePath = path.join(cwd, "src", "trellis-runtime.ts");
   const envExamplePath = path.join(cwd, ".env.example");
-  const flueSource = existsSync(fluePath) ? readFileSync(fluePath, "utf8") : "";
+  const runtimeSource = existsSync(runtimePath) ? readFileSync(runtimePath, "utf8") : "";
   const envExample = existsSync(envExamplePath) ? readFileSync(envExamplePath, "utf8") : "";
   const hasAiBinding = /\bAI\b/.test(wranglerSource);
-  const hasGatewayRegistration = flueSource.includes("getCloudflareAIBindingApiProvider")
-    && flueSource.includes("gateway:")
-    && flueSource.includes("TRELLIS_AI_GATEWAY_ID");
+  const hasGatewayRegistration = runtimeSource.includes("getCloudflareAIBindingApiProvider")
+    && runtimeSource.includes("gateway:")
+    && runtimeSource.includes("TRELLIS_AI_GATEWAY_ID");
   const envDocumented = envExample.includes("TRELLIS_AI_GATEWAY_ID");
   const ok = hasAiBinding && hasGatewayRegistration && envDocumented;
   return {
     ok,
     detail: ok
       ? "Cloudflare AI binding routes through the generated Trellis AI Gateway id"
-      : "Cloudflare AI Gateway needs AI binding plus TRELLIS_AI_GATEWAY_ID in the generated Flue adapter",
+      : "Cloudflare AI Gateway needs AI binding plus TRELLIS_AI_GATEWAY_ID in the generated Trellis runtime adapter",
     summary: {
       enabled: ok,
       binding: hasAiBinding ? "AI" : null,
@@ -1571,7 +1571,7 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
     checks.push(verifyCheck("remote.mcp", "skip", "deployed route checks skipped; pass --url https://<worker>"));
     checks.push(verifyCheck("remote.smoke", "skip", "deployed route checks skipped; pass --url https://<worker>"));
     checks.push(verifyCheck("remote.attioSmoke", "skip", "Attio provider smoke skipped; pass --url and --attio-smoke"));
-    checks.push(verifyCheck("remote.webhook.agent", "skip", "live Flue/Cloudflare agent exercise skipped; pass --url and --exercise-agent"));
+    checks.push(verifyCheck("remote.webhook.agent", "skip", "live Trellis Cloudflare agent exercise skipped; pass --url and --exercise-agent"));
   }
 
   const ok = checks.every((check) => check.status !== "fail");
@@ -2184,7 +2184,7 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
   await writeFile(path.join(targetDir, ".env.example"), renderV3EnvExample());
   await writeFile(path.join(targetDir, "src", "agent.ts"), renderV3AgentSource());
   await writeFile(path.join(targetDir, "src", "index.ts"), renderV3WorkerSource());
-  await writeFile(path.join(targetDir, "src", "trellis-flue.ts"), renderV3FlueSource());
+  await writeFile(path.join(targetDir, "src", "trellis-runtime.ts"), renderV3RuntimeSource());
   await writeFile(path.join(targetDir, "src", "crm", "attio.map.ts"), renderV3AttioMapSource());
   await writeFile(path.join(targetDir, "src", "state", "prospect.map.ts"), renderV3ProspectStateMapSource());
   await writeFile(path.join(targetDir, "knowledge", "icp.md"), renderV3KnowledgeSeed());
@@ -2222,7 +2222,7 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
         ".env.example",
         "src/agent.ts",
         "src/index.ts",
-        "src/trellis-flue.ts",
+        "src/trellis-runtime.ts",
         "src/crm/attio.map.ts",
         "src/state/prospect.map.ts",
         "knowledge/icp.md",
@@ -2277,9 +2277,9 @@ function buildV3ScaffoldPackage(packageName: string) {
       typescript: "^5.8.3",
       wrangler: "^4.90.0",
     },
-    // Flue 0.5.3 pulls pi-ai, which currently resolves a compromised Mistral SDK.
+    // The current runtime dependency pulls pi-ai, which currently resolves a compromised Mistral SDK.
     // Trellis' generated path uses the Cloudflare AI binding, so keep Mistral disabled
-    // until Flue/pi-ai ship a clean upstream dependency.
+    // until upstream runtime ship a clean upstream dependency.
     overrides: {
       "@mistralai/mistralai": "npm:no-op@1.0.3",
     },
@@ -2403,7 +2403,7 @@ PROSPEO_BASE_URL=
 HANDOFF_WEBHOOK_URL=
 HANDOFF_WEBHOOK_SECRET=
 
-# Optional model override for Flue-backed skills.
+# Optional model override for Trellis-backed skills.
 # The default uses Cloudflare Workers AI through Cloudflare's default AI Gateway.
 TRELLIS_MODEL=
 TRELLIS_AI_GATEWAY_ID=default
@@ -2549,7 +2549,7 @@ function renderV3WorkerSource() {
   return `import { DurableObject, WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { trellis } from "@trellis/gtm";
 import agent from "./agent";
-import { withTrellisFlue } from "./trellis-flue";
+import { withTrellisRuntime } from "./trellis-runtime";
 
 const runtime = trellis.cloudflare(agent);
 const RuntimeTrellisAgent = runtime.TrellisAgent;
@@ -2569,22 +2569,22 @@ export class ProspectWorkflow extends WorkflowEntrypoint<Record<string, unknown>
 
 export default {
   fetch(request: Request, env: Record<string, unknown>) {
-    return runtime.worker.fetch(request, withTrellisFlue(env, request));
+    return runtime.worker.fetch(request, withTrellisRuntime(env, request));
   },
   queue(batch: MessageBatch<unknown>, env: Record<string, unknown>) {
-    return runtime.worker.queue?.(batch as never, withTrellisFlue(env));
+    return runtime.worker.queue?.(batch as never, withTrellisRuntime(env));
   },
 };
 `;
 }
 
-function renderV3FlueSource() {
+function renderV3RuntimeSource() {
   return `import { registerApiProvider, registerProvider } from "@flue/sdk/app";
 import { createFlueContext, type SessionData, type SessionEnv, type SessionStore } from "@flue/sdk/client";
 import { getCloudflareAIBindingApiProvider, getVirtualSandbox } from "@flue/sdk/cloudflare";
 import { resolveModel } from "@flue/sdk/internal";
 import { bashFactoryToSessionEnv } from "@flue/sdk/sandbox";
-import type { TrellisFlueContextFactoryInput } from "@trellis/gtm";
+import type { TrellisRuntimeContextFactoryInput } from "@trellis/gtm";
 
 type TrellisEnv = Record<string, unknown> & {
   TRELLIS_DB?: D1Database;
@@ -2597,17 +2597,17 @@ type PackFile = {
   text: string;
 };
 
-export function withTrellisFlue(env: Record<string, unknown>, request?: Request) {
+export function withTrellisRuntime(env: Record<string, unknown>, request?: Request) {
   return {
     ...env,
-    TRELLIS_FLUE_CWD: "/workspace",
-    TRELLIS_FLUE_CONTEXT_FACTORY: (input: TrellisFlueContextFactoryInput) =>
-      createTrellisFlueContext(input, request),
+    TRELLIS_RUNTIME_CWD: "/workspace",
+    TRELLIS_RUNTIME_CONTEXT_FACTORY: (input: TrellisRuntimeContextFactoryInput) =>
+      createTrellisRuntimeContext(input, request),
   };
 }
 
-async function createTrellisFlueContext(
-  input: TrellisFlueContextFactoryInput,
+async function createTrellisRuntimeContext(
+  input: TrellisRuntimeContextFactoryInput,
   request?: Request,
 ) {
   const env = (input.env ?? {}) as TrellisEnv;
@@ -2638,7 +2638,7 @@ async function createTrellisFlueContext(
     },
     createDefaultEnv: async (): Promise<SessionEnv> => bashFactoryToSessionEnv(sandbox),
     createLocalEnv: async (): Promise<SessionEnv> => {
-      throw new Error("Trellis Cloudflare agents use the Flue virtual sandbox by default.");
+      throw new Error("Trellis Cloudflare agents use the Trellis virtual sandbox by default.");
     },
     defaultStore: createTrellisSessionStore(env),
   });
@@ -2646,7 +2646,7 @@ async function createTrellisFlueContext(
 
 async function preloadTrellisPacks(
   sandbox: Awaited<ReturnType<typeof getVirtualSandbox>>,
-  input: TrellisFlueContextFactoryInput,
+  input: TrellisRuntimeContextFactoryInput,
 ) {
   const bash = await Promise.resolve(sandbox());
   await bash.fs.mkdir("/workspace/.agents/skills", { recursive: true });
@@ -2666,7 +2666,7 @@ async function preloadTrellisPacks(
   }
 }
 
-function renderAgentsMd(input: TrellisFlueContextFactoryInput) {
+function renderAgentsMd(input: TrellisRuntimeContextFactoryInput) {
   const knowledge = readPackFiles(input.packs, "knowledge")
     .map((file) => \`- knowledge/\${safePackPath(file.path)}\`)
     .join("\\n");
@@ -2709,11 +2709,11 @@ function safePackPath(value: string) {
   return normalized || "untitled.md";
 }
 
-function stableAgentId(input: TrellisFlueContextFactoryInput) {
+function stableAgentId(input: TrellisRuntimeContextFactoryInput) {
   return normalizeId(input.signal.workspaceId ?? input.signal.id ?? "default");
 }
 
-function stableRunId(input: TrellisFlueContextFactoryInput) {
+function stableRunId(input: TrellisRuntimeContextFactoryInput) {
   return normalizeId(input.signal.traceId ?? input.signal.id ?? \`run_\${Date.now()}\`);
 }
 
@@ -2763,7 +2763,8 @@ function normalizeTrellisAiPayload(model: string, payload: unknown) {
       system.push(content);
       return [];
     }
-    return [{ ...item, role, content }];
+    const normalizedRole = role === "assistant" ? "assistant" : "user";
+    return [{ ...item, role: normalizedRole, content }];
   }) : record.messages;
 
   const normalized: Record<string, unknown> = {
@@ -2845,7 +2846,7 @@ function createTrellisSessionStore(env: TrellisEnv): SessionStore {
   let ready: Promise<unknown> | undefined;
   const ensureReady = () => {
     ready ??= db.prepare(\`
-      CREATE TABLE IF NOT EXISTS trellis_flue_sessions (
+      CREATE TABLE IF NOT EXISTS trellis_agent_sessions (
         id TEXT PRIMARY KEY,
         data_json TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -2858,20 +2859,20 @@ function createTrellisSessionStore(env: TrellisEnv): SessionStore {
     async save(id, data) {
       await ensureReady();
       await db.prepare(\`
-        INSERT OR REPLACE INTO trellis_flue_sessions (id, data_json, updated_at)
+        INSERT OR REPLACE INTO trellis_agent_sessions (id, data_json, updated_at)
         VALUES (?, ?, ?)
       \`).bind(id, JSON.stringify(data), new Date().toISOString()).run();
     },
     async load(id) {
       await ensureReady();
-      const row = await db.prepare("SELECT data_json FROM trellis_flue_sessions WHERE id = ?")
+      const row = await db.prepare("SELECT data_json FROM trellis_agent_sessions WHERE id = ?")
         .bind(id)
         .first<{ data_json: string }>();
       return row ? JSON.parse(row.data_json) as SessionData : null;
     },
     async delete(id) {
       await ensureReady();
-      await db.prepare("DELETE FROM trellis_flue_sessions WHERE id = ?").bind(id).run();
+      await db.prepare("DELETE FROM trellis_agent_sessions WHERE id = ?").bind(id).run();
     },
   };
 }
@@ -3019,7 +3020,7 @@ npm run trellis -- connect prospeo    # optional email enrichment
 npm run trellis -- docs add ./product-docs
 \`\`\`
 
-Your app code stays Trellis-only in \`src/agent.ts\`. Attio field mapping lives in \`src/crm/attio.map.ts\`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like \`qualification.decision\`, \`qualification.summary\`, or \`signal.payload.signal\`. Durable business state lives in \`src/state/prospect.map.ts\`: define tables, fields, indexes, and relationships while Trellis keeps D1 migrations private. The generated \`src/trellis-flue.ts\` adapter installs the hidden Flue harness, mounts Trellis R2 markdown packs into Flue's virtual sandbox, uses the Cloudflare AI binding through the default AI Gateway, and stores Flue sessions in \`TRELLIS_DB\`.
+Your app code stays Trellis-only in \`src/agent.ts\`. Attio field mapping lives in \`src/crm/attio.map.ts\`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like \`qualification.decision\`, \`qualification.summary\`, or \`signal.payload.signal\`. Durable business state lives in \`src/state/prospect.map.ts\`: define tables, fields, indexes, and relationships while Trellis keeps D1 migrations private. The generated \`src/trellis-runtime.ts\` adapter installs the hidden Trellis runtime, mounts Trellis R2 markdown packs into the virtual sandbox, uses the Cloudflare AI binding through the default AI Gateway, and stores agent sessions in \`TRELLIS_DB\`.
 
 Deploy auto-packs the default \`knowledge/**/*.md\` files, or uses \`.trellis/knowledge-pack.json\` when you run \`trellis docs add <path>\`. It also syncs tracked \`SKILL.md\` files into the \`TRELLIS_PACKS\` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
 

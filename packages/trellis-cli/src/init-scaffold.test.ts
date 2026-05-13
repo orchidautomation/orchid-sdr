@@ -47,7 +47,7 @@ describe("trellis init v3 scaffold", () => {
       };
       const agentSource = readFileSync(path.join(targetDir, "src", "agent.ts"), "utf8");
       const workerSource = readFileSync(path.join(targetDir, "src", "index.ts"), "utf8");
-      const flueSource = readFileSync(path.join(targetDir, "src", "trellis-flue.ts"), "utf8");
+      const runtimeSource = readFileSync(path.join(targetDir, "src", "trellis-runtime.ts"), "utf8");
       const attioMapSource = readFileSync(path.join(targetDir, "src", "crm", "attio.map.ts"), "utf8");
       const stateMapSource = readFileSync(path.join(targetDir, "src", "state", "prospect.map.ts"), "utf8");
       const wranglerConfig = readFileSync(path.join(targetDir, "wrangler.jsonc"), "utf8");
@@ -60,7 +60,7 @@ describe("trellis init v3 scaffold", () => {
 
       expect(initResult.mode).toBe("v3-cloudflare-gtm");
       expect(initResult.filesWritten).toContain("src/agent.ts");
-      expect(initResult.filesWritten).toContain("src/trellis-flue.ts");
+      expect(initResult.filesWritten).toContain("src/trellis-runtime.ts");
       expect(initResult.filesWritten).toContain("src/crm/attio.map.ts");
       expect(initResult.filesWritten).toContain("src/state/prospect.map.ts");
       expect(dependencySpecs).not.toContain("workspace:*");
@@ -91,18 +91,18 @@ describe("trellis init v3 scaffold", () => {
       expect(agentSource).not.toContain("Cloudflare");
 
       expect(workerSource).toContain("trellis.cloudflare(agent)");
-      expect(workerSource).toContain("withTrellisFlue(env, request)");
-      expect(flueSource).toContain("@flue/sdk/cloudflare");
-      expect(flueSource).toContain("getCloudflareAIBindingApiProvider");
-      expect(flueSource).toContain("getVirtualSandbox");
-      expect(flueSource).toContain("TRELLIS_FLUE_CONTEXT_FACTORY");
-      expect(flueSource).toContain("TRELLIS_AI_GATEWAY_ID");
-      expect(flueSource).toContain("gateway: { id: readAiGatewayId(env) }");
-      expect(flueSource).toContain("trellis_flue_sessions");
-      expect(flueSource).toContain("readPackFiles(input.packs, \"knowledge\")");
-      expect(flueSource).toContain("readPackFiles(input.packs, \"skills\")");
-      expect(flueSource.indexOf("const env = (input.env ?? {}) as TrellisEnv;"))
-        .toBeLessThan(flueSource.indexOf("registerProvider(\"cloudflare\""));
+      expect(workerSource).toContain("withTrellisRuntime(env, request)");
+      expect(runtimeSource).toContain("@flue/sdk/cloudflare");
+      expect(runtimeSource).toContain("getCloudflareAIBindingApiProvider");
+      expect(runtimeSource).toContain("getVirtualSandbox");
+      expect(runtimeSource).toContain("TRELLIS_RUNTIME_CONTEXT_FACTORY");
+      expect(runtimeSource).toContain("TRELLIS_AI_GATEWAY_ID");
+      expect(runtimeSource).toContain("gateway: { id: readAiGatewayId(env) }");
+      expect(runtimeSource).toContain("trellis_agent_sessions");
+      expect(runtimeSource).toContain("readPackFiles(input.packs, \"knowledge\")");
+      expect(runtimeSource).toContain("readPackFiles(input.packs, \"skills\")");
+      expect(runtimeSource.indexOf("const env = (input.env ?? {}) as TrellisEnv;"))
+        .toBeLessThan(runtimeSource.indexOf("registerProvider(\"cloudflare\""));
       expect(attioMapSource).toContain("satisfies TrellisAttioMap");
       expect(attioMapSource).toContain("companies:");
       expect(attioMapSource).toContain("people:");
@@ -363,7 +363,7 @@ describe("trellis init v3 scaffold", () => {
       expect(verifyResult.endpoint).toBeNull();
       expect(verifyResult.checks.find((check) => check.id === "source.agent")?.status).toBe("pass");
       expect(verifyResult.checks.find((check) => check.id === "source.worker")?.status).toBe("pass");
-      expect(verifyResult.checks.find((check) => check.id === "source.flueAdapter")?.status).toBe("pass");
+      expect(verifyResult.checks.find((check) => check.id === "source.runtimeAdapter")?.status).toBe("pass");
       expect(verifyResult.checks.find((check) => check.id === "cloudflare.autoProvisionable")?.status).toBe("pass");
       expect(verifyResult.checks.find((check) => check.id === "cloudflare.aiGateway")?.status).toBe("pass");
       expect(verifyResult.checks.find((check) => check.id === "packSync.plan")?.status).toBe("pass");

@@ -2779,7 +2779,7 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
-  it("routes app.skill through a hidden Flue-compatible harness when provided", async () => {
+  it("routes app.skill through a hidden Trellis-compatible harness when provided", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
       email: agentmail(),
@@ -2807,7 +2807,7 @@ describe("@trellis/gtm v3 API", () => {
             return {
               data: {
                 decision: "qualified",
-                summary: "Qualified by Flue harness.",
+                summary: "Qualified by Trellis runtime.",
                 confidence: 0.91,
                 matchedEvidence: ["R2 ICP pack"],
                 missingEvidence: [],
@@ -2910,19 +2910,22 @@ describe("@trellis/gtm v3 API", () => {
       model: "openrouter/test-model",
       sandbox: undefined,
       tools: expect.arrayContaining([
-        expect.objectContaining({ name: "trellis.health" }),
-        expect.objectContaining({ name: "research.search", provider: "firecrawl" }),
-        expect.objectContaining({ name: "research.extract", provider: "firecrawl" }),
-        expect.objectContaining({ name: "email.enrich", provider: "prospeo" }),
+        expect.objectContaining({ name: "trellis.health", parameters: expect.objectContaining({ type: "object" }) }),
+        expect.objectContaining({ name: "research.search", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
+        expect.objectContaining({ name: "research.extract", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
+        expect.objectContaining({ name: "research.map", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
+        expect.objectContaining({ name: "email.enrich", parameters: expect.objectContaining({ type: "object" }) }),
       ]),
     }));
     const initOptions = flueContext.init.mock.calls[0]?.[0] as Record<string, unknown>;
     const tools = initOptions.tools as Array<{
       name: string;
+      parameters?: Record<string, unknown>;
       execute?: (input: Record<string, unknown>) => Promise<unknown> | unknown;
     }>;
     const searchTool = tools.find((tool) => tool.name === "research.search");
     const extractTool = tools.find((tool) => tool.name === "research.extract");
+    const mapTool = tools.find((tool) => tool.name === "research.map");
     const enrichTool = tools.find((tool) => tool.name === "email.enrich");
     const searchResult = await searchTool?.execute?.({
       query: "Acme news",
@@ -2931,6 +2934,10 @@ describe("@trellis/gtm v3 API", () => {
     });
     const extractResult = await extractTool?.execute?.({
       url: "https://example.com/acme-news",
+    });
+    const mapResult = await mapTool?.execute?.({
+      url: "https://example.com",
+      limit: 3,
     });
     const enrichResult = await enrichTool?.execute?.({
       fullName: "Sam Rivera",
@@ -2941,7 +2948,13 @@ describe("@trellis/gtm v3 API", () => {
       fullName: "No Match",
       companyDomain: "northstar.example",
     });
-    expect(searchResult).toMatchObject({
+    expect(searchTool?.parameters).toMatchObject({
+      properties: expect.objectContaining({
+        query: expect.any(Object),
+        queries: expect.any(Object),
+      }),
+    });
+    expect(JSON.parse(String(searchResult))).toMatchObject({
       provider: "firecrawl",
       operation: "research.search",
       query: "Acme news",
@@ -2953,13 +2966,18 @@ describe("@trellis/gtm v3 API", () => {
         },
       ],
     });
-    expect(extractResult).toMatchObject({
+    expect(JSON.parse(String(extractResult))).toMatchObject({
       provider: "firecrawl",
       operation: "research.extract",
       url: "https://example.com/acme-news",
       markdown: "# Acme\n\nRevenue operations update.",
     });
-    expect(enrichResult).toMatchObject({
+    expect(JSON.parse(String(mapResult))).toMatchObject({
+      provider: "firecrawl",
+      operation: "research.map",
+      url: "https://example.com",
+    });
+    expect(JSON.parse(String(enrichResult))).toMatchObject({
       provider: "prospeo",
       operation: "email.enrich",
       found: true,
@@ -2969,7 +2987,7 @@ describe("@trellis/gtm v3 API", () => {
         source: "prospeo",
       },
     });
-    expect(enrichNoMatch).toMatchObject({
+    expect(JSON.parse(String(enrichNoMatch))).toMatchObject({
       provider: "prospeo",
       operation: "email.enrich",
       found: false,
@@ -2978,11 +2996,12 @@ describe("@trellis/gtm v3 API", () => {
         error_code: "NO_MATCH",
       },
     });
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe("https://firecrawl.test/v2/search");
-    expect(String(fetchMock.mock.calls[1]?.[0])).toBe("https://firecrawl.test/v1/scrape");
-    expect(String(fetchMock.mock.calls[2]?.[0])).toBe("https://prospeo.test/enrich-person");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe("https://firecrawl.test/v2/scrape");
+    expect(String(fetchMock.mock.calls[2]?.[0])).toBe("https://firecrawl.test/v2/map");
     expect(String(fetchMock.mock.calls[3]?.[0])).toBe("https://prospeo.test/enrich-person");
+    expect(String(fetchMock.mock.calls[4]?.[0])).toBe("https://prospeo.test/enrich-person");
     expect(skillCalls).toHaveLength(1);
     expect(skillCalls[0]).toMatchObject({
       sessionName: "thr_flue",
@@ -3067,7 +3086,7 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
-  it("builds hidden Flue context through a factory after Trellis hydrates Cloudflare packs", async () => {
+  it("builds hidden runtime context through a factory after Trellis hydrates Cloudflare packs", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
       email: agentmail(),
@@ -3088,7 +3107,7 @@ describe("@trellis/gtm v3 API", () => {
     const skill = vi.fn(async () => ({
       data: {
         decision: "qualified",
-        summary: "Qualified by generated Flue factory.",
+        summary: "Qualified by generated Trellis runtime factory.",
         confidence: 0.88,
         matchedEvidence: ["Generated R2 pack"],
         missingEvidence: [],
@@ -3116,8 +3135,8 @@ describe("@trellis/gtm v3 API", () => {
         threadId: "thr_factory",
       }),
     }), {
-      TRELLIS_FLUE_CONTEXT_FACTORY: factory,
-      TRELLIS_FLUE_CWD: "/workspace",
+      TRELLIS_RUNTIME_CONTEXT_FACTORY: factory,
+      TRELLIS_RUNTIME_CWD: "/workspace",
       TRELLIS_MODEL: "anthropic/claude-sonnet-4.6",
       TRELLIS_PACKS: fakeR2,
     });

@@ -281,7 +281,7 @@ export interface TrellisHarnessRuntime {
   ): Promise<unknown> | unknown;
 }
 
-export interface TrellisFlueContextFactoryInput {
+export interface TrellisRuntimeContextFactoryInput {
   env?: Record<string, unknown>;
   config: TrellisAgentConfig;
   signal: Partial<TrellisSignal>;
@@ -620,6 +620,7 @@ export function createTrellisTestApp(input?: {
     context(currentSignal) {
       return {
         signal: currentSignal,
+        runtime: createTrellisRuntimeContext(),
         ...(input?.context ?? {}),
       };
     },
@@ -658,7 +659,7 @@ export function createTrellisTestApp(input?: {
               role: skillInput.role ?? null,
               model: skillInput.model ?? null,
               harness: true,
-              error: error instanceof Error ? error.message : String(error),
+              error: sanitizeRuntimeError(error),
             },
           });
         }
@@ -1114,6 +1115,21 @@ function defaultSkillResult(name: string) {
   }
 }
 
+function createTrellisRuntimeContext(now = new Date()) {
+  const timeZone = "America/New_York";
+  const dateFormatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return {
+    now: now.toISOString(),
+    today: dateFormatter.format(now),
+    timeZone,
+  };
+}
+
 function readDraftBody(value: unknown) {
   if (!isRecord(value)) {
     return undefined;
@@ -1173,6 +1189,14 @@ function readQualificationDecision(value: unknown): TrellisProspect["status"] {
 function parseSkillOutput(value: unknown, schema: z.ZodTypeAny | undefined) {
   const normalized = normalizeSkillOutput(value);
   return schema ? schema.parse(normalized) : normalized;
+}
+
+function sanitizeRuntimeError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message
+    .replace(/\[flue\]\s*/gi, "")
+    .replace(/\bFlue\b/g, "Trellis runtime")
+    .replace(/\bflue\b/g, "Trellis runtime");
 }
 
 function normalizeSkillOutput(value: unknown): unknown {
@@ -2256,15 +2280,28 @@ function createTrellisMcpTools(
         operation: "research.search",
         inputSchema: {
           type: "object",
-          required: ["query"],
           properties: {
             query: { type: "string" },
+            queries: {
+              type: "array",
+              items: { type: "string" },
+              maxItems: 5,
+            },
             limit: { type: "number", minimum: 1, maximum: 10 },
             sources: {
               type: "array",
-              items: { type: "string", enum: ["web", "news"] },
+              items: { type: "string", enum: ["web", "images", "news"] },
             },
+            categories: {
+              type: "array",
+              items: { type: "string", enum: ["github", "research", "pdf"] },
+            },
+            includeDomains: { type: "array", items: { type: "string" } },
+            excludeDomains: { type: "array", items: { type: "string" } },
+            location: { type: "string" },
+            country: { type: "string" },
             tbs: { type: "string" },
+            scrapeOptions: { type: "object" },
           },
           additionalProperties: false,
         },
@@ -2287,6 +2324,31 @@ function createTrellisMcpTools(
         },
         execute(input) {
           return executeFirecrawlExtract(env, input);
+        },
+      },
+      {
+        name: "research.map",
+        description: "Map a website with Firecrawl to discover URLs before scraping or crawling.",
+        provider: "firecrawl",
+        operation: "research.map",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string", format: "uri" },
+            search: { type: "string" },
+            sitemap: { type: "string", enum: ["include", "skip", "only"] },
+            includeSubdomains: { type: "boolean" },
+            ignoreQueryParameters: { type: "boolean" },
+            ignoreCache: { type: "boolean" },
+            limit: { type: "number" },
+            location: { type: "object" },
+            timeout: { type: "number" },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeFirecrawlMap(env, input);
         },
       },
     );
@@ -2335,11 +2397,11 @@ async function createRuntimeHarness(
     return explicitHarness;
   }
 
-  const factory = env?.TRELLIS_FLUE_CONTEXT_FACTORY;
+  const factory = env?.TRELLIS_RUNTIME_CONTEXT_FACTORY ?? env?.TRELLIS_FLUE_CONTEXT_FACTORY;
   if (typeof factory === "function") {
     const tools = createTrellisMcpTools(env, config);
     const created = await Promise.resolve((factory as (
-      input: TrellisFlueContextFactoryInput,
+      input: TrellisRuntimeContextFactoryInput,
     ) => unknown | Promise<unknown>)({
       env,
       config,
@@ -2407,9 +2469,11 @@ function createFlueHarnessRuntime(
     const initOptions: Record<string, unknown> = {
       model: normalizeFlueModelName(model),
       sandbox: env?.TRELLIS_FLUE_SANDBOX,
-      tools: Array.isArray(env?.TRELLIS_MCP_TOOLS) ? env.TRELLIS_MCP_TOOLS : (tools ?? createTrellisMcpTools(env, config)),
+      tools: Array.isArray(env?.TRELLIS_MCP_TOOLS)
+        ? env.TRELLIS_MCP_TOOLS
+        : toFlueTools(tools ?? createTrellisMcpTools(env, config)),
     };
-    const cwd = readString(env?.TRELLIS_FLUE_CWD);
+    const cwd = readString(env?.TRELLIS_RUNTIME_CWD) ?? readString(env?.TRELLIS_FLUE_CWD);
     if (cwd) {
       initOptions.cwd = cwd;
     }
@@ -2439,6 +2503,26 @@ function createFlueHarnessRuntime(
   };
 }
 
+function toFlueTools(tools: TrellisMcpToolDefinition[]) {
+  return tools
+    .filter((tool) => typeof tool.execute === "function")
+    .map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      provider: tool.provider,
+      operation: tool.operation,
+      parameters: tool.inputSchema ?? {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+      async execute(input: Record<string, unknown>) {
+        const result = await tool.execute!(input);
+        return typeof result === "string" ? result : JSON.stringify(result, null, 2);
+      },
+    }));
+}
+
 function normalizeFlueModelName(model: string) {
   if (model.startsWith("cloudflare/")) {
     return model;
@@ -2450,7 +2534,7 @@ function normalizeFlueModelName(model: string) {
 }
 
 function createTrellisSkillTimeoutSignal(env: Record<string, unknown> | undefined) {
-  const timeoutMs = readNumber(env?.TRELLIS_SKILL_TIMEOUT_MS) ?? 4_000;
+  const timeoutMs = readNumber(env?.TRELLIS_SKILL_TIMEOUT_MS) ?? 60_000;
   if (timeoutMs <= 0) {
     return undefined;
   }
@@ -6315,99 +6399,436 @@ async function executeFirecrawlSearch(
   env: Record<string, unknown> | undefined,
   input: Record<string, unknown>,
 ) {
-  const apiKey = readString(env?.FIRECRAWL_API_KEY);
-  if (!apiKey) {
-    throw new Error("FIRECRAWL_API_KEY is not configured.");
-  }
-
   const query = readFirstString(input, {}, ["query", "q"]);
-  if (!query) {
+  const queries = query ? [query] : readStringArray(input.queries).slice(0, 5);
+  if (queries.length === 0) {
     throw new Error("Firecrawl search requires a query.");
   }
 
   const limit = readNumber(input.limit) ?? 5;
   const sources = readFirecrawlSources(input.sources);
-  const baseUrl = (readString(env?.FIRECRAWL_BASE_URL) ?? "https://api.firecrawl.dev").replace(/\/+$/, "");
-  const response = await firecrawlRequest(env, apiKey, baseUrl, "/v2/search", {
-    query,
-    limit,
-    sources,
-    country: readString(input.country) ?? "US",
-    ignoreInvalidURLs: true,
-    ...(readString(input.tbs) ? { tbs: readString(input.tbs) } : {}),
-  });
-  const data = isRecord(response.data) ? response.data : {};
-  const webResults = Array.isArray(data.web) ? data.web : [];
-  const newsResults = Array.isArray(data.news) ? data.news : [];
-  const arrayResults = Array.isArray(response.data) ? response.data : [];
-  const results = [
-    ...arrayResults.map((result) => mapFirecrawlSearchResult(result, "web")),
-    ...webResults.map((result) => mapFirecrawlSearchResult(result, "web")),
-    ...newsResults.map((result) => mapFirecrawlSearchResult(result, "news")),
-  ].filter((result) => Boolean(result.url));
+  const responses = [];
+  const results = [];
+  for (const currentQuery of queries) {
+    const response = await firecrawlRequest(env, "POST", "/v2/search", {
+      query: currentQuery,
+      limit,
+      sources,
+      ...pickFirecrawlInput(input, [
+        "categories",
+        "includeDomains",
+        "excludeDomains",
+        "location",
+        "scrapeOptions",
+        "enterprise",
+        "filter",
+        "timeout",
+      ]),
+      country: readString(input.country) ?? "US",
+      ignoreInvalidURLs: true,
+      ...(readString(input.tbs) ? { tbs: readString(input.tbs) } : {}),
+    });
+    responses.push(response);
+    const data = isRecord(response.data) ? response.data : {};
+    const webResults = Array.isArray(data.web) ? data.web : [];
+    const imageResults = Array.isArray(data.images) ? data.images : [];
+    const newsResults = Array.isArray(data.news) ? data.news : [];
+    const arrayResults = Array.isArray(response.data) ? response.data : [];
+    results.push(
+      ...arrayResults.map((result) => mapFirecrawlSearchResult(result, "web")),
+      ...webResults.map((result) => mapFirecrawlSearchResult(result, "web")),
+      ...imageResults.map((result) => mapFirecrawlSearchResult(result, "images")),
+      ...newsResults.map((result) => mapFirecrawlSearchResult(result, "news")),
+    );
+  }
 
   return {
     provider: "firecrawl",
     operation: "research.search",
-    query,
-    results,
-    raw: response,
+    query: queries[0],
+    queries,
+    results: results.filter((result) => Boolean(result.url)),
+    raw: queries.length === 1 ? responses[0] : responses,
   };
+}
+
+async function executeFirecrawlScrape(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const url = readFirstString(input, {}, ["url"]);
+  if (!url) {
+    throw new Error("Firecrawl scrape requires a URL.");
+  }
+
+  const response = await firecrawlRequest(env, "POST", "/v2/scrape", {
+    url,
+    formats: readStringArray(input.formats).length > 0 ? readStringArray(input.formats) : ["markdown"],
+    ...pickFirecrawlInput(input, [
+      "onlyMainContent",
+      "onlyCleanContent",
+      "includeTags",
+      "excludeTags",
+      "maxAge",
+      "minAge",
+      "headers",
+      "waitFor",
+      "mobile",
+      "skipTlsVerification",
+      "timeout",
+      "parsers",
+      "actions",
+      "location",
+      "removeBase64Images",
+      "blockAds",
+      "proxy",
+      "storeInCache",
+      "lockdown",
+      "zeroDataRetention",
+    ]),
+  });
+  return normalizeFirecrawlScrapeResult("research.scrape", url, response);
 }
 
 async function executeFirecrawlExtract(
   env: Record<string, unknown> | undefined,
   input: Record<string, unknown>,
 ) {
-  const apiKey = readString(env?.FIRECRAWL_API_KEY);
-  if (!apiKey) {
-    throw new Error("FIRECRAWL_API_KEY is not configured.");
-  }
-
   const url = readFirstString(input, {}, ["url"]);
   if (!url) {
     throw new Error("Firecrawl extract requires a URL.");
   }
 
-  const baseUrl = (readString(env?.FIRECRAWL_BASE_URL) ?? "https://api.firecrawl.dev").replace(/\/+$/, "");
-  const response = await firecrawlRequest(env, apiKey, baseUrl, "/v1/scrape", {
+  const response = await firecrawlRequest(env, "POST", "/v2/scrape", {
     url,
     formats: ["markdown"],
+    onlyMainContent: true,
   });
-  const data = isRecord(response.data) ? response.data : {};
+  return normalizeFirecrawlScrapeResult("research.extract", url, response);
+}
 
+async function executeFirecrawlStructuredExtract(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const urls = readStringArray(input.urls);
+  const prompt = readString(input.prompt);
+  if (urls.length === 0) {
+    throw new Error("Firecrawl structured extract requires urls.");
+  }
+  if (!prompt) {
+    throw new Error("Firecrawl structured extract requires a prompt.");
+  }
+  const response = await firecrawlRequest(env, "POST", "/v2/extract", {
+    urls,
+    prompt,
+    ...pickFirecrawlInput(input, ["schema", "allowExternalLinks", "enableWebSearch", "includeSubdomains"]),
+  });
   return {
     provider: "firecrawl",
-    operation: "research.extract",
+    operation: "research.extract.structured",
+    urls,
+    prompt,
+    raw: response,
+  };
+}
+
+async function executeFirecrawlMap(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const url = readFirstString(input, {}, ["url"]);
+  if (!url) {
+    throw new Error("Firecrawl map requires a URL.");
+  }
+  const response = await firecrawlRequest(env, "POST", "/v2/map", {
     url,
-    markdown: readString(data.markdown) ?? "",
+    ...pickFirecrawlInput(input, [
+      "search",
+      "sitemap",
+      "includeSubdomains",
+      "ignoreQueryParameters",
+      "ignoreCache",
+      "limit",
+      "location",
+      "timeout",
+    ]),
+  });
+  return {
+    provider: "firecrawl",
+    operation: "research.map",
+    url,
+    links: Array.isArray(response.links) ? response.links : [],
+    raw: response,
+  };
+}
+
+async function executeFirecrawlCrawlStart(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const url = readFirstString(input, {}, ["url"]);
+  if (!url) {
+    throw new Error("Firecrawl crawl requires a URL.");
+  }
+  const response = await firecrawlRequest(env, "POST", "/v2/crawl", {
+    url,
+    ...pickFirecrawlInput(input, [
+      "prompt",
+      "excludePaths",
+      "includePaths",
+      "maxDiscoveryDepth",
+      "sitemap",
+      "ignoreQueryParameters",
+      "regexOnFullURL",
+      "limit",
+      "crawlEntireDomain",
+      "allowExternalLinks",
+      "allowSubdomains",
+      "ignoreRobotsTxt",
+      "robotsUserAgent",
+      "delay",
+      "maxConcurrency",
+      "scrapeOptions",
+      "zeroDataRetention",
+    ]),
+  });
+  return {
+    provider: "firecrawl",
+    operation: "research.crawl.start",
+    url,
+    id: readString(response.id),
+    raw: response,
+  };
+}
+
+async function executeFirecrawlCrawlStatus(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const id = readFirstString(input, {}, ["id", "jobId", "crawlId"]);
+  if (!id) {
+    throw new Error("Firecrawl crawl status requires an id.");
+  }
+  const response = await firecrawlRequest(env, "GET", `/v2/crawl/${encodeURIComponent(id)}`);
+  return {
+    provider: "firecrawl",
+    operation: "research.crawl.status",
+    id,
+    raw: response,
+  };
+}
+
+async function executeFirecrawlAgentStart(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const prompt = readString(input.prompt);
+  if (!prompt) {
+    throw new Error("Firecrawl agent requires a prompt.");
+  }
+  const response = await firecrawlRequest(env, "POST", "/v2/agent", {
+    prompt,
+    ...pickFirecrawlInput(input, ["urls", "schema", "maxCredits", "strictConstrainToURLs", "model"]),
+  });
+  return {
+    provider: "firecrawl",
+    operation: "research.agent.start",
+    id: readString(response.id),
+    raw: response,
+  };
+}
+
+async function executeFirecrawlAgentStatus(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const id = readFirstString(input, {}, ["id", "jobId", "agentId"]);
+  if (!id) {
+    throw new Error("Firecrawl agent status requires an id.");
+  }
+  const response = await firecrawlRequest(env, "GET", `/v2/agent/${encodeURIComponent(id)}`);
+  return {
+    provider: "firecrawl",
+    operation: "research.agent.status",
+    id,
+    raw: response,
+  };
+}
+
+async function executeFirecrawlBrowserCreate(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const response = await firecrawlRequest(env, "POST", "/v2/browser", pickFirecrawlInput(input, [
+    "ttl",
+    "activityTtl",
+    "streamWebView",
+    "profile",
+  ]));
+  return {
+    provider: "firecrawl",
+    operation: "browser.session.create",
+    id: readString(response.id),
+    raw: response,
+  };
+}
+
+async function executeFirecrawlBrowserExecute(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const sessionId = readFirstString(input, {}, ["sessionId", "session_id", "id"]);
+  const code = readString(input.code);
+  if (!sessionId) {
+    throw new Error("Firecrawl browser execute requires a sessionId.");
+  }
+  if (!code) {
+    throw new Error("Firecrawl browser execute requires code.");
+  }
+  const response = await firecrawlRequest(env, "POST", `/v2/browser/${encodeURIComponent(sessionId)}/execute`, {
+    code,
+    ...pickFirecrawlInput(input, ["language", "timeout"]),
+  });
+  return {
+    provider: "firecrawl",
+    operation: "browser.session.execute",
+    sessionId,
+    raw: response,
+  };
+}
+
+async function executeFirecrawlBrowserDelete(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const sessionId = readFirstString(input, {}, ["sessionId", "session_id", "id"]);
+  if (!sessionId) {
+    throw new Error("Firecrawl browser delete requires a sessionId.");
+  }
+  const response = await firecrawlRequest(env, "DELETE", `/v2/browser/${encodeURIComponent(sessionId)}`);
+  return {
+    provider: "firecrawl",
+    operation: "browser.session.delete",
+    sessionId,
+    raw: response,
+  };
+}
+
+async function executeFirecrawlBrowserList(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const status = readString(input.status);
+  const path = status ? `/v2/browser?status=${encodeURIComponent(status)}` : "/v2/browser";
+  const response = await firecrawlRequest(env, "GET", path);
+  return {
+    provider: "firecrawl",
+    operation: "browser.session.list",
+    sessions: Array.isArray(response.sessions) ? response.sessions : [],
+    raw: response,
+  };
+}
+
+async function executeFirecrawlInteract(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const scrapeId = readFirstString(input, {}, ["scrapeId", "scrape_id", "jobId", "id"]);
+  if (!scrapeId) {
+    throw new Error("Firecrawl interact requires a scrapeId.");
+  }
+  const prompt = readString(input.prompt);
+  const code = readString(input.code);
+  if (!prompt && !code) {
+    throw new Error("Firecrawl interact requires prompt or code.");
+  }
+  const response = await firecrawlRequest(env, "POST", `/v2/scrape/${encodeURIComponent(scrapeId)}/interact`, {
+    ...(prompt ? { prompt } : {}),
+    ...(code ? { code } : {}),
+    ...pickFirecrawlInput(input, ["language", "timeout"]),
+  });
+  return {
+    provider: "firecrawl",
+    operation: "browser.interact",
+    scrapeId,
+    raw: response,
+  };
+}
+
+async function executeFirecrawlInteractStop(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const scrapeId = readFirstString(input, {}, ["scrapeId", "scrape_id", "jobId", "id"]);
+  if (!scrapeId) {
+    throw new Error("Firecrawl interact stop requires a scrapeId.");
+  }
+  const response = await firecrawlRequest(env, "DELETE", `/v2/scrape/${encodeURIComponent(scrapeId)}/interact`);
+  return {
+    provider: "firecrawl",
+    operation: "browser.interact.stop",
+    scrapeId,
     raw: response,
   };
 }
 
 async function firecrawlRequest(
   env: Record<string, unknown> | undefined,
-  apiKey: string,
-  baseUrl: string,
+  method: "GET" | "POST" | "DELETE",
   path: string,
-  body: Record<string, unknown>,
+  body?: Record<string, unknown>,
 ) {
+  const apiKey = readString(env?.FIRECRAWL_API_KEY);
+  if (!apiKey) {
+    throw new Error("FIRECRAWL_API_KEY is not configured.");
+  }
+  const baseUrl = (readString(env?.FIRECRAWL_BASE_URL) ?? readString(env?.FIRECRAWL_API_URL) ?? "https://api.firecrawl.dev").replace(/\/+$/, "");
   const fetcher = typeof env?.TRELLIS_FETCH === "function"
     ? env.TRELLIS_FETCH as typeof fetch
     : fetch;
-  const response = await fetcher(`${baseUrl}${path}`, {
-    method: "POST",
+  const requestInit: RequestInit = {
+    method,
     headers: {
-      "content-type": "application/json",
+      ...(method === "POST" ? { "content-type": "application/json" } : {}),
       authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify(body),
-  });
+  };
+  if (method === "POST" && body) {
+    requestInit.body = JSON.stringify(body);
+  }
+  const response = await fetcher(`${baseUrl}${path}`, requestInit);
   if (!response.ok) {
     throw new Error(`Firecrawl request failed with ${response.status}: ${await response.text()}`);
   }
   const parsed = await response.json().catch(() => ({}));
   return isRecord(parsed) ? parsed : {};
+}
+
+function normalizeFirecrawlScrapeResult(operation: "research.scrape" | "research.extract", url: string, response: Record<string, unknown>) {
+  const data = isRecord(response.data) ? response.data : {};
+  const metadata = isRecord(data.metadata) ? data.metadata : {};
+  return {
+    provider: "firecrawl",
+    operation,
+    url,
+    markdown: readString(data.markdown) ?? "",
+    html: readString(data.html),
+    summary: readString(data.summary),
+    scrapeId: readString(metadata.scrapeId) ?? readString(metadata.scrape_id),
+    metadata,
+    raw: response,
+  };
+}
+
+function pickFirecrawlInput(input: Record<string, unknown>, keys: string[]) {
+  const picked: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (input[key] !== undefined) {
+      picked[key] = input[key];
+    }
+  }
+  return picked;
 }
 
 async function executeProspeoEmailEnrich(
@@ -6493,19 +6914,21 @@ async function executeProspeoEmailEnrich(
   };
 }
 
-function readFirecrawlSources(value: unknown): Array<"web" | "news"> {
+function readFirecrawlSources(value: unknown): Array<"web" | "images" | "news"> {
   if (!Array.isArray(value)) {
     return ["web"];
   }
-  const sources = value.filter((source): source is "web" | "news" => source === "web" || source === "news");
+  const sources = value.filter((source): source is "web" | "images" | "news" =>
+    source === "web" || source === "images" || source === "news"
+  );
   return sources.length > 0 ? sources : ["web"];
 }
 
-function mapFirecrawlSearchResult(value: unknown, source: "web" | "news") {
+function mapFirecrawlSearchResult(value: unknown, source: "web" | "images" | "news") {
   const result = isRecord(value) ? value : {};
   return {
     title: readString(result.title) ?? "Untitled",
-    url: readString(result.url) ?? "",
+    url: readString(result.url) ?? readString(result.imageUrl) ?? "",
     excerpt: readString(result.description) ?? readString(result.excerpt) ?? readString(result.snippet) ?? "",
     source,
   };
