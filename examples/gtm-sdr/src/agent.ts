@@ -8,6 +8,7 @@ export default trellis.agent("sdr", {
   state: stateMap,
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
+  auth: trellis.auth.apiKey(),
   safety: trellis.safeOutbound(),
 }, async (app) => {
   const signal = await app.signal();

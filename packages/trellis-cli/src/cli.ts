@@ -326,6 +326,7 @@ Examples:
   npm run trellis -- deploy --json
   npm run trellis -- verify cloudflare --json
   npm run trellis -- verify cloudflare --live --url https://your-worker.workers.dev --exercise-agent
+  npm run trellis -- verify cloudflare --live --url https://your-worker.workers.dev --api-key $TRELLIS_API_KEY
   npm run trellis -- verify cloudflare --live --url https://your-worker.workers.dev --attio-smoke --provider-smoke-token $TRELLIS_PROVIDER_SMOKE_TOKEN
 
 Simple labels stay short in the CLI: attio, agentmail, firecrawl, apify, prospeo, langfuse, braintrust.
@@ -659,10 +660,12 @@ async function verifyRemoteCloudflareRoutes(input: {
   endpoint: string;
   exerciseAgent: boolean;
   webhookToken?: string;
+  apiKey?: string;
   attioSmoke: boolean;
   providerSmokeToken?: string;
 }): Promise<VerifyCheck[]> {
   const checks: VerifyCheck[] = [];
+  const apiKeyHeaders = buildTrellisApiKeyHeaders(input.apiKey);
   const health = await fetchVerifyJson(verifyRouteUrl(input.endpoint, "/healthz"));
   const healthBody = asCliRecord(health.body);
   checks.push(verifyCheck("remote.healthz", health.status === 200
@@ -673,14 +676,18 @@ async function verifyRemoteCloudflareRoutes(input: {
     ? `/healthz returned ${health.status}`
     : `could not fetch /healthz: ${health.error ?? "unknown error"}`, summarizeRemoteEvidence(health)));
 
-  const mcp = await fetchVerifyJson(verifyRouteUrl(input.endpoint, "/mcp/trellis"));
+  const mcp = await fetchVerifyJson(verifyRouteUrl(input.endpoint, "/mcp/trellis"), {
+    headers: apiKeyHeaders,
+  });
   const mcpBody = asCliRecord(mcp.body);
   const tools = Array.isArray(mcpBody?.tools) ? mcpBody.tools : [];
   checks.push(verifyCheck("remote.mcp", mcp.status === 200
     && mcpBody?.ok === true
     && tools.includes("trellis.health")
     ? "pass"
-    : "fail", mcp.status
+    : "fail", mcp.status === 401
+    ? "/mcp/trellis returned 401; pass --api-key or set TRELLIS_API_KEY for protected Trellis routes"
+    : mcp.status
     ? `/mcp/trellis returned ${mcp.status}`
     : `could not fetch /mcp/trellis: ${mcp.error ?? "unknown error"}`, summarizeRemoteEvidence(mcp)));
 
@@ -723,6 +730,7 @@ async function verifyRemoteCloudflareRoutes(input: {
   const signalId = `sig_verify_${Date.now()}`;
   const headers: Record<string, string> = {
     "content-type": "application/json",
+    ...apiKeyHeaders,
   };
   if (input.webhookToken) {
     headers.authorization = `Bearer ${input.webhookToken}`;
@@ -756,7 +764,7 @@ async function verifyRemoteCloudflareRoutes(input: {
     && auditTypes.includes("skill.completed")
     ? "pass"
     : "fail", webhook.status === 401
-    ? "safe signal webhook was rejected; pass --webhook-token or configure TRELLIS_WEBHOOK_SECRET locally"
+    ? "safe signal webhook was rejected; pass --api-key for protected Trellis routes, or --webhook-token when TRELLIS_WEBHOOK_SECRET is configured"
     : webhook.status
       ? `/webhooks/signals returned ${webhook.status}; this is the live Trellis Cloudflare harness check and may use one model call`
       : `could not post /webhooks/signals: ${webhook.error ?? "unknown error"}`, summarizeRemoteEvidence(webhook)));
@@ -882,7 +890,9 @@ async function verifyRemoteCloudflareRoutes(input: {
     checks.push(verifyCheck("remote.operator.providerActionReplay", "fail", "provider-action replay requires a no-send-blocked provider action"));
   }
 
-  const mcpAfterWebhook = await fetchVerifyJson(verifyRouteUrl(input.endpoint, "/mcp/trellis"));
+  const mcpAfterWebhook = await fetchVerifyJson(verifyRouteUrl(input.endpoint, "/mcp/trellis"), {
+    headers: apiKeyHeaders,
+  });
   const mcpAfterWebhookBody = asCliRecord(mcpAfterWebhook.body);
   const snapshot = asCliRecord(mcpAfterWebhookBody?.snapshot);
   const counts = asCliRecord(snapshot?.counts);
@@ -917,6 +927,12 @@ function readVerifyApproval(webhookBody: Record<string, unknown> | undefined, ac
     };
   }
   return null;
+}
+
+function buildTrellisApiKeyHeaders(apiKey: string | undefined): Record<string, string> {
+  return apiKey
+    ? { "x-trellis-api-key": apiKey }
+    : {};
 }
 
 async function fetchVerifyJson(url: string, init?: RequestInit) {
@@ -1490,6 +1506,7 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
   const configuredProviders = readConfiguredProviderIds(process.cwd());
   const exerciseAgent = flags["exercise-agent"] === true || flags.signal === true;
   const webhookToken = readFlagString(flags, ["webhook-token", "token"]) ?? process.env.TRELLIS_WEBHOOK_SECRET ?? process.env.SIGNAL_WEBHOOK_SECRET;
+  const apiKey = readFlagString(flags, ["api-key", "trellis-api-key"]) ?? process.env.TRELLIS_API_KEY;
   const attioSmoke = flags["attio-smoke"] === true || flags["provider-smoke"] === true;
   const providerSmokeToken = readFlagString(flags, ["provider-smoke-token", "smoke-token"])
     ?? process.env.TRELLIS_PROVIDER_SMOKE_TOKEN;
@@ -1563,6 +1580,7 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
       endpoint,
       exerciseAgent,
       webhookToken,
+      apiKey,
       attioSmoke,
       providerSmokeToken,
     }));
@@ -2386,6 +2404,7 @@ CLOUDFLARE_ACCOUNT_ID=
 CLOUDFLARE_API_TOKEN=
 
 # Connect these after the app boots.
+TRELLIS_API_KEY=
 ATTIO_API_KEY=
 ATTIO_DEFAULT_LIST_ID=
 TRELLIS_PROVIDER_SMOKE_TOKEN=
@@ -2435,6 +2454,7 @@ export default trellis.agent("sdr", {
   state: stateMap,
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
+  auth: trellis.auth.apiKey(),
   safety: trellis.safeOutbound(),
 }, async (app) => {
   const signal = await app.signal();
@@ -3012,6 +3032,7 @@ npm run verify
 The first deploy is Cloudflare-first and does not require Attio, AgentMail, or Firecrawl credentials. Those are connected after the app boots:
 
 \`\`\`bash
+npx wrangler secret put TRELLIS_API_KEY
 npm run trellis -- connect attio
 npm run trellis -- connect agentmail
 npm run trellis -- connect firecrawl
@@ -3024,7 +3045,7 @@ Your app code stays Trellis-only in \`src/agent.ts\`. Attio field mapping lives 
 
 Deploy auto-packs the default \`knowledge/**/*.md\` files, or uses \`.trellis/knowledge-pack.json\` when you run \`trellis docs add <path>\`. It also syncs tracked \`SKILL.md\` files into the \`TRELLIS_PACKS\` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
 
-\`GET /smoke\` is safe and never writes to providers. \`POST /smoke/attio\` is an explicit provider smoke: it requires \`ATTIO_API_KEY\` plus \`TRELLIS_PROVIDER_SMOKE_TOKEN\`, writes a deterministic smoke company/person through the Attio field map, and returns HTTP 200 only when Attio accepts the mapped write.
+\`GET /healthz\` and \`GET /smoke\` stay public-safe. Once \`TRELLIS_API_KEY\` is set as a Worker secret, Trellis protects \`/webhooks/signals\`, \`/mcp/trellis\`, \`/dashboard\`, \`/approvals/*\`, \`/operator/*\`, and \`/provider-actions/*\`; call them with \`Authorization: Bearer <key>\` or \`x-trellis-api-key: <key>\`. \`POST /smoke/attio\` is an explicit provider smoke: it requires \`ATTIO_API_KEY\` plus \`TRELLIS_PROVIDER_SMOKE_TOKEN\`, writes a deterministic smoke company/person through the Attio field map, and returns HTTP 200 only when Attio accepts the mapped write.
 `;
 }
 

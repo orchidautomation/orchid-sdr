@@ -17,6 +17,7 @@ npm run verify
 The first deploy is Cloudflare-first and does not require Attio, AgentMail, or Firecrawl credentials. Those are connected after the app boots:
 
 ```bash
+npx wrangler secret put TRELLIS_API_KEY
 npm run trellis -- connect attio
 npm run trellis -- connect agentmail
 npm run trellis -- connect firecrawl
@@ -29,4 +30,6 @@ Your app code stays Trellis-only in `src/agent.ts`. Durable business state lives
 
 Deploy auto-packs the default `knowledge/**/*.md` files, or uses `.trellis/knowledge-pack.json` when you run `trellis docs add <path>`. It also syncs tracked `SKILL.md` files into the `TRELLIS_PACKS` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
 
-`GET /smoke` is safe and never writes to providers. `POST /smoke/attio` is an explicit provider smoke: it requires `ATTIO_API_KEY` plus `TRELLIS_PROVIDER_SMOKE_TOKEN`, writes a deterministic smoke company/person through the Attio field map, and returns HTTP 200 only when Attio accepts the mapped write.
+`GET /healthz` and `GET /smoke` stay public-safe. Once `TRELLIS_API_KEY` is set as a Worker secret, Trellis protects `/webhooks/signals`, `/mcp/trellis`, `/dashboard`, `/approvals/*`, `/operator/*`, and `/provider-actions/*`; call them with `Authorization: Bearer <key>` or `x-trellis-api-key: <key>`.
+
+`POST /smoke/attio` is an explicit provider smoke: it requires `ATTIO_API_KEY` plus `TRELLIS_PROVIDER_SMOKE_TOKEN`, writes a deterministic smoke company/person through the Attio field map, and returns HTTP 200 only when Attio accepts the mapped write.

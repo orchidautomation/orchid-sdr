@@ -84,6 +84,7 @@ describe("trellis init v3 scaffold", () => {
       expect(agentSource).toContain("crm: attio({ map: attioMap })");
       expect(agentSource).toContain("state: stateMap");
       expect(agentSource).toContain("model: \"anthropic/claude-sonnet-4.6\"");
+      expect(agentSource).toContain("auth: trellis.auth.apiKey()");
       expect(agentSource).toContain("trellis.safeOutbound()");
       expect(agentSource).toContain("app.skill(\"icp-qualification\"");
       expect(agentSource).not.toContain("@flue/sdk");
@@ -124,6 +125,7 @@ describe("trellis init v3 scaffold", () => {
 
       expect(envExample).toContain("CLOUDFLARE_ACCOUNT_ID=");
       expect(envExample).toContain("CLOUDFLARE_API_TOKEN=");
+      expect(envExample).toContain("TRELLIS_API_KEY=");
       expect(envExample).toContain("ATTIO_API_KEY=");
       expect(envExample).toContain("TRELLIS_PROVIDER_SMOKE_TOKEN=");
       expect(envExample).toContain("AGENTMAIL_API_KEY=");
@@ -135,6 +137,7 @@ describe("trellis init v3 scaffold", () => {
       expect(readme).toContain("first deploy is Cloudflare-first");
       expect(readme).toContain("npm run cf:login");
       expect(readme).toContain("Deploy auto-packs the default `knowledge/**/*.md` files");
+      expect(readme).toContain("TRELLIS_API_KEY");
       expect(readme).toContain("POST /smoke/attio");
       expect(readme).toContain("npm run trellis -- connect attio");
       expect(readme).toContain("Your app code stays Trellis-only in `src/agent.ts`");
@@ -463,6 +466,13 @@ describe("trellis init v3 scaffold", () => {
     const fakeNpxPath = path.join(fakeBinDir, "npx");
     const server = createServer(async (request, response) => {
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
+      if (isProtectedTestRoute(url.pathname) && request.headers["x-trellis-api-key"] !== "test-api-key") {
+        writeJson(response, {
+          ok: false,
+          error: "unauthorized",
+        }, 401);
+        return;
+      }
       if (url.pathname === "/healthz") {
         writeJson(response, {
           ok: true,
@@ -616,6 +626,7 @@ describe("trellis init v3 scaffold", () => {
         "--json",
       ], targetDir, {
         PATH: `${fakeBinDir}:${process.env.PATH ?? ""}`,
+        TRELLIS_API_KEY: "test-api-key",
       })) as {
         ok: boolean;
         mode: string;
@@ -667,6 +678,7 @@ function buildCliEnv(extraEnv: Record<string, string> = {}) {
     "ATTIO_API_KEY",
     "AGENTMAIL_API_KEY",
     "FIRECRAWL_API_KEY",
+    "TRELLIS_API_KEY",
     "APIFY_TOKEN",
     "PROSPEO_API_KEY",
     "LANGFUSE_PUBLIC_KEY",
@@ -720,6 +732,13 @@ function runCliFailure(repoRoot: string, args: string[], cwd: string) {
   }
 
   throw new Error(`Expected CLI command to fail: ${args.join(" ")}`);
+}
+
+function isProtectedTestRoute(pathname: string) {
+  return pathname === "/mcp/trellis"
+    || pathname === "/webhooks/signals"
+    || pathname.startsWith("/approvals/")
+    || pathname.startsWith("/operator/");
 }
 
 function listen(server: ReturnType<typeof createServer>) {

@@ -294,10 +294,46 @@ describe("@trellis/gtm v3 API", () => {
     const mcp = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), env);
     const providerActions = await runtime.worker.fetch(new Request("https://example.com/provider-actions"), env);
     const dashboard = await runtime.worker.fetch(new Request("https://example.com/dashboard"), env);
+    const protectedEnv = {
+      ...env,
+      TRELLIS_DB: createFakeD1(),
+      TRELLIS_EVENTS: createFakeQueue(),
+      PROSPECT_WORKFLOW: {
+        create: vi.fn(async (options: Record<string, unknown>) => ({
+          id: options.id,
+        })),
+      },
+      TRELLIS_API_KEY: "test-api-key",
+    };
+    const protectedHealth = await runtime.worker.fetch(new Request("https://example.com/healthz"), protectedEnv);
+    const protectedSmoke = await runtime.worker.fetch(new Request("https://example.com/smoke"), protectedEnv);
+    const protectedMcpDenied = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), protectedEnv);
+    const protectedMcpAllowed = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis", {
+      headers: {
+        "x-trellis-api-key": "test-api-key",
+      },
+    }), protectedEnv);
+    const protectedWebhookAllowed = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-api-key",
+        "x-trellis-webhook-secret": "test-secret",
+      },
+      body: JSON.stringify({
+        id: "sig_api_key",
+        workspaceId: "wrk_api_key",
+        threadId: "thr_api_key",
+      }),
+    }), protectedEnv);
 
     await expect(health.json()).resolves.toMatchObject({
       ok: true,
       stack: "trellis-v3-cloudflare",
+      auth: {
+        apiKey: {
+          enabled: false,
+        },
+      },
       bindings: {
         TRELLIS_DB: true,
         TRELLIS_EVENTS: true,
@@ -604,6 +640,36 @@ describe("@trellis/gtm v3 API", () => {
     expect(dashboardHtml).toContain("agentmail:email.send failed");
     expect(dashboardHtml).toContain("Recent Audit Events");
     expect(dashboardHtml).toContain("provider_action.failed");
+    await expect(protectedHealth.json()).resolves.toMatchObject({
+      ok: true,
+      auth: {
+        apiKey: {
+          enabled: true,
+          env: "TRELLIS_API_KEY",
+        },
+      },
+    });
+    expect(protectedSmoke.status).toBe(200);
+    expect(protectedMcpDenied.status).toBe(401);
+    await expect(protectedMcpDenied.json()).resolves.toMatchObject({
+      ok: false,
+      error: "unauthorized",
+    });
+    expect(protectedMcpAllowed.status).toBe(200);
+    await expect(protectedMcpAllowed.json()).resolves.toMatchObject({
+      ok: true,
+      server: "trellis",
+    });
+    expect(protectedWebhookAllowed.status).toBe(202);
+    await expect(protectedWebhookAllowed.json()).resolves.toMatchObject({
+      ok: true,
+      signal: {
+        id: "sig_api_key",
+      },
+      webhook: {
+        verified: true,
+      },
+    });
     const smokeWithHistory = await runtime.worker.fetch(new Request("https://example.com/smoke"), env);
     await expect(smokeWithHistory.json()).resolves.toMatchObject({
       ok: true,

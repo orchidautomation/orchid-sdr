@@ -76,6 +76,17 @@ export interface TrellisSafetyPolicy {
   killSwitch: boolean;
 }
 
+export interface TrellisApiKeyAuthConfig {
+  type: "apiKey";
+  env: string;
+  header: string;
+  allowUnauthenticated: string[];
+}
+
+export interface TrellisAuthConfig {
+  apiKey?: TrellisApiKeyAuthConfig;
+}
+
 const DEFAULT_TRELLIS_MODEL = "anthropic/claude-sonnet-4.6";
 
 export interface TrellisAgentConfig {
@@ -89,6 +100,7 @@ export interface TrellisAgentConfig {
   knowledge: string | string[];
   skills: string | string[];
   safety?: TrellisSafetyPolicy;
+  auth?: TrellisAuthConfig;
 }
 
 export interface TrellisSignal {
@@ -551,6 +563,18 @@ export const trellis = {
       requireApproval: input?.requireApproval ?? ["email.send", "mail.reply", "crm.update", "handoff.webhook"],
       killSwitch: input?.killSwitch ?? true,
     };
+  },
+  auth: {
+    apiKey(input?: Partial<Pick<TrellisApiKeyAuthConfig, "env" | "header" | "allowUnauthenticated">>): TrellisAuthConfig {
+      return {
+        apiKey: {
+          type: "apiKey",
+          env: input?.env ?? "TRELLIS_API_KEY",
+          header: input?.header ?? "x-trellis-api-key",
+          allowUnauthenticated: input?.allowUnauthenticated ?? ["/healthz", "/smoke"],
+        },
+      };
+    },
   },
   state(definition: TrellisStateMap): TrellisStateMap {
     return definition;
@@ -1431,6 +1455,14 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
   const worker: TrellisCloudflareRuntime["worker"] = {
       async fetch(request: Request, env?: Record<string, unknown>) {
         const url = new URL(request.url);
+        const auth = verifyTrellisRouteAuth(request, env, agent.config, url.pathname);
+        if (!auth.ok) {
+          return jsonResponse({
+            ok: false,
+            error: auth.error,
+            detail: auth.detail,
+          }, auth.status);
+        }
 
         if (url.pathname === "/healthz") {
           return jsonResponse({
@@ -1438,6 +1470,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             agent: agent.name,
             stack: "trellis-v3-cloudflare",
             safety: agent.config.safety ?? trellis.safeOutbound(),
+            auth: summarizeRouteAuth(env, agent.config),
             bindings: summarizeCloudflareBindings(env),
             traceExport: summarizeTraceExport(env),
           });
@@ -3208,13 +3241,96 @@ function verifySignalWebhook(request: Request, env: Record<string, unknown> | un
 
   const authorization = readString(request.headers.get("authorization"));
   const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : undefined;
-  const providedSecret = bearer
-    ?? readString(request.headers.get("x-trellis-webhook-secret"))
-    ?? readString(request.headers.get("x-webhook-secret"));
+  const providedSecret = readString(request.headers.get("x-trellis-webhook-secret"))
+    ?? readString(request.headers.get("x-webhook-secret"))
+    ?? bearer;
   return {
     enabled: true,
     ok: providedSecret === configuredSecret,
   };
+}
+
+function summarizeRouteAuth(env: Record<string, unknown> | undefined, config: TrellisAgentConfig) {
+  const apiKey = resolveApiKeyAuth(config);
+  const configured = Boolean(readString(env?.[apiKey.env]));
+  return {
+    apiKey: {
+      enabled: configured,
+      env: apiKey.env,
+      header: apiKey.header,
+      allowUnauthenticated: apiKey.allowUnauthenticated,
+      protectedRoutes: [
+        "/webhooks/signals",
+        "/mcp/trellis",
+        "/dashboard",
+        "/approvals/*",
+        "/operator/*",
+        "/provider-actions*",
+        "/agents/*",
+      ],
+    },
+  };
+}
+
+function verifyTrellisRouteAuth(
+  request: Request,
+  env: Record<string, unknown> | undefined,
+  config: TrellisAgentConfig,
+  pathname: string,
+) {
+  const apiKey = resolveApiKeyAuth(config);
+  const configuredSecret = readString(env?.[apiKey.env]);
+  if (!configuredSecret || apiKey.allowUnauthenticated.includes(pathname) || !isTrellisApiKeyProtectedRoute(pathname)) {
+    return {
+      ok: true,
+      status: 200,
+      error: null,
+      detail: null,
+    };
+  }
+
+  const providedSecret = readTrellisApiKeyFromRequest(request, apiKey.header);
+  return providedSecret === configuredSecret
+    ? {
+        ok: true,
+        status: 200,
+        error: null,
+        detail: null,
+      }
+    : {
+        ok: false,
+        status: 401,
+        error: "unauthorized",
+        detail: `This Trellis route requires a matching bearer token or ${apiKey.header} header.`,
+      };
+}
+
+function resolveApiKeyAuth(config: TrellisAgentConfig): TrellisApiKeyAuthConfig {
+  return config.auth?.apiKey ?? {
+    type: "apiKey",
+    env: "TRELLIS_API_KEY",
+    header: "x-trellis-api-key",
+    allowUnauthenticated: ["/healthz", "/smoke"],
+  };
+}
+
+function isTrellisApiKeyProtectedRoute(pathname: string) {
+  return pathname === "/webhooks/signals"
+    || pathname === "/mcp/trellis"
+    || pathname === "/dashboard"
+    || pathname === "/provider-actions"
+    || pathname.startsWith("/provider-actions/")
+    || pathname.startsWith("/approvals/")
+    || pathname.startsWith("/operator/")
+    || pathname.startsWith("/agents/");
+}
+
+function readTrellisApiKeyFromRequest(request: Request, headerName: string) {
+  const authorization = readString(request.headers.get("authorization"));
+  const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : undefined;
+  return bearer
+    ?? readString(request.headers.get(headerName))
+    ?? readString(request.headers.get("x-trellis-api-key"));
 }
 
 function verifyApifyWebhookRequest(request: Request, env: Record<string, unknown> | undefined) {
@@ -3231,11 +3347,11 @@ function verifyApifyWebhookRequest(request: Request, env: Record<string, unknown
   const url = new URL(request.url);
   const authorization = readString(request.headers.get("authorization"));
   const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : undefined;
-  const providedSecret = bearer
-    ?? readString(request.headers.get("x-apify-webhook-secret"))
+  const providedSecret = readString(request.headers.get("x-apify-webhook-secret"))
     ?? readString(request.headers.get("x-trellis-webhook-secret"))
     ?? readString(request.headers.get("x-webhook-secret"))
-    ?? readString(url.searchParams.get("secret"));
+    ?? readString(url.searchParams.get("secret"))
+    ?? bearer;
   return {
     enabled: true,
     ok: providedSecret === configuredSecret,
@@ -3270,9 +3386,9 @@ async function verifyAgentMailWebhookRequest(
 
   const authorization = readString(request.headers.get("authorization"));
   const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : undefined;
-  const providedSecret = bearer
-    ?? readString(request.headers.get("x-agentmail-webhook-secret"))
-    ?? readString(request.headers.get("x-trellis-webhook-secret"));
+  const providedSecret = readString(request.headers.get("x-agentmail-webhook-secret"))
+    ?? readString(request.headers.get("x-trellis-webhook-secret"))
+    ?? bearer;
   return {
     enabled: true,
     ok: providedSecret === configuredSecret,

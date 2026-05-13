@@ -24,9 +24,12 @@ The example shows one realistic SDR loop:
 Provider credentials are optional at first boot. Add them only when you want live provider behavior:
 
 ```bash
+npx wrangler secret put TRELLIS_API_KEY
 npm run trellis -- connect firecrawl
 npm run trellis -- connect agentmail
 npm run trellis -- connect attio
 ```
 
 Keep the first run in no-send mode. A green smoke test should prove the app boots, routes signals, validates schemas, writes state, and blocks side effects before any customer-facing action is enabled.
+
+Once `TRELLIS_API_KEY` is configured, Trellis protects `/webhooks/signals`, `/mcp/trellis`, `/dashboard`, `/approvals/*`, `/operator/*`, and `/provider-actions/*`. Use `Authorization: Bearer <key>` or `x-trellis-api-key: <key>` when calling those routes.
