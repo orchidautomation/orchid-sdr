@@ -851,7 +851,7 @@ Do not rewrite everything at once.
 
 ### Phase 1: Prove The New Inner Loop
 
-Build a Cloudflare + Flue spike that:
+Build a Cloudflare-backed Trellis runtime spike that:
 
 - loads Trellis markdown skills from R2 or local files
 - runs one qualification skill
@@ -861,7 +861,7 @@ Build a Cloudflare + Flue spike that:
 
 ### Phase 2: Replace Sandbox Broker
 
-Replace the current Vercel Sandbox / Claude broker with a Flue-backed harness behind the existing `runSandboxTurn` shape.
+Replace the current Vercel Sandbox / Claude broker with the Trellis runtime harness behind the existing `runSandboxTurn` shape.
 
 ### Phase 3: Replace Runtime Dispatch
 
@@ -898,7 +898,7 @@ The template should be opinionated and safe by default.
 
 ## One-Line Vision
 
-Trellis v3 is the easiest way to ship a reliable GTM agent app from markdown playbooks, provider choices, and a battle-tested Cloudflare + Flue runtime stack.
+Trellis v3 is the easiest way to ship a reliable GTM agent app from markdown playbooks, provider choices, and a battle-tested Cloudflare runtime stack.
 
 ## Useful References
 

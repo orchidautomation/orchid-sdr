@@ -43,7 +43,7 @@ Reach feature parity with the existing AI SDR/reference app using the reference 
 | MCP/dashboard parity | `/mcp/trellis`, `/dashboard`, provider-action views, operator controls, knowledge inspection, workflow replay, approval routes, and agent snapshots are covered. | Test proven |
 | Operator controls | Global kill switch, campaign/thread pause/resume, workflow replay, provider-action requeue, approval approve/reject, no-send guards, and blocked executions are covered locally. | Test proven |
 | Observability and reliability | D1 trace events, audit events, provider-run records, workflow-run records, smoke history, optional trace exporters, queue retries, and DLQ-style provider action recovery are covered. | Local/test proven |
-| Legacy happy-path removal | `trellis add`, `init --legacy/--kit`, and Vercel deploy target are rejected from the v3 CLI surface; docs mark legacy reference app/framework packages as parity material only. | Test proven |
+| v3 public examples | `examples/gtm-sdr` is the only public example surface and shows the current Cloudflare-first GTM SDR loop. | Docs proven |
 
 ## Verification Commands
 
@@ -80,7 +80,7 @@ Observed results:
 
 - `npm test`: 39 test files, 163 tests passed.
 - `npm run build`: packages build passed.
-- `npm run build:all`: v3 packages plus legacy parity packages build passed.
+- `npm run build:all`: v3 package build path passed.
 - `npm run typecheck`: passed.
 - `git diff --check`: passed.
 - `trellis smoke --json`: safe fixture workflow passed.

@@ -102,9 +102,9 @@ export default trellis.agent("sdr", {
 
 ## Current Branch Status
 
-The repo still contains the older reference app and framework-composition packages. They are behavior/parity source material only, not the v3 public architecture.
+The public examples surface is v3-only. Use [`examples/gtm-sdr`](./examples/gtm-sdr/) for the current Cloudflare-first GTM SDR example.
 
-Root npm scripts now follow that boundary. `npm run build`, `npm run doctor`, `npm run smoke`, `npm run verify`, and `npm run dev` exercise the v3 Trellis/Cloudflare path. The v3 CLI rejects old composition commands even when a legacy flag is passed. The old AI SDR baseline is still available only through explicit `legacy:*` scripts and `npm run build:all`.
+Root npm scripts follow that boundary. `npm run build`, `npm run doctor`, `npm run smoke`, `npm run verify`, `npm run dev`, and `npm run build:all` exercise the v3 Trellis/Cloudflare path.
 
 The v3 surface now lives in:
 
@@ -112,9 +112,10 @@ The v3 surface now lives in:
 - `packages/providers`
 - `docs/trellis-v3-vision.md`
 - `docs/trellis-v3-parity-contract.md`
+- `examples/gtm-sdr`
 - the default `trellis init`, `trellis deploy`, `trellis verify`, `trellis smoke`, `trellis connect`, and `trellis docs add` CLI path
 
-Migration compatibility stays out of the default help, scaffold, docs, deploy story, and CLI escape hatches.
+Old parity examples are no longer presented as product examples.
 
 ## Verify
 

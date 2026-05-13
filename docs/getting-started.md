@@ -130,6 +130,6 @@ The default GTM provider lanes are:
 - Prospeo for optional email enrichment
 - Langfuse as optional trace/eval export
 
-## Legacy Material
+## Example
 
-`examples/reference-app` and the older framework packages remain in the repo only as parity and migration material while v3 catches up to the existing AI SDR behavior. They are not the v3 public architecture.
+Use [`examples/gtm-sdr`](../examples/gtm-sdr/) as the v3 reference example. It shows the current public architecture: Cloudflare-first deploy, form-fill signal, durable thread, markdown knowledge, typed skills, Firecrawl-backed research tools, state map, approval-gated draft, smoke route, and audit-friendly workflow.

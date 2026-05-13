@@ -1,0 +1,24 @@
+{
+  "id": "sig_pylon_form_001",
+  "source": "website.form",
+  "provider": "trellis.demo",
+  "workspaceId": "wrk_common_room_demo",
+  "threadId": "lead:pylon:alex-rivera",
+  "traceId": "trace_pylon_form_001",
+  "formName": "ai-sdr-diagnostic",
+  "sourceUrl": "https://example.com/ai-sdr-diagnostic",
+  "submittedAt": "2026-05-13T14:30:00-04:00",
+  "firstName": "Alex",
+  "lastName": "Rivera",
+  "email": "alex.rivera@usepylon.com",
+  "title": "Revenue Operations / GTM Engineering",
+  "company": "Pylon",
+  "companyDomain": "usepylon.com",
+  "customerStatus": "not_customer",
+  "message": "We are looking at Clay-style account research and AI SDR reliability. The issue is knowing which signals are real, routing them correctly, and avoiding unsafe autonomous sending.",
+  "consent": {
+    "channel": "linkedin_opt_in",
+    "capturedAt": "2026-05-13T14:30:00-04:00",
+    "canContact": true
+  }
+}

@@ -8,8 +8,8 @@ The roadmap is "ship the GTM agent stack that works."
 
 - keep `trellis init` Cloudflare-first
 - keep `trellis connect` business-provider-only
-- keep legacy composition behind explicit `legacy:*` migration scripts, not v3 CLI flags
 - keep docs focused on v3
+- keep `examples/gtm-sdr` as the single public example
 - make `doctor`, `smoke`, and `deploy` the setup spine
 
 ## Phase 2: Runtime Parity

@@ -15,9 +15,7 @@
     "dev": "npm run trellis -- help",
     "build:packages": "npm run build -w @trellis/gtm && npm run build -w @trellis/providers",
     "build": "npm run build:packages",
-    "build:all": "npm run build:packages && npm run build:legacy",
-    "build:legacy:packages": "npm run build -w @trellis/framework && npm run build -w @trellis/default-sdr && npm run build -w @trellis/convex",
-    "build:legacy": "node scripts/fix-rivetkit-engine-runner-protocol.mjs && npm run build:legacy:packages && tsup examples/reference-app/src/index.ts examples/reference-app/src/mcp/trellis-server.ts --format esm --target node22 --outDir dist --clean",
+    "build:all": "npm run build:packages",
     "start": "npm run trellis -- help",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -25,16 +23,7 @@
     "trellis": "tsx packages/trellis-cli/src/cli.ts",
     "doctor": "npm run trellis -- doctor",
     "smoke": "npm run trellis -- smoke",
-    "verify": "npm run trellis -- verify cloudflare",
-    "legacy:dev": "tsx watch examples/reference-app/src/index.ts",
-    "legacy:doctor": "tsx examples/reference-app/scripts/doctor.ts",
-    "legacy:demo:check": "tsx examples/reference-app/scripts/demo-check.ts",
-    "legacy:demo:smoke": "tsx examples/reference-app/scripts/demo-smoke.ts",
-    "legacy:validate:prod": "tsx examples/reference-app/scripts/production-validate.ts",
-    "legacy:cleanup:stale": "tsx examples/reference-app/scripts/cleanup-stale-data.ts",
-    "legacy:discovery:tick": "tsx examples/reference-app/scripts/discovery-tick.ts",
-    "legacy:sandbox:probe": "tsx examples/reference-app/scripts/sandbox-probe.ts",
-    "legacy:example:closed-won-lookalike": "tsx examples/reference-app/scripts/closed-won-lookalike.ts"
+    "verify": "npm run trellis -- verify cloudflare"
   },
   "dependencies": {
     "@ai-sdk/gateway": "^3.0.104",

@@ -1,0 +1,75 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "trellis-gtm-sdr",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-12",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "TRELLIS_MODEL": "anthropic/claude-sonnet-4.6",
+    "TRELLIS_SKILL_TIMEOUT_MS": "60000"
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "browser": {
+    "binding": "BROWSER"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "TRELLIS_AGENT",
+        "class_name": "TrellisAgent"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "TrellisAgent"
+      ]
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "TRELLIS_DB",
+      "database_name": "trellis-gtm-sdr-db"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "TRELLIS_PACKS",
+      "bucket_name": "trellis-gtm-sdr-packs"
+    },
+    {
+      "binding": "TRELLIS_ARTIFACTS",
+      "bucket_name": "trellis-gtm-sdr-artifacts"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "TRELLIS_EVENTS",
+        "queue": "trellis-gtm-sdr-worker-events"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "trellis-gtm-sdr-worker-events",
+        "dead_letter_queue": "trellis-gtm-sdr-worker-events-dlq"
+      }
+    ]
+  },
+  "workflows": [
+    {
+      "binding": "PROSPECT_WORKFLOW",
+      "name": "trellis-gtm-sdr-prospect",
+      "class_name": "ProspectWorkflow"
+    }
+  ]
+}

@@ -1,22 +1,7 @@
 # Examples
 
-This folder is now parity material, not the v3 public starting point.
+This folder contains the v3 public example.
 
-Use the v3 scaffold first:
+- [`gtm-sdr/`](./gtm-sdr/) is the Cloudflare-first GTM SDR example: form-fill signal, durable thread, markdown knowledge, typed skills, Firecrawl-backed research tools, state map, approval-gated draft, smoke route, and audit-friendly workflow.
 
-```bash
-npm run trellis -- init ../acme-sdr --name acme-sdr
-```
-
-## Legacy Reference Material
-
-- [`reference-app/`](./reference-app/)
-  Existing AI SDR behavior baseline. Use it to port behavior into v3.
-- [`meeting-prep/`](./meeting-prep/)
-  Older domain kit example.
-- [`core-app/`](./core-app/)
-  Older core scaffold example.
-- [`closed-won-lookalike/`](./closed-won-lookalike/)
-  Pack-style workflow example.
-
-Do not present these as the default product architecture.
+Older parity examples were removed from this public examples surface. The default story is now v3 only.

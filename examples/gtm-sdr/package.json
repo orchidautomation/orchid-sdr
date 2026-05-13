@@ -1,0 +1,35 @@
+{
+  "name": "trellis-gtm-sdr-example",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "trellis": "trellis",
+    "doctor": "trellis doctor",
+    "docs:add": "trellis docs add ./knowledge",
+    "deploy": "trellis deploy",
+    "smoke": "trellis smoke",
+    "verify": "trellis verify cloudflare",
+    "typecheck": "tsc --noEmit",
+    "cf:login": "wrangler login",
+    "cf:deploy": "wrangler deploy",
+    "cf:tail": "wrangler tail"
+  },
+  "dependencies": {
+    "@flue/sdk": "^0.5.3",
+    "@trellis/gtm": "file:../../packages/gtm",
+    "@trellis/providers": "file:../../packages/providers",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260511.1",
+    "@trellis/cli": "file:../../packages/trellis-cli",
+    "tsx": "^4.20.6",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.90.0"
+  },
+  "overrides": {
+    "@mistralai/mistralai": "npm:no-op@1.0.3"
+  }
+}
