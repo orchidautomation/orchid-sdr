@@ -50,7 +50,7 @@ export const aiSdrInitProfiles = {
 
 export type AiSdrInitProfileId = keyof typeof aiSdrInitProfiles;
 
-const legacyInitProfileAliases = {
+const initProfileAliases = {
   demo: "core",
 } as const satisfies Record<string, AiSdrInitProfileId>;
 
@@ -109,8 +109,8 @@ export type AiSdrScaffoldSpec = {
 };
 
 export function resolveInitProfile(profile: string | undefined): AiSdrInitProfile {
-  const normalizedProfile = profile && profile in legacyInitProfileAliases
-    ? legacyInitProfileAliases[profile as keyof typeof legacyInitProfileAliases]
+  const normalizedProfile = profile && profile in initProfileAliases
+    ? initProfileAliases[profile as keyof typeof initProfileAliases]
     : profile;
   if (!normalizedProfile || normalizedProfile === "core") {
     return aiSdrInitProfiles.core;
@@ -411,7 +411,7 @@ You can boot the app with the required env block above, but to actually feel the
 
 ${renderValueAccountLines(spec)}
 
-This is a legacy scaffold checklist. The v3 happy path is Cloudflare-first and uses \`trellis init\`, \`docs add\`, \`doctor\`, \`smoke\`, \`deploy\`, and \`connect\`.
+This is a scaffold checklist. The happy path is Cloudflare-first and uses \`trellis init\`, \`docs add\`, \`doctor\`, \`smoke\`, \`deploy\`, and \`connect\`.
 
 ## Login And Auth Model
 

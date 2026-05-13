@@ -87,6 +87,10 @@ export interface TrellisAuthConfig {
   apiKey?: TrellisApiKeyAuthConfig;
 }
 
+export interface TrellisMcpConfig {
+  name?: string;
+}
+
 const DEFAULT_TRELLIS_MODEL = "anthropic/claude-sonnet-4.6";
 
 export interface TrellisAgentConfig {
@@ -101,6 +105,7 @@ export interface TrellisAgentConfig {
   skills: string | string[];
   safety?: TrellisSafetyPolicy;
   auth?: TrellisAuthConfig;
+  mcp?: TrellisMcpConfig;
 }
 
 export interface TrellisSignal {
@@ -811,7 +816,7 @@ export async function runTrellisSmoke(input?: {
     smokeCheck(
       "agent.manifest",
       agent.kind === "trellis.gtm.agent" && Boolean(agent.config.knowledge) && Boolean(agent.config.skills),
-      "loaded Trellis v3 agent manifest with knowledge and skills",
+      "loaded Trellis agent manifest with knowledge and skills",
     ),
     smokeCheck(
       "signal.accepted",
@@ -1468,7 +1473,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           return jsonResponse({
             ok: true,
             agent: agent.name,
-            stack: "trellis-v3-cloudflare",
+            stack: "trellis-cloudflare",
             safety: agent.config.safety ?? trellis.safeOutbound(),
             auth: summarizeRouteAuth(env, agent.config),
             bindings: summarizeCloudflareBindings(env),
@@ -1780,9 +1785,14 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
 
         if (url.pathname === "/mcp/trellis") {
           const toolCatalog = describeTrellisMcpTools(env, agent.config);
+          const mcpServerName = resolveTrellisMcpServerName(agent);
           return jsonResponse({
             ok: true,
-            server: "trellis",
+            server: mcpServerName,
+            mcp: {
+              name: mcpServerName,
+              agent: agent.name,
+            },
             agent: agent.name,
             snapshot: await readRuntimeSnapshot(env),
             tools: toolCatalog.map((tool) => tool.name),
@@ -1945,6 +1955,10 @@ function summarizeTraceExport(env?: Record<string, unknown>) {
   };
 }
 
+function resolveTrellisMcpServerName(agent: TrellisAgentDefinition<TrellisGtmApp>) {
+  return agent.config.mcp?.name?.trim() || "trellis";
+}
+
 function describeTrellisMcpTools(env: Record<string, unknown> | undefined, config: TrellisAgentConfig) {
   return createTrellisMcpTools(env, config).map((tool) => ({
     name: tool.name,
@@ -1973,7 +1987,7 @@ function createTrellisMcpTools(
       execute() {
         return {
           ok: true,
-          stack: "trellis-v3-cloudflare",
+          stack: "trellis-cloudflare",
           providers: {
             crm: config.crm?.id ?? null,
             email: config.email?.id ?? null,
@@ -7599,7 +7613,7 @@ function renderDashboard(
   <body>
     <main>
       <h1>Trellis ${agent.name}</h1>
-      <p>v3 Cloudflare GTM runtime</p>
+      <p>Cloudflare GTM runtime</p>
       <p>No-send mode: ${agent.config.safety?.noSends ?? true}</p>
       <dl>
         <dt>Signals</dt><dd>${counts.signals}</dd>

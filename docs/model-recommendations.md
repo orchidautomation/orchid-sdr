@@ -1,6 +1,6 @@
 # Model Routing
 
-Trellis v3 should route models through the stack default, not through app-specific provider glue.
+Trellis should route models through the stack default, not through app-specific provider glue.
 
 The public principle is simple:
 
@@ -35,7 +35,7 @@ Trellis should not force every user to understand provider-specific model routin
 
 ## Cloudflare Role
 
-Cloudflare AI Gateway is the v3 default routing and visibility layer.
+Cloudflare AI Gateway is the default routing and visibility layer.
 
 Use it for:
 
@@ -44,7 +44,3 @@ Use it for:
 - latency tracking
 - retries and fallbacks where available
 - future guardrail and caching policy
-
-## Legacy Note
-
-Older model notes referenced the reference app's Vercel AI Gateway setup. That is no longer the v3 public path.

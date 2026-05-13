@@ -1,8 +1,8 @@
 # MCP Capability Archive
 
-This document is migration research for hosted MCP servers and provider capabilities.
+This document records hosted MCP servers and provider capabilities Trellis may map into product-owned tools.
 
-It is not the v3 public architecture. Trellis v3 exposes curated provider setup through `trellis connect <provider>`, then mounts the right tools behind the Trellis/Flue runtime. Users should not have to assemble capability/provider/module graphs.
+It is not the public architecture. Trellis exposes curated provider setup through `trellis connect <provider>`, then mounts the right tools behind the Trellis/Flue runtime. Users should not have to assemble capability/provider/module graphs.
 
 Provider packages can still expose more than one internal capability, but that should compile into Trellis-owned manifests, smoke checks, MCP tool catalogs, and Flue tool bindings without becoming the product-facing CLI.
 
@@ -52,7 +52,7 @@ MCP server:
 | `firecrawl` | `https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp` | URL token | `firecrawl_interact` | `runtime`, `extract` | `research.extract.v1` |
 | `firecrawl` | `https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp` | URL token | `firecrawl_interact_stop` | `runtime` | none |
 
-v3 connection:
+connection:
 
 ```bash
 trellis connect firecrawl
@@ -60,7 +60,7 @@ trellis connect firecrawl
 
 ## Config Direction
 
-The old external config idea was too close to abstracting over abstractions. For v3, the generated app should stay Trellis-first and provider manifests should stay internal/product-shaped.
+The old external config idea was too close to abstracting over abstractions. For Trellis, the generated app should stay Trellis-first and provider manifests should stay internal/product-shaped.
 
 If Trellis needs a manifest, it should look like a deployment artifact, not a user-authored framework config:
 

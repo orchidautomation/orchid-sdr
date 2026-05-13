@@ -1,6 +1,6 @@
 # Trellis Cloud SDR Demo
 
-Trellis v3 GTM agent scaffold for a realistic form-fill SDR workflow. The demo uses a Common Room-style GTM company profile, a real Pylon account research target, Firecrawl-backed Trellis research tools, Cloudflare primitives, durable per-lead threads, and approval-gated outbound drafts.
+Trellis GTM agent scaffold for a realistic form-fill SDR workflow. The demo uses a Common Room-style GTM company profile, a real Pylon account research target, Firecrawl-backed Trellis research tools, Cloudflare primitives, durable per-lead threads, and approval-gated outbound drafts.
 
 See `docs/trellis-cloud-demo.md` for the pitch, payload, state map, and workflow walkthrough.
 

@@ -26,6 +26,9 @@ export default trellis.agent("sdr", {
   // /healthz and /smoke stay public-safe.
   auth: trellis.auth.apiKey(),
 
+  // Name the MCP surface so operators can distinguish multiple Trellis agents.
+  mcp: { name: "trellis-gtm-sdr" },
+
   // Default to no-send mode with approval gates for risky side effects.
   safety: trellis.safeOutbound(),
 }, async (app) => {

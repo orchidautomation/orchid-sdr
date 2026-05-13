@@ -92,7 +92,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const trellisStateDirName = ".trellis";
 const knowledgePackManifestName = "knowledge-pack.json";
 
-const V3_CONNECTIONS = {
+const CLOUDFLARE_CONNECTIONS = {
   attio: {
     id: "attio",
     kind: "crm",
@@ -151,9 +151,9 @@ const V3_CONNECTIONS = {
   },
 } as const;
 
-type V3ConnectionId = keyof typeof V3_CONNECTIONS;
-const REQUIRED_V3_PROVIDER_IDS = ["attio", "agentmail", "firecrawl"] as const;
-const OPTIONAL_V3_PROVIDER_IDS = ["apify", "prospeo", "langfuse", "braintrust"] as const;
+type CloudflareConnectionId = keyof typeof CLOUDFLARE_CONNECTIONS;
+const REQUIRED_PROVIDER_IDS = ["attio", "agentmail", "firecrawl"] as const;
+const OPTIONAL_PROVIDER_IDS = ["apify", "prospeo", "langfuse", "braintrust"] as const;
 type CloudflareSecretReadiness = {
   checked: boolean;
   ok: boolean;
@@ -240,13 +240,13 @@ async function main() {
         printHelp();
         break;
       case "modules":
-        rejectLegacyCommand("modules", "Use `trellis connect <provider>` and `trellis docs add <path>` in v3.");
+        rejectUnsupportedCommand("modules", "Use `trellis connect <provider>` and `trellis docs add <path>`.");
         break;
       case "add":
-        rejectLegacyCommand("add", "Use `trellis connect <provider>` or `trellis docs add <path>` in v3.");
+        rejectUnsupportedCommand("add", "Use `trellis connect <provider>` or `trellis docs add <path>`.");
         break;
       case "check":
-        rejectLegacyCommand("check", "Use `trellis doctor` for the v3 reliability check.");
+        rejectUnsupportedCommand("check", "Use `trellis doctor` for the reliability check.");
         break;
       case "connect":
         await handleConnectCommand(arg);
@@ -267,19 +267,19 @@ async function main() {
         await handleVerifyCommand(arg, cliFlags);
         break;
       case "admin":
-        rejectLegacyCommand("admin", "The v3 operator surface is the generated dashboard and MCP routes.");
+        rejectUnsupportedCommand("admin", "The operator surface is the generated dashboard and MCP routes.");
         break;
       case "discovery":
-        rejectLegacyCommand("discovery", "The v3 path ingests signals through Cloudflare webhooks and queues.");
+        rejectUnsupportedCommand("discovery", "The Cloudflare path ingests signals through Cloudflare webhooks and queues.");
         break;
       case "mcp":
         await handleMcpCommand(arg, cliFlags);
         break;
       case "init":
-        if (cliFlags.legacy === true || typeof cliFlags.kit === "string") {
-          rejectLegacyCommand("init --legacy/--kit", "Trellis init now emits the Cloudflare-first v3 scaffold only.");
+        if (typeof cliFlags.kit === "string") {
+          rejectUnsupportedCommand("init --kit", "Trellis init emits the Cloudflare-first scaffold.");
         }
-        await scaffoldV3Project(arg, cliFlags);
+        await scaffoldCloudflareProject(arg, cliFlags);
         break;
       default:
         console.error(`Unknown command: ${command}`);
@@ -331,19 +331,19 @@ Examples:
 
 Simple labels stay short in the CLI: attio, agentmail, firecrawl, apify, prospeo, langfuse, braintrust.
 
-Init scaffolds the Trellis v3 GTM path by default.
+Init scaffolds the Trellis GTM path by default.
 Cloudflare is the default deploy target.
 Business providers are connected after first boot.
 Use --json when a plugin or coding agent is orchestrating the setup.`);
 }
 
-function rejectLegacyCommand(commandName: string, replacement: string): never {
-  throw new Error(`trellis ${commandName} is old composition tooling and is not part of the v3 architecture. ${replacement}`);
+function rejectUnsupportedCommand(commandName: string, replacement: string): never {
+  throw new Error(`trellis ${commandName} is not supported by the Trellis Cloudflare architecture. ${replacement}`);
 }
 
 async function handleConnectCommand(moduleId: string | undefined) {
   if (!moduleId) {
-    const guides = Object.keys(V3_CONNECTIONS).map((id) => `npm run trellis -- connect ${id}`);
+    const guides = Object.keys(CLOUDFLARE_CONNECTIONS).map((id) => `npm run trellis -- connect ${id}`);
     if (jsonOutput) {
       emitJson({
         ok: true,
@@ -368,31 +368,31 @@ Provider credentials can be connected after the first Cloudflare deploy.`);
     return;
   }
 
-  const v3Connection = resolveV3Connection(moduleId, providerArg);
-  if (v3Connection) {
-    await printV3ConnectionGuide(v3Connection);
+  const cloudflareConnection = resolveCloudflareConnection(moduleId, providerArg);
+  if (cloudflareConnection) {
+    await printCloudflareConnectionGuide(cloudflareConnection);
     return;
   }
 
   throw new Error(
-    `Only curated v3 providers can be connected here. Use one of: ${Object.keys(V3_CONNECTIONS).join(", ")}.`,
+    `Only curated providers can be connected here. Use one of: ${Object.keys(CLOUDFLARE_CONNECTIONS).join(", ")}.`,
   );
 }
 
-function resolveV3Connection(moduleId: string, provider: string | undefined) {
+function resolveCloudflareConnection(moduleId: string, provider: string | undefined) {
   const candidate = (provider ?? moduleId).toLowerCase();
-  return candidate in V3_CONNECTIONS
-    ? V3_CONNECTIONS[candidate as V3ConnectionId]
+  return candidate in CLOUDFLARE_CONNECTIONS
+    ? CLOUDFLARE_CONNECTIONS[candidate as CloudflareConnectionId]
     : null;
 }
 
-async function printV3ConnectionGuide(guide: (typeof V3_CONNECTIONS)[V3ConnectionId]) {
-  const manifest = await writeV3ConnectionManifest(guide);
+async function printCloudflareConnectionGuide(guide: (typeof CLOUDFLARE_CONNECTIONS)[CloudflareConnectionId]) {
+  const manifest = await writeCloudflareConnectionManifest(guide);
   if (jsonOutput) {
     emitJson({
       ok: true,
       command: "connect",
-      mode: "v3-provider",
+      mode: "provider",
       provider: guide,
       manifest,
       defaults: {
@@ -422,7 +422,7 @@ Manifest:
 Cloudflare secrets:
 ${guide.requiredEnv.map((name) => `  - npx wrangler secret put ${name}`).join("\n")}
 
-v3 behavior:
+current behavior:
   - credentials are connected after the Cloudflare app boots
   - deployed agents read provider credentials from Cloudflare Worker secrets
   - smoke mode still runs without this provider
@@ -430,7 +430,7 @@ v3 behavior:
 }
 
 async function printLangfuseConnectionGuide() {
-  await printV3ConnectionGuide(V3_CONNECTIONS.langfuse);
+  await printCloudflareConnectionGuide(CLOUDFLARE_CONNECTIONS.langfuse);
 }
 
 async function handleDocsCommand(subcommand: string | undefined, docsPath: string | undefined) {
@@ -491,7 +491,7 @@ async function handleDocsCommand(subcommand: string | undefined, docsPath: strin
   files: ${manifest.files.length}
   target: Trellis knowledge pack
 
-v3 behavior:
+current behavior:
   - record markdown file hashes in .trellis/knowledge-pack.json
   - deploy uses the manifest as the R2-backed pack upload plan
   - make them available to skills through the Trellis sandbox filesystem
@@ -507,7 +507,7 @@ async function handleDoctorCommand() {
   const provisioning = buildCloudflareProvisioningPlan(cloudflareResources);
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
   const skillPack = await loadSkillPack(process.cwd());
-  const providerReadiness = await loadAllV3ProviderReadiness({ remoteSecrets });
+  const providerReadiness = await loadAllProviderReadiness({ remoteSecrets });
   const traceExport = readTraceExportReadiness();
   const smoke = await runTrellisSmoke();
   const checks = [
@@ -550,7 +550,7 @@ async function handleDoctorCommand() {
     emitJson({
       ok,
       command: "doctor",
-      mode: "v3-cloudflare-gtm",
+      mode: "cloudflare-gtm",
       checks,
       smoke: {
         ok: smoke.ok,
@@ -670,7 +670,7 @@ async function verifyRemoteCloudflareRoutes(input: {
   const healthBody = asCliRecord(health.body);
   checks.push(verifyCheck("remote.healthz", health.status === 200
     && healthBody?.ok === true
-    && healthBody.stack === "trellis-v3-cloudflare"
+    && healthBody.stack === "trellis-cloudflare"
     ? "pass"
     : "fail", health.status
     ? `/healthz returned ${health.status}`
@@ -1074,7 +1074,7 @@ function toPosixPath(value: string) {
   return value.split(path.sep).join("/");
 }
 
-async function writeV3ConnectionManifest(guide: (typeof V3_CONNECTIONS)[V3ConnectionId]) {
+async function writeCloudflareConnectionManifest(guide: (typeof CLOUDFLARE_CONNECTIONS)[CloudflareConnectionId]) {
   const providerDir = path.join(process.cwd(), trellisStateDirName, "providers");
   const manifestPath = path.join(providerDir, `${guide.id}.json`);
   const missingRequiredEnv = guide.requiredEnv.filter((name) => !process.env[name]);
@@ -1100,22 +1100,22 @@ async function writeV3ConnectionManifest(guide: (typeof V3_CONNECTIONS)[V3Connec
   };
 }
 
-async function loadAllV3ProviderReadiness(input?: {
+async function loadAllProviderReadiness(input?: {
   remoteSecrets?: CloudflareSecretReadiness;
 }) {
-  const required = await Promise.all(REQUIRED_V3_PROVIDER_IDS.map((id) => loadV3ProviderReadiness(id, input)));
+  const required = await Promise.all(REQUIRED_PROVIDER_IDS.map((id) => loadProviderReadiness(id, input)));
   const optional = await Promise.all(
-    OPTIONAL_V3_PROVIDER_IDS
+    OPTIONAL_PROVIDER_IDS
       .filter((id) => existsSync(path.join(process.cwd(), trellisStateDirName, "providers", `${id}.json`)))
-      .map((id) => loadV3ProviderReadiness(id, input)),
+      .map((id) => loadProviderReadiness(id, input)),
   );
   return [...required, ...optional];
 }
 
 function readTraceExportReadiness() {
   const generic = Boolean(process.env.TRELLIS_TRACE_EXPORT_URL);
-  const langfuseMissing = V3_CONNECTIONS.langfuse.requiredEnv.filter((name) => !process.env[name]);
-  const braintrustMissing = V3_CONNECTIONS.braintrust.requiredEnv.filter((name) => !process.env[name]);
+  const langfuseMissing = CLOUDFLARE_CONNECTIONS.langfuse.requiredEnv.filter((name) => !process.env[name]);
+  const braintrustMissing = CLOUDFLARE_CONNECTIONS.braintrust.requiredEnv.filter((name) => !process.env[name]);
   const langfuse = langfuseMissing.length === 0;
   const braintrust = braintrustMissing.length === 0;
   const enabled = generic || langfuse || braintrust;
@@ -1163,20 +1163,20 @@ function readAiGatewayReadiness(cwd: string, wranglerSource: string) {
   };
 }
 
-function readConfiguredProviderIds(cwd: string): V3ConnectionId[] {
+function readConfiguredProviderIds(cwd: string): CloudflareConnectionId[] {
   const agentPath = path.join(cwd, "src", "agent.ts");
   const source = existsSync(agentPath) ? readFileSync(agentPath, "utf8") : "";
-  return (Object.keys(V3_CONNECTIONS) as V3ConnectionId[])
+  return (Object.keys(CLOUDFLARE_CONNECTIONS) as CloudflareConnectionId[])
     .filter((id) => new RegExp(`\\b${id}\\s*\\(`).test(source));
 }
 
-async function loadV3ProviderReadiness(
-  id: V3ConnectionId,
+async function loadProviderReadiness(
+  id: CloudflareConnectionId,
   input?: {
     remoteSecrets?: CloudflareSecretReadiness;
   },
 ) {
-  const guide = V3_CONNECTIONS[id];
+  const guide = CLOUDFLARE_CONNECTIONS[id];
   const manifestPath = path.join(process.cwd(), trellisStateDirName, "providers", `${id}.json`);
   const manifestExists = existsSync(manifestPath);
   const missingRequiredEnv = guide.requiredEnv.filter((name) => !process.env[name]);
@@ -1468,7 +1468,7 @@ async function handleDeployCommand(target: string | undefined, flags: Record<str
   const resolvedTarget = (target ?? "cloudflare").toLowerCase();
   if (resolvedTarget !== "cloudflare") {
     throw new Error(
-      `Deploy target "${resolvedTarget}" is old architecture. Trellis v3 deploys to Cloudflare only.`,
+      `Deploy target "${resolvedTarget}" is not supported. Trellis deploys to Cloudflare.`,
     );
   }
 
@@ -1478,7 +1478,7 @@ async function handleDeployCommand(target: string | undefined, flags: Record<str
 async function handleVerifyCommand(target: string | undefined, flags: Record<string, string | boolean>) {
   const resolvedTarget = (target ?? "cloudflare").toLowerCase();
   if (resolvedTarget !== "cloudflare") {
-    throw new Error(`Verify target "${resolvedTarget}" is not supported in v3. Use: trellis verify cloudflare`);
+    throw new Error(`Verify target "${resolvedTarget}" is not supported. Use: trellis verify cloudflare`);
   }
 
   await handleCloudflareVerify(flags);
@@ -1502,7 +1502,7 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
     ok: false,
     names: [],
   };
-  const providerReadiness = await loadAllV3ProviderReadiness({ remoteSecrets });
+  const providerReadiness = await loadAllProviderReadiness({ remoteSecrets });
   const configuredProviders = readConfiguredProviderIds(process.cwd());
   const exerciseAgent = flags["exercise-agent"] === true || flags.signal === true;
   const webhookToken = readFlagString(flags, ["webhook-token", "token"]) ?? process.env.TRELLIS_WEBHOOK_SECRET ?? process.env.SIGNAL_WEBHOOK_SECRET;
@@ -1655,7 +1655,7 @@ async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
   const provisioning = buildCloudflareProvisioningPlan(cloudflareResources);
   const knowledgePack = await loadKnowledgePackManifest(process.cwd());
   const skillPack = await loadSkillPack(process.cwd());
-  const providerReadiness = await loadAllV3ProviderReadiness();
+  const providerReadiness = await loadAllProviderReadiness();
   const traceExport = readTraceExportReadiness();
   const packSync = await buildCloudflarePackSyncPlan(process.cwd(), wranglerConfigPath);
   const apply = flags.apply === true || flags.write === true || (Boolean(wranglerConfigPath) && !jsonOutput && flags["dry-run"] !== true);
@@ -1711,7 +1711,7 @@ async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
 Required:
   - Cloudflare account auth via wrangler login or CLOUDFLARE_API_TOKEN
 
-Trellis v3 provisions or verifies:
+Trellis provisions or verifies:
   - Workers app
   - Durable Objects / Cloudflare Agents bindings
   - Workflows
@@ -2169,9 +2169,9 @@ async function handleMcpCommand(subcommand: string | undefined, flags: Record<st
   }
 }
 
-async function scaffoldV3Project(targetArg: string | undefined, flags: Record<string, string | boolean>) {
+async function scaffoldCloudflareProject(targetArg: string | undefined, flags: Record<string, string | boolean>) {
   if (flags.interactive === true || flags.wizard === true) {
-    throw new Error("Interactive init is not part of Trellis v3. Run init with an explicit target and optional --name.");
+    throw new Error("Interactive init is not part of Trellis. Run init with an explicit target and optional --name.");
   }
   if (!targetArg) {
     throw new Error("Missing target directory. Example: npm run trellis -- init ../acme-sdr --name acme-sdr");
@@ -2195,23 +2195,23 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
 
   await writeFile(
     path.join(targetDir, "package.json"),
-    JSON.stringify(buildV3ScaffoldPackage(packageName), null, 2) + "\n",
+    JSON.stringify(buildCloudflareScaffoldPackage(packageName), null, 2) + "\n",
   );
-  await writeFile(path.join(targetDir, "tsconfig.json"), renderV3Tsconfig());
-  await writeFile(path.join(targetDir, "wrangler.jsonc"), renderV3WranglerConfig(workerName));
-  await writeFile(path.join(targetDir, ".env.example"), renderV3EnvExample());
-  await writeFile(path.join(targetDir, "src", "agent.ts"), renderV3AgentSource());
-  await writeFile(path.join(targetDir, "src", "index.ts"), renderV3WorkerSource());
-  await writeFile(path.join(targetDir, "src", "trellis-runtime.ts"), renderV3RuntimeSource());
-  await writeFile(path.join(targetDir, "src", "crm", "attio.map.ts"), renderV3AttioMapSource());
-  await writeFile(path.join(targetDir, "src", "state", "prospect.map.ts"), renderV3ProspectStateMapSource());
-  await writeFile(path.join(targetDir, "knowledge", "icp.md"), renderV3KnowledgeSeed());
-  await writeFile(path.join(targetDir, "skills", "icp-qualification", "SKILL.md"), renderV3QualificationSkill());
-  await writeFile(path.join(targetDir, "skills", "research-brief", "SKILL.md"), renderV3ResearchSkill());
-  await writeFile(path.join(targetDir, "skills", "sdr-copy", "SKILL.md"), renderV3CopySkill());
-  await writeFile(path.join(targetDir, "skills", "reply-policy", "SKILL.md"), renderV3ReplyPolicySkill());
-  await writeFile(path.join(targetDir, "skills", "handoff-policy", "SKILL.md"), renderV3HandoffPolicySkill());
-  await writeFile(path.join(targetDir, "README.md"), renderV3Readme(appName));
+  await writeFile(path.join(targetDir, "tsconfig.json"), renderCloudflareTsconfig());
+  await writeFile(path.join(targetDir, "wrangler.jsonc"), renderCloudflareWranglerConfig(workerName));
+  await writeFile(path.join(targetDir, ".env.example"), renderCloudflareEnvExample());
+  await writeFile(path.join(targetDir, "src", "agent.ts"), renderCloudflareAgentSource());
+  await writeFile(path.join(targetDir, "src", "index.ts"), renderCloudflareWorkerSource());
+  await writeFile(path.join(targetDir, "src", "trellis-runtime.ts"), renderCloudflareRuntimeSource());
+  await writeFile(path.join(targetDir, "src", "crm", "attio.map.ts"), renderCloudflareAttioMapSource());
+  await writeFile(path.join(targetDir, "src", "state", "prospect.map.ts"), renderCloudflareProspectStateMapSource());
+  await writeFile(path.join(targetDir, "knowledge", "icp.md"), renderCloudflareKnowledgeSeed());
+  await writeFile(path.join(targetDir, "skills", "icp-qualification", "SKILL.md"), renderCloudflareQualificationSkill());
+  await writeFile(path.join(targetDir, "skills", "research-brief", "SKILL.md"), renderCloudflareResearchSkill());
+  await writeFile(path.join(targetDir, "skills", "sdr-copy", "SKILL.md"), renderCloudflareCopySkill());
+  await writeFile(path.join(targetDir, "skills", "reply-policy", "SKILL.md"), renderCloudflareReplyPolicySkill());
+  await writeFile(path.join(targetDir, "skills", "handoff-policy", "SKILL.md"), renderCloudflareHandoffPolicySkill());
+  await writeFile(path.join(targetDir, "README.md"), renderCloudflareReadme(appName));
 
   const nextSteps = [
     `cd ${targetDir}`,
@@ -2229,7 +2229,7 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
     emitJson({
       ok: true,
       command: "init",
-      mode: "v3-cloudflare-gtm",
+      mode: "cloudflare-gtm",
       targetDir,
       appName,
       packageName,
@@ -2257,13 +2257,13 @@ async function scaffoldV3Project(targetArg: string | undefined, flags: Record<st
   }
 
   console.log(`Initialized ${appName} in ${targetDir}`);
-  console.log("Mode: Trellis v3 Cloudflare GTM");
+  console.log("Mode: Trellis Cloudflare GTM");
   console.log("");
   console.log("Next steps:");
   nextSteps.forEach((step, index) => console.log(`  ${index + 1}. ${step}`));
 }
 
-function buildV3ScaffoldPackage(packageName: string) {
+function buildCloudflareScaffoldPackage(packageName: string) {
   return {
     name: packageName,
     version: "0.0.0",
@@ -2312,7 +2312,7 @@ function resolveScaffoldDependency(packageDirName: string, fallbackVersion: stri
   return pathToFileURL(packageDir).href;
 }
 
-function renderV3Tsconfig() {
+function renderCloudflareTsconfig() {
   return JSON.stringify({
     compilerOptions: {
       target: "ES2022",
@@ -2327,7 +2327,7 @@ function renderV3Tsconfig() {
   }, null, 2) + "\n";
 }
 
-function renderV3WranglerConfig(workerName: string) {
+function renderCloudflareWranglerConfig(workerName: string) {
   return `{
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "${workerName}",
@@ -2398,7 +2398,7 @@ function renderV3WranglerConfig(workerName: string) {
 `;
 }
 
-function renderV3EnvExample() {
+function renderCloudflareEnvExample() {
   return `# First deploy only needs Cloudflare auth via wrangler login or CLOUDFLARE_API_TOKEN.
 CLOUDFLARE_ACCOUNT_ID=
 CLOUDFLARE_API_TOKEN=
@@ -2440,7 +2440,7 @@ BRAINTRUST_BASE_URL=
 `;
 }
 
-function renderV3AgentSource() {
+function renderCloudflareAgentSource() {
   return `import { trellis, schema } from "@trellis/gtm";
 import { agentmail, attio, firecrawl } from "@trellis/providers";
 import attioMap from "./crm/attio.map";
@@ -2455,6 +2455,7 @@ export default trellis.agent("sdr", {
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
   auth: trellis.auth.apiKey(),
+  mcp: { name: "trellis-sdr" },
   safety: trellis.safeOutbound(),
 }, async (app) => {
   const signal = await app.signal();
@@ -2494,7 +2495,7 @@ export default trellis.agent("sdr", {
 `;
 }
 
-function renderV3ProspectStateMapSource() {
+function renderCloudflareProspectStateMapSource() {
   return `import { trellis } from "@trellis/gtm";
 
 const stateMap = trellis.state({
@@ -2537,7 +2538,7 @@ export default stateMap;
 `;
 }
 
-function renderV3AttioMapSource() {
+function renderCloudflareAttioMapSource() {
   return `import type { TrellisAttioMap } from "@trellis/gtm";
 
 const attioMap = {
@@ -2565,7 +2566,7 @@ export default attioMap;
 `;
 }
 
-function renderV3WorkerSource() {
+function renderCloudflareWorkerSource() {
   return `import { DurableObject, WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { trellis } from "@trellis/gtm";
 import agent from "./agent";
@@ -2598,7 +2599,7 @@ export default {
 `;
 }
 
-function renderV3RuntimeSource() {
+function renderCloudflareRuntimeSource() {
   return `import { registerApiProvider, registerProvider } from "@flue/sdk/app";
 import { createFlueContext, type SessionData, type SessionEnv, type SessionStore } from "@flue/sdk/client";
 import { getCloudflareAIBindingApiProvider, getVirtualSandbox } from "@flue/sdk/cloudflare";
@@ -2920,7 +2921,7 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 `;
 }
 
-function renderV3KnowledgeSeed() {
+function renderCloudflareKnowledgeSeed() {
   return `# ICP
 
 Replace this with your real GTM qualification rules.
@@ -2931,7 +2932,7 @@ Replace this with your real GTM qualification rules.
 `;
 }
 
-function renderV3QualificationSkill() {
+function renderCloudflareQualificationSkill() {
   return `# ICP Qualification
 
 Use the knowledge pack and signal context to decide whether the prospect is qualified, disqualified, or needs review.
@@ -2949,7 +2950,7 @@ Do not send email or update CRM state from this skill. Draft only.
 `;
 }
 
-function renderV3ResearchSkill() {
+function renderCloudflareResearchSkill() {
   return `# Research Brief
 
 Use the signal, qualification, knowledge pack, and available research tools to produce a grounded account/person brief.
@@ -2966,7 +2967,7 @@ Prefer concise evidence. Do not invent facts when the research tool or knowledge
 `;
 }
 
-function renderV3CopySkill() {
+function renderCloudflareCopySkill() {
   return `# SDR Copy
 
 Write a short outbound email draft using the qualification and research brief.
@@ -2981,7 +2982,7 @@ Do not send the email. The workflow will keep the draft blocked behind Trellis a
 `;
 }
 
-function renderV3ReplyPolicySkill() {
+function renderCloudflareReplyPolicySkill() {
   return `# Reply Policy
 
 Classify an inbound reply and decide whether Trellis should draft a reply, pause, or hand off.
@@ -2998,7 +2999,7 @@ Choose \`handoff\` for positive replies, objections, referrals, or anything that
 `;
 }
 
-function renderV3HandoffPolicySkill() {
+function renderCloudflareHandoffPolicySkill() {
   return `# Handoff Policy
 
 Decide whether an inbound reply should create a human handoff.
@@ -3014,10 +3015,10 @@ Do not notify Slack or send webhooks from this skill. Trellis will turn the deci
 `;
 }
 
-function renderV3Readme(appName: string) {
+function renderCloudflareReadme(appName: string) {
   return `# ${appName}
 
-Trellis v3 GTM agent scaffold.
+Trellis GTM agent scaffold.
 
 ## First Boot
 

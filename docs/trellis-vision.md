@@ -1,8 +1,8 @@
-# Trellis v3 Vision
+# Trellis Vision
 
 ## Thesis
 
-Trellis v3 is not a universal agent framework.
+Trellis is not a universal agent framework.
 
 Trellis is a battle-hardened vertical agent stack, starting with GTM.
 
@@ -12,7 +12,7 @@ The job is to ship the thing that works.
 
 Trellis should feel more like a product than a framework: one excellent default stack, a few business-level connection points, and a deployment path that feels boring.
 
-Trellis v3 should feel like this:
+Trellis should feel like this:
 
 ```bash
 trellis init acme-sdr
@@ -35,8 +35,6 @@ The first deploy should require only Cloudflare account auth. Attio, AgentMail, 
 The rule:
 
 Compose internally. Curate externally.
-
-For the concrete parity checklist against the current AI SDR, see [Trellis v3 AI SDR Parity Contract](trellis-v3-parity-contract.md).
 
 ## The Product Boundary
 
@@ -75,7 +73,7 @@ Trellis should not reinvent:
 
 Those are now platform capabilities.
 
-Trellis v3 should compile and configure those capabilities into a reliable vertical stack.
+Trellis should compile and configure those capabilities into a reliable vertical stack.
 
 It should not ask users to choose architecture before they have a working agent.
 
@@ -109,7 +107,7 @@ Flue shows the power of the harness by building a useful agent in 20 to 30 lines
 
 Trellis should show the power of the full vertical stack by building a reliable GTM agent in roughly the same space.
 
-This is the public shape v3 should keep optimizing around:
+This is the public shape current should keep optimizing around:
 
 ```ts
 // src/agent.ts
@@ -247,7 +245,7 @@ Most of that now exists as platform plumbing.
 | Full sandboxed compute | Cloudflare Sandbox | Real Linux containers from Workers. Run Python, Node, git, background processes, file operations, terminal sessions, and code execution. Use only when just-bash is not enough. |
 | Blob and object storage | Cloudflare R2 | Store markdown packs, uploaded docs, generated artifacts, transcripts, attachments, sandbox snapshots, and logs. |
 | Relational app state | D1 or Durable Object SQLite | D1 for queryable global app state. Durable Object SQLite for per-agent/private state. Keep Trellis schemas, drop custom persistence plumbing. |
-| Queueing and webhooks | Workers + Queues | `/webhooks/*`, email handlers, background ingest, dead-letter queues, and retries. This replaces much of the current custom webhook dispatch. |
+| Queueing and webhooks | Workers + Queues | `/webhooks/*`, email handlers, background ingest, dead-letter queues, and retries. This replaces much of the custom webhook dispatch. |
 | Model gateway | Cloudflare AI Gateway | Multi-provider routing, logs, cost and latency visibility, caching, rate limits, retries, and DLP/guardrail paths. This can replace a dedicated model gateway wrapper. |
 | Email | Cloudflare Email Service, AgentMail | Cloudflare Email can cover native Workers email paths as it matures. AgentMail remains a strong first provider for agentic outbound and inbound replies. Keep the Trellis email contract. |
 | Observability | Workers Logs + OpenTelemetry + AI Gateway logs | Solid infrastructure and model visibility. For agent trace UX and eval workflows, Trellis can optionally connect Langfuse or Braintrust. |
@@ -256,7 +254,7 @@ Most of that now exists as platform plumbing.
 
 ## Reference Stack
 
-Trellis v3 should have one blessed default stack.
+Trellis should have one blessed default stack.
 
 The default should be boring, production-minded, and easy to deploy.
 
@@ -302,7 +300,7 @@ It should not know what an account, prospect, campaign, ICP, reply, opportunity,
 
 Trellis supplies that vertical meaning.
 
-In Trellis v3, a GTM step should look conceptually like Trellis:
+In Trellis, a GTM step should look conceptually like Trellis:
 
 ```ts
 export async function qualifyProspect(app, signal) {
@@ -515,7 +513,7 @@ Trellis should preserve the email contract and make provider swaps safe.
 
 ### Observability
 
-Trellis v3 should have observability from day one.
+Trellis should have observability from day one.
 
 Minimum trace shape:
 
@@ -554,7 +552,7 @@ The framework is not a clever abstraction layer.
 
 The framework is reliability.
 
-Trellis v3 earns its keep by making these things automatic:
+Trellis earns its keep by making these things automatic:
 
 - env validation
 - provider readiness checks
@@ -583,7 +581,7 @@ Trellis should make the demo survive contact with production.
 
 ## Compose Internally, Curate Externally
 
-Trellis v3 should not expose architecture choices in the happy path.
+Trellis should not expose architecture choices in the happy path.
 
 It should expose the business choices users actually care about:
 
@@ -624,7 +622,7 @@ trellis configure-abstract-runtime-storage-provider-coordinator
 
 The stack should be understandable because it is concrete.
 
-## v3 Project Layout
+## Project Layout
 
 Suggested generated app:
 
@@ -843,7 +841,7 @@ The new question for every feature:
 
 Does this make the vertical agent more reliable, observable, deployable, or easier to install?
 
-If not, it probably does not belong in v3.
+If not, it probably does not belong in Trellis.
 
 ## Migration Path
 
@@ -861,7 +859,7 @@ Build a Cloudflare-backed Trellis runtime spike that:
 
 ### Phase 2: Replace Sandbox Broker
 
-Replace the current Vercel Sandbox / Claude broker with the Trellis runtime harness behind the existing `runSandboxTurn` shape.
+Replace the Vercel Sandbox / Claude broker with the Trellis runtime harness behind the existing `runSandboxTurn` shape.
 
 ### Phase 3: Replace Runtime Dispatch
 
@@ -874,8 +872,6 @@ Preserve the public workflow contracts while changing the substrate.
 Make `trellis init`, `trellis connect`, `trellis docs add`, `trellis deploy`, and `trellis smoke` excellent.
 
 The CLI should generate and verify the full stack.
-
-Legacy composition commands can remain during migration only behind explicit legacy/development paths. They should not appear in the default help, scaffold, or first-run story.
 
 ### Phase 5: Package The GTM Template
 
@@ -898,7 +894,7 @@ The template should be opinionated and safe by default.
 
 ## One-Line Vision
 
-Trellis v3 is the easiest way to ship a reliable GTM agent app from markdown playbooks, provider choices, and a battle-tested Cloudflare runtime stack.
+Trellis is the easiest way to ship a reliable GTM agent app from markdown playbooks, provider choices, and a battle-tested Cloudflare runtime stack.
 
 ## Useful References
 

@@ -1,6 +1,6 @@
 # Getting Started
 
-This is the v3 happy path. Trellis is now a curated GTM agent stack, not a toolkit for assembling your own agent framework.
+This is the happy path. Trellis is now a curated GTM agent stack, not a toolkit for assembling your own agent framework.
 
 The first boot should require only Node, npm, and Cloudflare auth. Business providers come after the app is alive.
 
@@ -23,7 +23,7 @@ cd ../acme-sdr
 npm install
 ```
 
-`trellis init` writes the v3 Cloudflare GTM app by default:
+`trellis init` writes the Cloudflare GTM app by default:
 
 - `src/agent.ts`
 - `knowledge/**/*.md`
@@ -132,4 +132,4 @@ The default GTM provider lanes are:
 
 ## Example
 
-Use [`examples/gtm-sdr`](../examples/gtm-sdr/) as the v3 reference example. It shows the current public architecture: Cloudflare-first deploy, form-fill signal, durable thread, markdown knowledge, typed skills, Firecrawl-backed research tools, state map, approval-gated draft, smoke route, and audit-friendly workflow.
+Use [`examples/gtm-sdr`](../examples/gtm-sdr/) as the reference example. It shows the public architecture: Cloudflare-first deploy, form-fill signal, durable thread, markdown knowledge, typed skills, Firecrawl-backed research tools, state map, approval-gated draft, smoke route, and audit-friendly workflow.

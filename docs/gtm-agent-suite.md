@@ -241,7 +241,7 @@ The agent can run wherever the work starts: forms, Slack, email, CRM events, sch
 
 ## Public Example
 
-The public v3 example is packaged as a clean, Cloudflare-first GTM SDR example:
+The public example is packaged as a clean, Cloudflare-first GTM SDR example:
 
 ```text
 examples/gtm-sdr/

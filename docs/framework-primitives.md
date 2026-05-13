@@ -1,6 +1,6 @@
-# Trellis v3 Primitives
+# Trellis Primitives
 
-Trellis v3 should not expose "framework primitives" as a menu of interchangeable infrastructure pieces. The public primitives are GTM product objects.
+Trellis should not expose "framework primitives" as a menu of interchangeable infrastructure pieces. The public primitives are GTM product objects.
 
 ## Product Primitives
 

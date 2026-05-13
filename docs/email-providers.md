@@ -6,7 +6,7 @@ Which email provider is the best fit for Trellis?
 
 Short answer:
 
-- `AgentMail` is the best default fit for Trellis's current architecture.
+- `AgentMail` is the best default fit for Trellis's architecture.
 
 That is not the same as saying it is universally the best email provider. It means it is the best match for the way Trellis already works:
 
@@ -62,7 +62,7 @@ That makes it a strong fit for agent-native SDR workflows rather than just gener
 
 | Provider | Best for | Fit for Trellis | Why |
 |---|---|---|---|
-| `AgentMail` | Agent-owned inboxes and replies | Best fit | Inbox primitives, replies, threads, webhooks, custom domains, and warm-up guidance align with the current workflow model |
+| `AgentMail` | Agent-owned inboxes and replies | Best fit | Inbox primitives, replies, threads, webhooks, custom domains, and warm-up guidance align with the workflow model |
 | `MailSlurp` | Programmable inbox infrastructure | Good fit | Real inbox objects, send and receive, webhooks, custom domains, plus-addressing |
 | `EmailEngine` | Self-hosted or BYO mailbox control plane | Good fit | Unified API over Gmail, Outlook, and IMAP with strong webhook support |
 | `Resend` | Product email, light receive and reply flows | Medium fit | Clean send API and inbound webhooks, but not really an inbox-native SDR system |
@@ -147,7 +147,7 @@ For Trellis as it exists today:
 
 - `AgentMail` is the best default choice.
 
-Not because it is the best email product in every scenario, but because it is the best fit for this repo's current architecture.
+Not because it is the best email product in every scenario, but because it is the best fit for this repo's architecture.
 
 ## Sources
 
@@ -156,4 +156,4 @@ Not because it is the best email product in every scenario, but because it is th
 - EmailEngine: [Overview](https://learn.emailengine.app/), [Sending](https://learn.emailengine.app/docs/sending), [Receiving](https://learn.emailengine.app/docs/receiving), [Webhooks](https://learn.emailengine.app/docs/webhooks/overview)
 - Resend: [Sending feature types](https://resend.com/docs/knowledge-base/what-sending-feature-to-use), [Consent](https://resend.com/docs/knowledge-base/what-counts-as-email-consent), [Receiving](https://resend.com/docs/dashboard/receiving/introduction), [Reply to emails](https://resend.com/docs/dashboard/receiving/reply-to-emails)
 - Postmark: [Inbound webhook](https://postmarkapp.com/developer/webhooks/inbound-webhook), [Inbound overview](https://postmarkapp.com/developer/user-guide/inbound)
-- Nylas: [Auth](https://v2-5-0.developer.nylas.com/docs/v3/auth/), [Getting started](https://v2-5-0.developer.nylas.com/docs/v3/getting-started/)
+- Nylas: [Docs](https://developer.nylas.com/docs/)

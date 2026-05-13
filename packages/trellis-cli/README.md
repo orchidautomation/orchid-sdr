@@ -1,6 +1,6 @@
 # @trellis/cli
 
-Workspace CLI for the Trellis v3 GTM path.
+Workspace CLI for the Trellis GTM path.
 
 Primary commands:
 
@@ -15,4 +15,4 @@ trellis connect agentmail
 trellis connect firecrawl
 ```
 
-Legacy composition commands remain only for migration and require explicit legacy intent.
+Unsupported composition commands are kept out of the default CLI surface.

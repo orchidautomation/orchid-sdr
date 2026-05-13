@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createTrellisTestApp, runTrellisSmoke, schema, trellis } from "./index.js";
 import { agentmail, attio, firecrawl } from "@trellis/providers";
 
-describe("@trellis/gtm v3 API", () => {
+describe("@trellis/gtm API", () => {
   it("defines the one-screen GTM agent shape without exposing Flue or Cloudflare", async () => {
     const agent = trellis.agent("sdr", {
       crm: attio(),
@@ -84,7 +84,7 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
-  it("runs the v3 smoke workflow as a real safe fixture", async () => {
+  it("runs the smoke workflow as a real safe fixture", async () => {
     const result = await runTrellisSmoke();
 
     expect(result.ok).toBe(true);
@@ -114,6 +114,26 @@ describe("@trellis/gtm v3 API", () => {
       "draft.created",
     ]);
     expect(result.checks.every((check) => check.status === "pass")).toBe(true);
+  });
+
+  it("lets each agent name its MCP surface", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("enterprise-sdr", {
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      mcp: { name: "trellis-enterprise-sdr" },
+    }, async () => ({ ok: true })));
+
+    const response = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), {});
+
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      server: "trellis-enterprise-sdr",
+      mcp: {
+        name: "trellis-enterprise-sdr",
+        agent: "enterprise-sdr",
+      },
+      agent: "enterprise-sdr",
+    });
   });
 
   it("turns reply workflow decisions into approval-gated reply and handoff actions", async () => {
@@ -328,7 +348,7 @@ describe("@trellis/gtm v3 API", () => {
 
     await expect(health.json()).resolves.toMatchObject({
       ok: true,
-      stack: "trellis-v3-cloudflare",
+      stack: "trellis-cloudflare",
       auth: {
         apiKey: {
           enabled: false,
@@ -619,7 +639,7 @@ describe("@trellis/gtm v3 API", () => {
       },
     });
     const dashboardHtml = await dashboard.text();
-    expect(dashboardHtml).toContain("v3 Cloudflare GTM runtime");
+    expect(dashboardHtml).toContain("Cloudflare GTM runtime");
     expect(dashboardHtml).toContain("<dt>Signals</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Prospects</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>State Records</dt><dd>1</dd>");
@@ -952,7 +972,7 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
-  it("normalizes mixed-source webhook batches through the v3 signal route", async () => {
+  it("normalizes mixed-source webhook batches through the signal route", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
       email: agentmail(),
@@ -1110,7 +1130,7 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
-  it("accepts Apify discovery webhooks through the v3 signal path", async () => {
+  it("accepts Apify discovery webhooks through the signal path", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
       email: agentmail(),
@@ -1782,7 +1802,7 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
-  it("accepts AgentMail reply webhooks as first-class v3 signals", async () => {
+  it("accepts AgentMail reply webhooks as first-class signals", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
       email: agentmail(),
@@ -1873,7 +1893,7 @@ describe("@trellis/gtm v3 API", () => {
     ]));
   });
 
-  it("executes queued provider actions through the v3 executor path", async () => {
+  it("executes queued provider actions through the executor path", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
       email: agentmail(),
@@ -2163,7 +2183,7 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
-  it("executes approved AgentMail replies through the built-in v3 provider executor", async () => {
+  it("executes approved AgentMail replies through the built-in provider executor", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
       email: agentmail(),
@@ -2288,7 +2308,7 @@ describe("@trellis/gtm v3 API", () => {
     }
   });
 
-  it("executes approved handoff webhooks through the built-in v3 provider executor", async () => {
+  it("executes approved handoff webhooks through the built-in provider executor", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
       email: agentmail(),
@@ -2405,7 +2425,7 @@ describe("@trellis/gtm v3 API", () => {
     });
   });
 
-  it("executes approved Attio CRM updates through the built-in v3 provider executor", async () => {
+  it("executes approved Attio CRM updates through the built-in provider executor", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio({
         map: {

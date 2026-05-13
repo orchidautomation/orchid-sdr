@@ -2,7 +2,7 @@
 
 Trellis is a vertical GTM agent stack.
 
-It is not trying to be a universal agent framework. The v3 direction is one curated path for shipping reliable GTM agents: Trellis owns the GTM product contract, Flue handles the agent harness under the hood, and Cloudflare supplies the durable runtime, storage, workflows, queues, and observability substrate.
+It is not trying to be a universal agent framework. Trellis is one curated path for shipping reliable GTM agents: Trellis owns the GTM product contract, Flue handles the agent harness under the hood, and Cloudflare supplies the durable runtime, storage, workflows, queues, and observability substrate.
 
 ## The Shape
 
@@ -77,6 +77,7 @@ export default trellis.agent("sdr", {
   model: "anthropic/claude-sonnet-4.6",
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
+  mcp: { name: "trellis-sdr" },
   safety: trellis.safeOutbound(),
 }, async (app) => {
   const signal = await app.signal();
@@ -100,22 +101,19 @@ export default trellis.agent("sdr", {
 });
 ```
 
-## Current Branch Status
+## Repo Map
 
-The public examples surface is v3-only. Use [`examples/gtm-sdr`](./examples/gtm-sdr/) for the current Cloudflare-first GTM SDR example.
+Use [`examples/gtm-sdr`](./examples/gtm-sdr/) for the Cloudflare-first GTM SDR example.
 
-Root npm scripts follow that boundary. `npm run build`, `npm run doctor`, `npm run smoke`, `npm run verify`, `npm run dev`, and `npm run build:all` exercise the v3 Trellis/Cloudflare path.
+Root npm scripts follow that boundary. `npm run build`, `npm run doctor`, `npm run smoke`, `npm run verify`, `npm run dev`, and `npm run build:all` exercise the Trellis/Cloudflare path.
 
-The v3 surface now lives in:
+The product surface lives in:
 
 - `packages/gtm`
 - `packages/providers`
-- `docs/trellis-v3-vision.md`
-- `docs/trellis-v3-parity-contract.md`
+- `docs/trellis-vision.md`
 - `examples/gtm-sdr`
 - the default `trellis init`, `trellis deploy`, `trellis verify`, `trellis smoke`, `trellis connect`, and `trellis docs add` CLI path
-
-Old parity examples are no longer presented as product examples.
 
 ## Verify
 

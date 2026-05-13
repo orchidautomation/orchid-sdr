@@ -1,6 +1,6 @@
 # Self-Hosting Trellis
 
-For v3, "self-hosting" means you own the Cloudflare account and Trellis deploys into it. It does not mean assembling a custom Convex/Vercel/Rivet stack.
+For current, "self-hosting" means you own the Cloudflare account and Trellis deploys into it. It does not mean assembling a custom Convex/Vercel/Rivet stack.
 
 ## Prerequisites
 
@@ -65,7 +65,3 @@ npm run trellis -- connect firecrawl
 Then add provider secrets to Cloudflare.
 
 Keep no-send mode enabled until real customer examples have been reviewed.
-
-## Legacy Self-Hosting
-
-The older Docker/Node self-hosting path is retained only for the existing reference app while v3 reaches parity. It is not the target architecture.

@@ -1,6 +1,6 @@
 # Trellis User Guide
 
-Trellis v3 is the GTM agent stack for teams that want to ship an agent without assembling the runtime, queues, storage, model routing, safety gates, provider glue, and observability from scratch.
+Trellis is the GTM agent stack for teams that want to ship an agent without assembling the runtime, queues, storage, model routing, safety gates, provider glue, and observability from scratch.
 
 The product promise is intentionally narrow: build and deploy a reliable GTM agent with one blessed stack, then connect the business systems you actually need.
 
@@ -81,6 +81,9 @@ export default trellis.agent("gtm-sdr", {
   // ICP, playbooks, product docs, roles, and repeatable skills.
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
+
+  // Name the operator/tool surface so teams can run multiple agents clearly.
+  mcp: { name: "trellis-gtm-sdr" },
 
   // Start safe: drafts, CRM updates, and sends wait for human approval.
   safety: trellis.safeOutbound({
@@ -177,9 +180,3 @@ The default GTM stack ships with a small business-level provider surface:
 - `trellis connect langfuse`
 
 Cloudflare is not a provider choice in the happy path. It is the runtime Trellis uses.
-
-## Legacy Reference App
-
-The existing AI SDR app remains useful because it proves the desired behavior: discovery, ingest, research, qualification, copy, CRM sync, replies, handoff, dashboard, and MCP.
-
-It is not the v3 architecture. Use it as a parity checklist while moving behavior into the curated Cloudflare-first runtime.

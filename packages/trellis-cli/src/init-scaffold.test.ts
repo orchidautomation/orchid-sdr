@@ -6,8 +6,8 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-describe("trellis init v3 scaffold", () => {
-  it("keeps default help focused on the v3 happy path", () => {
+describe("trellis init scaffold", () => {
+  it("keeps default help focused on the happy path", () => {
     const repoRoot = process.cwd();
     const output = runCli(repoRoot, ["help"], repoRoot);
 
@@ -15,13 +15,12 @@ describe("trellis init v3 scaffold", () => {
     expect(output).toContain("Cloudflare is the default deploy target.");
     expect(output).toContain("npm run trellis -- verify cloudflare --json");
     expect(output).not.toContain("trellis add");
-    expect(output).not.toContain("--legacy");
     expect(output).not.toContain("Convex");
     expect(output).not.toContain("Vercel");
     expect(output).not.toContain("Rivet");
   });
 
-  it("emits a v3-only Cloudflare GTM scaffold", () => {
+  it("emits a Cloudflare GTM scaffold", () => {
     const repoRoot = process.cwd();
     const targetDir = mkdtempSync(path.join(tmpdir(), "trellis-init-test."));
     const cliPath = path.join(repoRoot, "packages", "trellis-cli", "src", "cli.ts");
@@ -58,7 +57,7 @@ describe("trellis init v3 scaffold", () => {
         ...Object.values(generatedPackage.devDependencies),
       ];
 
-      expect(initResult.mode).toBe("v3-cloudflare-gtm");
+      expect(initResult.mode).toBe("cloudflare-gtm");
       expect(initResult.filesWritten).toContain("src/agent.ts");
       expect(initResult.filesWritten).toContain("src/trellis-runtime.ts");
       expect(initResult.filesWritten).toContain("src/crm/attio.map.ts");
@@ -85,6 +84,7 @@ describe("trellis init v3 scaffold", () => {
       expect(agentSource).toContain("state: stateMap");
       expect(agentSource).toContain("model: \"anthropic/claude-sonnet-4.6\"");
       expect(agentSource).toContain("auth: trellis.auth.apiKey()");
+      expect(agentSource).toContain("mcp: { name: \"trellis-sdr\" }");
       expect(agentSource).toContain("trellis.safeOutbound()");
       expect(agentSource).toContain("app.skill(\"icp-qualification\"");
       expect(agentSource).not.toContain("@flue/sdk");
@@ -198,17 +198,17 @@ describe("trellis init v3 scaffold", () => {
     }
   });
 
-  it("rejects old architecture commands from the v3 CLI surface", () => {
+  it("rejects unsupported commands from the CLI surface", () => {
     const repoRoot = process.cwd();
-    const targetDir = mkdtempSync(path.join(tmpdir(), "trellis-legacy-reject-test."));
+    const targetDir = mkdtempSync(path.join(tmpdir(), "trellis-reject-test."));
 
     try {
-      expect(runCliFailure(repoRoot, ["add", "source", "apify", "--legacy"], repoRoot))
-        .toContain("trellis add is old composition tooling");
-      expect(runCliFailure(repoRoot, ["deploy", "vercel", "--legacy"], repoRoot))
-        .toContain("Deploy target \"vercel\" is old architecture");
-      expect(runCliFailure(repoRoot, ["init", targetDir, "--legacy"], repoRoot))
-        .toContain("trellis init --legacy/--kit is old composition tooling");
+      expect(runCliFailure(repoRoot, ["add", "source", "apify"], repoRoot))
+        .toContain("trellis add is not supported");
+      expect(runCliFailure(repoRoot, ["deploy", "vercel"], repoRoot))
+        .toContain("Deploy target \"vercel\" is not supported");
+      expect(runCliFailure(repoRoot, ["init", targetDir, "--kit", "generic"], repoRoot))
+        .toContain("trellis init --kit is not supported");
     } finally {
       rmSync(targetDir, { recursive: true, force: true });
     }
@@ -250,7 +250,7 @@ describe("trellis init v3 scaffold", () => {
         skillPack: { files: string[] } | null;
       };
       expect(doctorResult.ok).toBe(true);
-      expect(doctorResult.mode).toBe("v3-cloudflare-gtm");
+      expect(doctorResult.mode).toBe("cloudflare-gtm");
       expect(doctorResult.checks.find((check) => check.id === "cloudflare.config")?.status).toBe("pass");
       expect(doctorResult.checks.find((check) => check.id === "binding.TRELLIS_DB")?.status).toBe("pass");
       expect(doctorResult.checks.find((check) => check.id === "binding.TRELLIS_PACKS")?.status).toBe("pass");
@@ -402,7 +402,7 @@ describe("trellis init v3 scaffold", () => {
             missingRequiredEnv: string[];
           };
         };
-        expect(connectResult.mode).toBe("v3-provider");
+        expect(connectResult.mode).toBe("provider");
         expect(connectResult.manifest.status).toBe("waiting_for_env");
         expect(connectResult.manifest.missingRequiredEnv).toContain(requiredEnv);
 
@@ -476,7 +476,7 @@ describe("trellis init v3 scaffold", () => {
       if (url.pathname === "/healthz") {
         writeJson(response, {
           ok: true,
-          stack: "trellis-v3-cloudflare",
+          stack: "trellis-cloudflare",
         });
         return;
       }

@@ -1,6 +1,6 @@
 # Trellis Reference
 
-This page describes the v3 public surface. Historical Convex/Vercel/Rivet reference-app details are legacy parity material and should not be used as the default setup path.
+This page describes the public surface.
 
 ## CLI
 
@@ -44,7 +44,7 @@ The generated Cloudflare app should expose:
 
 ## Runtime State
 
-The v3 baseline persists:
+The baseline persists:
 
 - signals
 - prospects
@@ -125,13 +125,13 @@ For generated Cloudflare apps, deploy also provisions the first-run infrastructu
 
 At runtime, the Worker reads `TRELLIS_PACKS`, hydrates bounded markdown contents from `knowledge/files/*` and `skills/files/*`, passes that pack context into the agent run, and exposes pack counts through the webhook response, MCP snapshot, and dashboard.
 
-`app.skill(...)` first checks for a hidden harness binding. Generated v3 apps provide `TRELLIS_FLUE_CONTEXT_FACTORY`, which builds a real `@flue/sdk` context after Trellis has parsed the signal and hydrated R2 packs. The generated adapter preloads `AGENTS.md`, `knowledge/*`, and `.agents/skills/*/SKILL.md` into Flue's virtual sandbox, registers the Cloudflare AI binding through the configured `TRELLIS_AI_GATEWAY_ID` (default `default`), and stores Flue session state in `TRELLIS_DB`. Advanced hosts can still provide a structural `TRELLIS_HARNESS` or direct `TRELLIS_FLUE_CONTEXT`. If no harness is present, smoke and local tests use the deterministic safe fixture path.
+`app.skill(...)` first checks for a hidden harness binding. Generated apps provide `TRELLIS_FLUE_CONTEXT_FACTORY`, which builds a real `@flue/sdk` context after Trellis has parsed the signal and hydrated R2 packs. The generated adapter preloads `AGENTS.md`, `knowledge/*`, and `.agents/skills/*/SKILL.md` into Flue's virtual sandbox, registers the Cloudflare AI binding through the configured `TRELLIS_AI_GATEWAY_ID` (default `default`), and stores Flue session state in `TRELLIS_DB`. Advanced hosts can still provide a structural `TRELLIS_HARNESS` or direct `TRELLIS_FLUE_CONTEXT`. If no harness is present, smoke and local tests use the deterministic safe fixture path.
 
 ## Provider Manifests
 
 Provider connection manifests live under `.trellis/providers/`. They are intentionally non-secret.
 
-Supported v3 provider IDs:
+Supported provider IDs:
 
 - `attio`
 - `agentmail`
@@ -169,7 +169,3 @@ npm run trellis -- verify cloudflare --live --url https://<worker> --exercise-ag
 ```
 
 `--exercise-agent` posts one safe signal webhook and verifies the deployed worker records D1 persistence, provider-run state, queue fanout, workflow dispatch, R2 pack visibility, operator workflow replay, no-send approval gating, provider-action requeue, and the post-run MCP snapshot.
-
-## Migration Material
-
-The old AI SDR reference app and composition packages are behavior source material while v3 reaches full parity. They are intentionally omitted from the public CLI reference because the default product path is Trellis v3 on Cloudflare.

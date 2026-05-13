@@ -1,4 +1,4 @@
-# v3 Roadmap
+# Roadmap
 
 The roadmap is no longer "make a generic framework more turnkey."
 
@@ -8,7 +8,7 @@ The roadmap is "ship the GTM agent stack that works."
 
 - keep `trellis init` Cloudflare-first
 - keep `trellis connect` business-provider-only
-- keep docs focused on v3
+- keep docs focused on the Cloudflare-first product
 - keep `examples/gtm-sdr` as the single public example
 - make `doctor`, `smoke`, and `deploy` the setup spine
 

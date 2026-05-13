@@ -1,6 +1,6 @@
 # Ownership Model
 
-The v3 boundary is intentionally sharper than the old framework boundary.
+The current boundary is intentionally sharper than the old framework boundary.
 
 Trellis owns the reliable GTM agent stack. Builders own the business truth.
 
@@ -46,7 +46,3 @@ They should not be required to assemble the runtime substrate.
 If a team needs it before their first credible GTM agent demo, Trellis should probably own it.
 
 If it changes because the company, ICP, product, or sales motion changed, the builder should own it.
-
-## Legacy Note
-
-The reference app still contains older framework/provider composition code. Keep it as behavior source material while moving the durable pieces into the v3 Trellis-owned stack.

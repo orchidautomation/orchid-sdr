@@ -1,6 +1,6 @@
 # Agent-Native Architecture
 
-The v3 architecture is Cloudflare-first and Trellis-first.
+The architecture is Cloudflare-first and Trellis-first.
 
 Trellis should feel like one GTM agent product surface. Flue and Cloudflare are implementation details behind the happy path.
 
@@ -70,7 +70,3 @@ They are not infrastructure-level:
 - model gateway
 
 The infrastructure stack is Trellis-owned unless a customer has a specific enterprise constraint.
-
-## Legacy Note
-
-The older Convex/Vercel/Rivet architecture was useful exploration. It remains in the repo as migration context, not as the default architecture.
