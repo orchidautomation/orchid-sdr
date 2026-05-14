@@ -484,9 +484,9 @@ export function trellisMcpModule(): AiSdrModuleDefinition {
 export function slackHandoffModule(): AiSdrModuleDefinition {
   return module({
     id: "slack-handoff",
-    displayName: "Slack handoff",
+    displayName: "Slack handoff and operator",
     packageName: "@trellis/slack",
-    description: "Route handoff events into Slack.",
+    description: "Route handoff events into Slack and expose the Trellis operator bot.",
     providerKey: "slack",
     capabilityIds: ["handoff"],
     contracts: ["handoff.notify.v1"],

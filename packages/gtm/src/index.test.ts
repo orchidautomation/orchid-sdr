@@ -538,7 +538,7 @@ describe("@trellis/gtm API", () => {
           approvals: 2,
           providerActions: 1,
           workflowRuns: 1,
-          traceEvents: 8,
+          traceEvents: 13,
           auditEvents: 8,
         },
         packs: {
@@ -649,7 +649,7 @@ describe("@trellis/gtm API", () => {
     expect(dashboardHtml).toContain("<dt>Provider Actions</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Workflow Runs</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Smoke Runs</dt><dd>0</dd>");
-    expect(dashboardHtml).toContain("<dt>Trace Events</dt><dd>8</dd>");
+    expect(dashboardHtml).toContain("<dt>Trace Events</dt><dd>13</dd>");
     expect(dashboardHtml).toContain("<dt>Knowledge Files</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Skill Files</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("Recent Workflow Runs");
@@ -1316,7 +1316,7 @@ describe("@trellis/gtm API", () => {
         counts: {
           signals: 2,
           auditEvents: 8,
-          traceEvents: 8,
+          traceEvents: 18,
         },
       },
     });
@@ -1759,7 +1759,7 @@ describe("@trellis/gtm API", () => {
           braintrust: true,
         },
         counts: {
-          traceEvents: 4,
+          traceEvents: 9,
         },
       },
       tools: expect.arrayContaining(["trellis.trace.export"]),
@@ -3281,10 +3281,301 @@ describe("@trellis/gtm API", () => {
       }),
     }));
   });
+
+  it("writes ordered redacted trace events and replays them over JSON and SSE", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    const skill = vi.fn(async () => ({
+      data: {
+        decision: "qualified",
+        summary: "Qualified with a mocked Flue session.",
+        confidence: 0.91,
+        matchedEvidence: ["Mocked Flue log"],
+        missingEvidence: [],
+      },
+    }));
+    const session = vi.fn(async () => ({ skill }));
+    const flueContext = {
+      subscribeEvent: vi.fn((callback: (event: Record<string, unknown>) => void | Promise<void>) => {
+        void callback({
+          type: "log",
+          toolName: "provider.lookup",
+          message: "Provider lookup finished.",
+          body: "do not persist this body",
+          prompt: "do not persist this prompt",
+          payload: {
+            raw: "do not persist provider raw payload",
+            count: 2,
+          },
+        });
+        return vi.fn();
+      }),
+      init: vi.fn(async () => ({ session })),
+    };
+    const env = {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_RUNTIME_CONTEXT_FACTORY: vi.fn(async () => flueContext),
+    };
+    const request = new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_events",
+        workspaceId: "wrk_events",
+        threadId: "thr_events",
+        provider: "unit-test",
+        source: "unit.trace",
+      }),
+    });
+
+    const webhook = await runtime.worker.fetch(request, env);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(webhook.status).toBe(202);
+    const traceRows = traceEventsFromStatements(fakeD1).filter((event) => event.traceId === "trace_sig_events");
+    expect(traceRows.map((event) => event.type)).toEqual([
+      "signal.accepted",
+      "provider_run.started",
+      "skill.started",
+      "flue.log",
+      "skill.completed",
+      "workflow.started",
+      "draft.created",
+      "approval.waiting",
+      "approval.waiting",
+      "run.completed",
+    ]);
+    const flueLog = traceRows.find((event) => event.type === "flue.log");
+    expect(flueLog?.payload).toMatchObject({
+      type: "log",
+      toolName: "provider.lookup",
+      message: "Provider lookup finished.",
+    });
+    expect(JSON.stringify(flueLog?.payload)).not.toContain("do not persist");
+
+    const duplicate = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_events",
+        workspaceId: "wrk_events",
+        threadId: "thr_events",
+        provider: "unit-test",
+        source: "unit.trace",
+      }),
+    }), env);
+    expect(duplicate.status).toBe(202);
+    const replay = await runtime.worker.fetch(new Request("https://example.com/events?traceId=trace_sig_events&limit=100"), env);
+    const replayBody = await replay.json() as { events: Array<{ id: string; type: string }> };
+    expect(replay.status).toBe(200);
+    expect(replayBody.events.map((event) => event.type)).toEqual(traceRows.map((event) => event.type));
+    expect(new Set(replayBody.events.map((event) => event.id)).size).toBe(replayBody.events.length);
+    expect(replayBody.events.filter((event) => event.type === "run.completed")).toHaveLength(1);
+
+    const stream = await runtime.worker.fetch(new Request("https://example.com/events/stream?traceId=trace_sig_events"), env);
+    const streamText = await stream.text();
+    expect(stream.headers.get("content-type")).toContain("text/event-stream");
+    expect(streamText).toContain("event: signal.accepted");
+    expect(streamText).toContain("event: run.completed");
+
+    const firstEventId = replayBody.events[0]?.id;
+    const secondEventId = replayBody.events[1]?.id;
+    expect(firstEventId).toBeDefined();
+    expect(secondEventId).toBeDefined();
+    const afterFirst = await runtime.worker.fetch(new Request("https://example.com/events/stream?traceId=trace_sig_events", {
+      headers: { "Last-Event-ID": firstEventId ?? "" },
+    }), env);
+    const afterFirstText = await afterFirst.text();
+    expect(afterFirstText).not.toContain(`id: ${firstEventId}`);
+    expect(afterFirstText).toContain(`id: ${secondEventId}`);
+  });
+
+  it("delegates Slack webhooks to ChatSDK handlers and handles status/watch/approval actions", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    let handlers: {
+      handleSlashCommand(event: unknown): Promise<void>;
+      handleAction(event: unknown): Promise<void>;
+    } | undefined;
+    const slackWebhook = vi.fn(async () => new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    const env = {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_SLACK_BOT_FACTORY: vi.fn((input: Record<string, unknown>) => {
+        handlers = input.handlers as NonNullable<typeof handlers>;
+        return {
+          webhooks: {
+            slack: slackWebhook,
+          },
+        };
+      }),
+    };
+
+    const signalWebhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_slack",
+        workspaceId: "wrk_slack",
+        threadId: "thr_slack",
+      }),
+    }), env);
+    const slack = await runtime.worker.fetch(new Request("https://example.com/webhooks/slack", {
+      method: "POST",
+      body: JSON.stringify({ type: "url_verification" }),
+    }), env);
+
+    expect(signalWebhook.status).toBe(202);
+    expect(slack.status).toBe(200);
+    expect(slackWebhook).toHaveBeenCalledTimes(1);
+    expect(handlers).toBeDefined();
+
+    const statusPosts: unknown[] = [];
+    await handlers?.handleSlashCommand({
+      text: "status trace_sig_slack",
+      user: { fullName: "Operator" },
+      channel: { post: vi.fn(async (message: unknown) => statusPosts.push(message)) },
+    });
+    expect(String(statusPosts[0])).toContain("Trellis trace trace_sig_slack");
+    expect(String(statusPosts[0])).toContain("Latest: run.completed");
+
+    const watchPosts: unknown[] = [];
+    await handlers?.handleSlashCommand({
+      text: "watch trace_sig_slack",
+      user: { fullName: "Operator" },
+      channel: { post: vi.fn(async (message: unknown) => watchPosts.push(message)) },
+    });
+    const chunks: string[] = [];
+    for await (const chunk of watchPosts[0] as AsyncIterable<string>) {
+      chunks.push(chunk);
+    }
+    expect(chunks.join("")).toContain("run.completed");
+
+    const actionThreadPost = vi.fn();
+    await handlers?.handleAction({
+      actionId: "approve",
+      value: JSON.stringify({
+        approvalId: "approval_draft_sig_slack_email_send",
+        traceId: "trace_sig_slack",
+        signalId: "sig_slack",
+        action: "email.send",
+        draftId: "draft_sig_slack",
+      }),
+      user: { fullName: "Operator" },
+      thread: { post: actionThreadPost },
+    });
+    expect(actionThreadPost).toHaveBeenCalledWith("Approval approval_draft_sig_slack_email_send approved.");
+    expect(fakeD1.statements.some((statement) =>
+      statement.sql.includes("UPDATE trellis_approvals SET status = ?")
+        && statement.bindings[0] === "approved"
+        && statement.bindings[2] === "approval_draft_sig_slack_email_send",
+    )).toBe(true);
+  });
+
+  it("records Slack notification failures without blocking signal ingestion", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail(),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    const env = {
+      TRELLIS_DB: fakeD1,
+      SLACK_BOT_TOKEN: "xoxb-test",
+      SLACK_DEFAULT_CHANNEL: "C123",
+      TRELLIS_FETCH: vi.fn(async () => new Response(JSON.stringify({ ok: false, error: "channel_not_found" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })),
+    };
+
+    const webhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_slack_fail",
+        workspaceId: "wrk_slack_fail",
+        threadId: "thr_slack_fail",
+      }),
+    }), env);
+
+    expect(webhook.status).toBe(202);
+    expect(traceEventsFromStatements(fakeD1).some((event) => event.type === "slack.notify.failed")).toBe(true);
+  });
 });
 
 function isTestRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function traceEventsFromStatements(fakeD1: ReturnType<typeof createFakeD1>) {
+  return fakeD1.statements
+    .filter((statement) => statement.sql.includes("INSERT OR REPLACE INTO trellis_trace_events"))
+    .map((statement) => ({
+      id: String(statement.bindings[0]),
+      traceId: String(statement.bindings[1]),
+      signalId: statement.bindings[2] === null ? null : String(statement.bindings[2]),
+      workflow: statement.bindings[3] === null ? null : String(statement.bindings[3]),
+      span: String(statement.bindings[4]),
+      type: String(statement.bindings[5]),
+      message: String(statement.bindings[6]),
+      payload: parseTestRecordJson(statement.bindings[7]),
+      createdAt: String(statement.bindings[8]),
+    }));
+}
+
+function parseTestRecordJson(value: unknown) {
+  if (typeof value !== "string") {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return isTestRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function createFakeD1() {
@@ -3300,6 +3591,7 @@ function createFakeD1() {
   const workflowRuns = new Map<string, Record<string, unknown>>();
   const auditEvents = new Map<string, Record<string, unknown>>();
   const traceEvents = new Map<string, Record<string, unknown>>();
+  const slackThreads = new Map<string, Record<string, unknown>>();
   const smokeRuns = new Map<string, Record<string, unknown>>();
   return {
     statements,
@@ -3455,6 +3747,16 @@ function createFakeD1() {
                   createdAt: bindings[8],
                 });
               }
+              if (normalized.includes("INSERT OR REPLACE INTO trellis_slack_threads")) {
+                slackThreads.set(String(bindings[0]), {
+                  traceId: bindings[0],
+                  signalId: bindings[1],
+                  trellisThreadId: bindings[2],
+                  slackChannelId: bindings[3],
+                  slackThreadTs: bindings[4],
+                  updatedAt: bindings[5],
+                });
+              }
               if (normalized.includes("UPDATE trellis_provider_actions SET status = ?")) {
                 const row = providerActions.get(String(bindings[2]));
                 if (row) {
@@ -3503,10 +3805,24 @@ function createFakeD1() {
                 if (tableName === "trellis_trace_events") {
                   return { count: traceEvents.size };
                 }
+                if (tableName === "trellis_slack_threads") {
+                  return { count: slackThreads.size };
+                }
                 const count = statements.filter((statement) =>
                   statement.sql.includes(`INSERT OR REPLACE INTO ${tableName}`),
                 ).length;
                 return { count };
+              }
+              if (normalized.includes("FROM trellis_approvals WHERE id = ?")) {
+                return approvals.get(String(bindings[0])) ?? null;
+              }
+              if (normalized.includes("FROM trellis_trace_events WHERE trace_id = ? AND id = ?")) {
+                return sortRows(traceEvents).find((row) =>
+                  row.traceId === bindings[0] && row.id === bindings[1],
+                ) ?? null;
+              }
+              if (normalized.includes("FROM trellis_trace_events WHERE id = ?")) {
+                return traceEvents.get(String(bindings[0])) ?? null;
               }
               if (normalized.includes("FROM trellis_provider_actions WHERE id = ?")) {
                 return providerActions.get(String(bindings[0])) ?? null;
@@ -3520,8 +3836,16 @@ function createFakeD1() {
               if (normalized.includes("FROM trellis_drafts WHERE id = ?")) {
                 return drafts.get(String(bindings[0])) ?? null;
               }
+              if (normalized.includes("FROM trellis_signals WHERE id = ? OR thread_id = ?")) {
+                return sortRows(signals).find((row) =>
+                  row.id === bindings[0] || row.threadId === bindings[1],
+                ) ?? null;
+              }
               if (normalized.includes("FROM trellis_signals WHERE id = ?")) {
                 return signals.get(String(bindings[0])) ?? null;
+              }
+              if (normalized.includes("FROM trellis_slack_threads WHERE trace_id = ?")) {
+                return slackThreads.get(String(bindings[0])) ?? null;
               }
               if (normalized.includes("FROM trellis_prospects WHERE signal_id = ?")) {
                 return sortRows(prospects).find((row) => row.signalId === bindings[0]) ?? null;
@@ -3533,7 +3857,8 @@ function createFakeD1() {
             },
             all() {
               const normalized = sql.replace(/\s+/g, " ").trim();
-              const limit = Number(bindings[0] ?? 20);
+              const numericBindings = bindings.filter((binding) => Number.isFinite(Number(binding)));
+              const limit = Number(numericBindings[numericBindings.length - 1] ?? 20);
               const rows = rowsForSelect(normalized, {
                 signals,
                 prospects,
@@ -3545,7 +3870,22 @@ function createFakeD1() {
                 workflowRuns,
                 auditEvents,
                 traceEvents,
+                slackThreads,
                 smokeRuns,
+              }).filter((row) => {
+                if (!normalized.includes("FROM trellis_trace_events") || !normalized.includes("WHERE trace_id = ?")) {
+                  return true;
+                }
+                if (row.traceId !== bindings[0]) {
+                  return false;
+                }
+                if (!normalized.includes("created_at > ?")) {
+                  return true;
+                }
+                const createdAt = String(row.createdAt ?? "");
+                const afterCreatedAt = String(bindings[1] ?? "");
+                const afterId = String(bindings[3] ?? "");
+                return createdAt > afterCreatedAt || (createdAt === afterCreatedAt && String(row.id) > afterId);
               });
               return {
                 results: rows.slice(0, Number.isFinite(limit) ? limit : 20),
@@ -3591,6 +3931,9 @@ function rowsForSelect(
   }
   if (normalizedSql.includes("FROM trellis_trace_events")) {
     return sortRows(tables.traceEvents);
+  }
+  if (normalizedSql.includes("FROM trellis_slack_threads")) {
+    return sortRows(tables.slackThreads);
   }
   if (normalizedSql.includes("FROM trellis_smoke_runs")) {
     return sortRows(tables.smokeRuns);

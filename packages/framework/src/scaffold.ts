@@ -511,7 +511,7 @@ function renderValueAccountLines(spec: AiSdrScaffoldSpec) {
     lines.push("- `AgentMail` - outbound sending, inboxes, and reply handling.");
   }
   if (selectedModuleIds.has("slack-handoff")) {
-    lines.push("- `Slack` - handoff and human escalation routing.");
+    lines.push("- `Slack` - handoff, human escalation routing, and Trellis operator commands.");
   }
 
   return lines.join("\n");

@@ -304,6 +304,7 @@ export interface TrellisRuntimeContextFactoryInput {
   signal: Partial<TrellisSignal>;
   packs: unknown;
   tools: TrellisMcpToolDefinition[];
+  eventSink?: TrellisEventSink;
 }
 
 export interface TrellisMcpToolDefinition {
@@ -313,6 +314,21 @@ export interface TrellisMcpToolDefinition {
   operation?: string;
   inputSchema?: Record<string, unknown>;
   execute?(input: Record<string, unknown>): Promise<unknown> | unknown;
+}
+
+export interface TrellisEventSink {
+  emit(event: TrellisTraceEventInput): Promise<void>;
+}
+
+export interface TrellisTraceEventInput {
+  id?: string;
+  traceId: string;
+  signalId?: string | null;
+  workflow?: string | null;
+  span: string;
+  type: string;
+  message: string;
+  payload?: Record<string, unknown>;
 }
 
 interface TrellisD1Database {
@@ -597,6 +613,7 @@ export function createTrellisTestApp(input?: {
   context?: Record<string, unknown>;
   skillResults?: Record<string, unknown>;
   harness?: TrellisHarnessRuntime;
+  eventSink?: TrellisEventSink;
 }) {
   const startedWorkflows: Array<{ name: string; input: TrellisWorkflowStartInput }> = [];
   const skillCalls: Array<{ name: string; context: Record<string, unknown> }> = [];
@@ -632,8 +649,8 @@ export function createTrellisTestApp(input?: {
     prospects,
     drafts,
     auditEvents,
-    signal() {
-      auditEvents.push({
+    async signal() {
+      const event = {
         id: nextAuditEventId(signal, auditEvents),
         traceId: signal.traceId,
         type: "signal.accepted",
@@ -642,8 +659,10 @@ export function createTrellisTestApp(input?: {
         metadata: {
           provider: signal.provider,
           source: signal.source,
+          threadId: signal.threadId,
         },
-      });
+      };
+      auditEvents.push(event);
       return signal;
     },
     context(currentSignal) {
@@ -658,11 +677,24 @@ export function createTrellisTestApp(input?: {
         name,
         context: skillInput.context,
       });
+      await emitTrellisTrace(input?.eventSink, {
+        id: `trace_event_skill_started_${normalizeIdPart(signal.id)}_${normalizeIdPart(name)}_${skillCalls.length}`,
+        traceId: traceIdForSignal(signal),
+        signalId: signal.id,
+        span: `skill:${name}`,
+        type: "skill.started",
+        message: `Started skill ${name}.`,
+        payload: {
+          skill: name,
+          role: skillInput.role ?? null,
+          model: skillInput.model ?? null,
+        },
+      });
       if (input?.harness) {
         try {
           const harnessResult = await input.harness.skill(name, skillInput);
           const parsed = parseSkillOutput(harnessResult, skillInput.schema);
-          auditEvents.push({
+          const event = {
             id: nextAuditEventId(signal, auditEvents),
             traceId: signal.traceId,
             type: "skill.completed",
@@ -674,10 +706,12 @@ export function createTrellisTestApp(input?: {
               model: skillInput.model ?? null,
               harness: true,
             },
-          });
+          };
+          auditEvents.push(event);
+          await emitAuditTraceEvent(input?.eventSink, event, signal);
           return parsed;
         } catch (error) {
-          auditEvents.push({
+          const event = {
             id: nextAuditEventId(signal, auditEvents),
             traceId: signal.traceId,
             type: "skill.fallback",
@@ -690,32 +724,52 @@ export function createTrellisTestApp(input?: {
               harness: true,
               error: sanitizeRuntimeError(error),
             },
-          });
+          };
+          auditEvents.push(event);
+          await emitAuditTraceEvent(input?.eventSink, event, signal);
         }
       }
 
-      const result = input?.skillResults?.[name] ?? {
-        ...defaultSkillResult(name),
-      };
-      const parsed = parseSkillOutput(result, skillInput.schema);
-      auditEvents.push({
-        id: nextAuditEventId(signal, auditEvents),
-        traceId: signal.traceId,
-        type: "skill.completed",
-        message: `Completed skill ${name}.`,
-        signalId: signal.id,
-        metadata: {
-          skill: name,
-          role: skillInput.role ?? null,
-          model: skillInput.model ?? null,
-          harness: false,
-        },
-      });
-      return parsed;
+      try {
+        const result = input?.skillResults?.[name] ?? {
+          ...defaultSkillResult(name),
+        };
+        const parsed = parseSkillOutput(result, skillInput.schema);
+        const event = {
+          id: nextAuditEventId(signal, auditEvents),
+          traceId: signal.traceId,
+          type: "skill.completed",
+          message: `Completed skill ${name}.`,
+          signalId: signal.id,
+          metadata: {
+            skill: name,
+            role: skillInput.role ?? null,
+            model: skillInput.model ?? null,
+            harness: false,
+          },
+        };
+        auditEvents.push(event);
+        await emitAuditTraceEvent(input?.eventSink, event, signal);
+        return parsed;
+      } catch (error) {
+        await emitTrellisTrace(input?.eventSink, {
+          id: `trace_event_skill_failed_${normalizeIdPart(signal.id)}_${normalizeIdPart(name)}_${skillCalls.length}`,
+          traceId: traceIdForSignal(signal),
+          signalId: signal.id,
+          span: `skill:${name}`,
+          type: "skill.failed",
+          message: `Failed skill ${name}.`,
+          payload: {
+            skill: name,
+            error: sanitizeRuntimeError(error),
+          },
+        });
+        throw error;
+      }
     },
     workflow(name) {
       return {
-        start(workflowInput) {
+        async start(workflowInput) {
           startedWorkflows.push({ name, input: workflowInput });
           const decision = readQualificationDecision(workflowInput.qualification);
           prospects.push({
@@ -733,7 +787,7 @@ export function createTrellisTestApp(input?: {
             approvalRequiredFor,
             body: readWorkflowDraftBody(name, workflowInput),
           });
-          auditEvents.push({
+          const workflowStarted = {
             id: nextAuditEventId(signal, auditEvents),
             traceId: signal.traceId,
             type: "workflow.started",
@@ -744,8 +798,10 @@ export function createTrellisTestApp(input?: {
               draftId: `draft_${signal.id}`,
               approvalRequiredFor,
             },
-          });
-          auditEvents.push({
+          };
+          auditEvents.push(workflowStarted);
+          await emitAuditTraceEvent(input?.eventSink, workflowStarted, signal);
+          const draftCreated = {
             id: nextAuditEventId(signal, auditEvents),
             traceId: signal.traceId,
             type: "draft.created",
@@ -757,7 +813,9 @@ export function createTrellisTestApp(input?: {
               channel: name === "reply" ? "reply" : "email",
               approvalRequiredFor,
             },
-          });
+          };
+          auditEvents.push(draftCreated);
+          await emitAuditTraceEvent(input?.eventSink, draftCreated, signal);
           return {
             ok: true,
             workflow: name,
@@ -779,6 +837,185 @@ export function createTrellisTestApp(input?: {
 
 function nextAuditEventId(signal: TrellisSignal, auditEvents: TrellisAuditEvent[]) {
   return `evt_${normalizeIdPart(signal.id)}_${auditEvents.length + 1}`;
+}
+
+function createTrellisEventSink(env: Record<string, unknown> | undefined): TrellisEventSink | undefined {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return undefined;
+  }
+
+  return {
+    async emit(event) {
+      await ensureD1Schema(db);
+      await insertTraceEvent(env, db, {
+        ...event,
+        id: event.id ?? traceEventId(event),
+        signalId: event.signalId ?? undefined,
+        workflow: event.workflow ?? undefined,
+        payload: redactTracePayload(event.payload ?? {}),
+      });
+      await notifySlackForTraceEvent(env, {
+        id: event.id ?? traceEventId(event),
+        traceId: event.traceId,
+        signalId: event.signalId ?? null,
+        workflow: event.workflow ?? null,
+        span: event.span,
+        type: event.type,
+        message: event.message,
+        payload: redactTracePayload(event.payload ?? {}),
+        createdAt: new Date().toISOString(),
+      }).catch(async (error) => {
+        await insertTraceEvent(env, db, {
+          id: `trace_event_slack_notify_failed_${normalizeIdPart(event.type)}_${stableHashPart(String(Date.now()))}`,
+          traceId: event.traceId,
+          signalId: event.signalId ?? undefined,
+          workflow: "slack",
+          span: "slack",
+          type: "slack.notify.failed",
+          message: "Slack notification failed.",
+          payload: {
+            eventType: event.type,
+            error: sanitizeRuntimeError(error),
+          },
+        });
+      });
+    },
+  };
+}
+
+async function emitAuditTraceEvent(
+  eventSink: TrellisEventSink | undefined,
+  event: TrellisAuditEvent,
+  signal: TrellisSignal,
+) {
+  await emitTrellisTrace(eventSink, {
+    id: `trace_event_${event.id}`,
+    traceId: event.traceId ?? traceIdForSignal(signal),
+    signalId: event.signalId ?? signal.id,
+    workflow: event.workflow,
+    type: event.type,
+    span: traceSpanForAuditEvent(event),
+    message: event.message,
+    payload: event.metadata ?? {},
+  });
+}
+
+async function emitTrellisTrace(eventSink: TrellisEventSink | undefined, event: TrellisTraceEventInput) {
+  if (!eventSink) {
+    return;
+  }
+  await eventSink.emit({
+    ...event,
+    payload: redactTracePayload(event.payload ?? {}),
+  });
+}
+
+function traceEventId(event: TrellisTraceEventInput) {
+  return `trace_event_${normalizeIdPart(event.type)}_${normalizeIdPart(event.signalId ?? event.traceId)}_${stableHashPart(JSON.stringify(event.payload ?? {}))}`;
+}
+
+function traceIdForPartialSignal(signal: Partial<TrellisSignal>) {
+  return readString(signal.traceId)
+    ?? readString(signal.payload?.traceId)
+    ?? traceIdForSignalId(readString(signal.id) ?? "unknown");
+}
+
+function redactTracePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  return redactTraceValue(payload) as Record<string, unknown>;
+}
+
+const REDACTED_TRACE_KEYS = new Set([
+  "body",
+  "bodyText",
+  "content",
+  "html",
+  "messages",
+  "payload",
+  "prompt",
+  "raw",
+  "reply",
+  "request",
+  "requestPayload",
+  "response",
+  "responsePayload",
+  "text",
+]);
+
+function redactTraceValue(value: unknown, key = ""): unknown {
+  if (REDACTED_TRACE_KEYS.has(key)) {
+    return "[redacted]";
+  }
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: sanitizeRuntimeError(value),
+    };
+  }
+  if (Array.isArray(value)) {
+    return value.slice(0, 50).map((item) => redactTraceValue(item));
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(Object.entries(value).map(([entryKey, entryValue]) => [
+      entryKey,
+      redactTraceValue(entryValue, entryKey),
+    ]));
+  }
+  return value;
+}
+
+async function bridgeFlueEventToTrellisTrace(
+  eventSink: TrellisEventSink | undefined,
+  signal: Partial<TrellisSignal>,
+  event: Record<string, unknown>,
+) {
+  if (!eventSink) {
+    return;
+  }
+  const type = readString(event.type);
+  if (!type || type === "text_delta" || type === "thinking_delta" || type === "thinking_start" || type === "thinking_end") {
+    return;
+  }
+  if (!["turn", "tool_start", "tool_call", "log"].includes(type)) {
+    return;
+  }
+  const traceId = traceIdForPartialSignal(signal);
+  const signalId = readString(signal.id);
+  const toolName = readString(event.toolName);
+  await emitTrellisTrace(eventSink, {
+    id: `trace_event_flue_${normalizeIdPart(type)}_${normalizeIdPart(signalId ?? traceId)}_${stableHashPart(JSON.stringify(event))}`,
+    traceId,
+    signalId,
+    span: toolName ? `tool:${toolName}` : type === "turn" ? "model" : "runtime",
+    type: `flue.${type}`,
+    message: flueEventMessage(type, event),
+    payload: {
+      type,
+      toolName,
+      toolCallId: readString(event.toolCallId),
+      level: readString(event.level),
+      message: readString(event.message),
+      model: readString(event.model),
+      stopReason: readString(event.stopReason),
+      durationMs: readNumber(event.durationMs),
+      isError: typeof event.isError === "boolean" ? event.isError : undefined,
+      usage: isRecord(event.usage) ? event.usage : undefined,
+      error: event.error ? sanitizeRuntimeError(event.error) : undefined,
+    },
+  });
+}
+
+function flueEventMessage(type: string, event: Record<string, unknown>) {
+  if (type === "tool_start") {
+    return `Started tool ${readString(event.toolName) ?? "unknown"}.`;
+  }
+  if (type === "tool_call") {
+    return `Completed tool ${readString(event.toolName) ?? "unknown"}.`;
+  }
+  if (type === "turn") {
+    return "Completed model turn.";
+  }
+  return readString(event.message) ?? "Trellis runtime log.";
 }
 
 export async function runTrellisSmoke(input?: {
@@ -1057,21 +1294,111 @@ export async function runTrellisAgent(
     context?: Record<string, unknown>;
     skillResults?: Record<string, unknown>;
     harness?: TrellisHarnessRuntime;
+    eventSink?: TrellisEventSink;
+    providerRun?: {
+      id: string;
+      provider: string;
+      kind: string;
+      externalId?: string | null;
+      signalsReceived?: number;
+    };
   },
 ): Promise<TrellisRuntimeResult> {
   const app = createTrellisTestApp(input);
-  const result = await agent.handler(app);
-  const approvals = createApprovalsForDrafts(app.fixtureSignal, app.drafts);
-  return {
-    signal: app.fixtureSignal,
-    skillCalls: app.skillCalls,
-    startedWorkflows: app.startedWorkflows,
-    prospects: app.prospects,
-    drafts: app.drafts,
-    approvals,
-    auditEvents: app.auditEvents,
-    result,
-  };
+  try {
+    await emitTrellisTrace(input?.eventSink, {
+      id: `trace_event_signal_accepted_${normalizeIdPart(app.fixtureSignal.id)}`,
+      traceId: traceIdForSignal(app.fixtureSignal),
+      signalId: app.fixtureSignal.id,
+      span: "signal",
+      type: "signal.accepted",
+      message: "Accepted Trellis signal.",
+      payload: {
+        provider: app.fixtureSignal.provider,
+        source: app.fixtureSignal.source,
+        threadId: app.fixtureSignal.threadId,
+        workspaceId: app.fixtureSignal.workspaceId,
+        campaignId: app.fixtureSignal.campaignId ?? null,
+      },
+    });
+    if (input?.providerRun) {
+      await emitTrellisTrace(input.eventSink, {
+        id: `trace_event_provider_run_started_${normalizeIdPart(input.providerRun.id)}_${normalizeIdPart(app.fixtureSignal.id)}`,
+        traceId: traceIdForSignal(app.fixtureSignal),
+        signalId: app.fixtureSignal.id,
+        span: `provider:${input.providerRun.provider}`,
+        type: "provider_run.started",
+        message: `Started provider run ${input.providerRun.id}.`,
+        payload: {
+          providerRunId: input.providerRun.id,
+          provider: input.providerRun.provider,
+          kind: input.providerRun.kind,
+          externalId: input.providerRun.externalId ?? null,
+          signalsReceived: input.providerRun.signalsReceived ?? null,
+        },
+      });
+    }
+    const result = await agent.handler(app);
+    const approvals = createApprovalsForDrafts(app.fixtureSignal, app.drafts);
+    for (const approval of approvals) {
+      await emitTrellisTrace(input?.eventSink, {
+        id: `trace_event_approval_waiting_${normalizeIdPart(approval.id)}`,
+        traceId: approval.traceId ?? traceIdForSignal(app.fixtureSignal),
+        signalId: approval.signalId,
+        workflow: "approval",
+        span: "approval",
+        type: "approval.waiting",
+        message: `Approval ${approval.id} is waiting for ${approval.action}.`,
+        payload: {
+          approvalId: approval.id,
+          draftId: approval.draftId,
+          action: approval.action,
+          status: approval.status,
+        },
+      });
+    }
+    await emitTrellisTrace(input?.eventSink, {
+      id: `trace_event_run_completed_${normalizeIdPart(traceIdForSignal(app.fixtureSignal))}`,
+      traceId: traceIdForSignal(app.fixtureSignal),
+      signalId: app.fixtureSignal.id,
+      span: "runtime",
+      type: "run.completed",
+      message: "Completed Trellis run.",
+      payload: {
+        signalId: app.fixtureSignal.id,
+        threadId: app.fixtureSignal.threadId,
+        prospects: app.prospects.length,
+        drafts: app.drafts.length,
+        approvals: approvals.length,
+        workflows: app.startedWorkflows.map((workflow) => workflow.name),
+      },
+    });
+    return {
+      signal: app.fixtureSignal,
+      skillCalls: app.skillCalls,
+      startedWorkflows: app.startedWorkflows,
+      prospects: app.prospects,
+      drafts: app.drafts,
+      approvals,
+      auditEvents: app.auditEvents,
+      result,
+    };
+  } catch (error) {
+    await emitTrellisTrace(input?.eventSink, {
+      id: `trace_event_run_failed_${normalizeIdPart(traceIdForSignal(app.fixtureSignal))}`,
+      traceId: traceIdForSignal(app.fixtureSignal),
+      signalId: app.fixtureSignal.id,
+      span: "runtime",
+      type: "run.failed",
+      message: "Failed Trellis run.",
+      payload: {
+        signalId: app.fixtureSignal.id,
+        threadId: app.fixtureSignal.threadId,
+        error: sanitizeRuntimeError(error),
+      },
+    });
+    throw error;
+  }
 }
 
 function createDefaultSmokeAgent() {
@@ -1460,6 +1787,10 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
   const worker: TrellisCloudflareRuntime["worker"] = {
       async fetch(request: Request, env?: Record<string, unknown>) {
         const url = new URL(request.url);
+        if (url.pathname === "/webhooks/slack" && request.method === "POST") {
+          return handleSlackWebhook(request, env, agent.config);
+        }
+
         const auth = verifyTrellisRouteAuth(request, env, agent.config, url.pathname);
         if (!auth.ok) {
           return jsonResponse({
@@ -1478,6 +1809,8 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             auth: summarizeRouteAuth(env, agent.config),
             bindings: summarizeCloudflareBindings(env),
             traceExport: summarizeTraceExport(env),
+            events: summarizeEventStreaming(env),
+            slack: summarizeSlackOperator(env),
           });
         }
 
@@ -1630,9 +1963,11 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
 
           const signal = agentMailWebhookToSignal(agentMail, record);
           const packContext = await readPackContext(env);
+          const eventSink = createTrellisEventSink(env);
           const harness = await createRuntimeHarness(env, agent.config, {
             signal,
             packs: packContext,
+            eventSink,
           });
           const run = await runTrellisAgent(agent, {
             signal,
@@ -1641,6 +1976,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               inboundReply: agentMail,
             },
             harness,
+            eventSink,
           });
           const persistence = await persistRuntimeResult(env, run, agent.config);
           const queue = await enqueueRuntimeEvent(env, run);
@@ -1697,6 +2033,14 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             ok: true,
             snapshot: await readRuntimeSnapshot(env),
           });
+        }
+
+        if (url.pathname === "/events") {
+          return handleTraceEventsRequest(url, env);
+        }
+
+        if (url.pathname === "/events/stream") {
+          return handleTraceEventStream(request, url, env);
         }
 
         const providerActionExecution = matchProviderActionExecutionRoute(url.pathname);
@@ -1831,6 +2175,8 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             "/provider-actions/:id/execute",
             "/provider-actions/:id/complete",
             "/provider-actions/:id/fail",
+            "/events",
+            "/events/stream",
             "/operator/controls",
             "/operator/kill-switch/:enable|disable",
             "/operator/campaigns/:id/:pause|resume",
@@ -1839,6 +2185,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             "/operator/provider-actions/:id/replay",
             "/mcp/trellis",
             "/dashboard",
+            "/webhooks/slack",
           ],
         });
       },
@@ -1952,6 +2299,24 @@ function summarizeTraceExport(env?: Record<string, unknown>) {
     generic,
     langfuse,
     braintrust,
+  };
+}
+
+function summarizeEventStreaming(env?: Record<string, unknown>) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  return {
+    enabled: Boolean(db?.prepare),
+    endpoint: "/events/stream?traceId=<traceId>",
+    replayEndpoint: "/events?traceId=<traceId>&limit=100",
+    source: "trellis_trace_events",
+  };
+}
+
+function summarizeSlackOperator(env?: Record<string, unknown>) {
+  return {
+    enabled: Boolean(readString(env?.SLACK_BOT_TOKEN) && readString(env?.SLACK_SIGNING_SECRET)),
+    defaultChannelConfigured: Boolean(readString(env?.SLACK_DEFAULT_CHANNEL)),
+    webhook: "/webhooks/slack",
   };
 }
 
@@ -2437,6 +2802,7 @@ async function createRuntimeHarness(
   runtime: {
     signal: Partial<TrellisSignal>;
     packs: unknown;
+    eventSink?: TrellisEventSink;
   },
 ): Promise<TrellisHarnessRuntime | undefined> {
   const explicitHarness = env?.TRELLIS_HARNESS;
@@ -2455,6 +2821,7 @@ async function createRuntimeHarness(
       signal: runtime.signal,
       packs: runtime.packs,
       tools,
+      eventSink: runtime.eventSink,
     }));
     if (isHarnessRuntime(created)) {
       return created;
@@ -2483,6 +2850,7 @@ function isHarnessRuntime(value: unknown): value is TrellisHarnessRuntime {
 
 interface FlueContextLike {
   init(options: Record<string, unknown>): Promise<FlueHarnessLike> | FlueHarnessLike;
+  subscribeEvent?(callback: (event: Record<string, unknown>) => void | Promise<void>): () => void;
 }
 
 interface FlueHarnessLike {
@@ -2507,10 +2875,12 @@ function createFlueHarnessRuntime(
   runtime: {
     signal: Partial<TrellisSignal>;
     packs: unknown;
+    eventSink?: TrellisEventSink;
   },
   tools?: TrellisMcpToolDefinition[],
 ): TrellisHarnessRuntime {
   let harnessPromise: Promise<FlueHarnessLike> | undefined;
+  let unsubscribeFlueEvents: (() => void) | undefined;
   async function harness() {
     const model = readString(env?.TRELLIS_MODEL) ?? config.model ?? DEFAULT_TRELLIS_MODEL;
     const initOptions: Record<string, unknown> = {
@@ -2523,6 +2893,11 @@ function createFlueHarnessRuntime(
     const cwd = readString(env?.TRELLIS_RUNTIME_CWD) ?? readString(env?.TRELLIS_FLUE_CWD);
     if (cwd) {
       initOptions.cwd = cwd;
+    }
+    if (!unsubscribeFlueEvents && runtime.eventSink && typeof flue.subscribeEvent === "function") {
+      unsubscribeFlueEvents = flue.subscribeEvent((event) => {
+        bridgeFlueEventToTrellisTrace(runtime.eventSink, runtime.signal, event).catch(() => undefined);
+      });
     }
     harnessPromise ??= Promise.resolve(flue.init(initOptions));
     return harnessPromise;
@@ -2749,6 +3124,7 @@ async function processRuntimeSignals(
   context: Record<string, unknown> = {},
 ) {
   const packContext = await readPackContext(env);
+  const eventSink = createTrellisEventSink(env);
   const providerRun = await recordSignalProviderRunStarted(env, signals);
   const results: Array<{
     run: TrellisRuntimeResult;
@@ -2760,6 +3136,7 @@ async function processRuntimeSignals(
     const harness = await createRuntimeHarness(env, agent.config, {
       signal,
       packs: packContext,
+      eventSink,
     });
     const run = await runTrellisAgent(agent, {
       signal,
@@ -2768,6 +3145,14 @@ async function processRuntimeSignals(
         ...context,
       },
       harness,
+      eventSink,
+      providerRun: {
+        id: providerRun.id,
+        provider: providerRun.provider,
+        kind: providerRun.kind,
+        externalId: providerRun.externalId,
+        signalsReceived: signals.length,
+      },
     });
     const persistence = await persistRuntimeResult(env, run, agent.config);
     const queue = await enqueueRuntimeEvent(env, run);
@@ -3280,6 +3665,7 @@ function summarizeRouteAuth(env: Record<string, unknown> | undefined, config: Tr
         "/approvals/*",
         "/operator/*",
         "/provider-actions*",
+        "/events*",
         "/agents/*",
       ],
     },
@@ -3333,6 +3719,8 @@ function isTrellisApiKeyProtectedRoute(pathname: string) {
     || pathname === "/mcp/trellis"
     || pathname === "/dashboard"
     || pathname === "/provider-actions"
+    || pathname === "/events"
+    || pathname === "/events/stream"
     || pathname.startsWith("/provider-actions/")
     || pathname.startsWith("/approvals/")
     || pathname.startsWith("/operator/")
@@ -3792,8 +4180,20 @@ async function persistRuntimeResult(
       event.message,
       new Date().toISOString(),
     ]);
+    if (event.type === "signal.accepted") {
+      continue;
+    }
+    const traceEventId = `trace_event_${event.id}`;
+    const existingTraceEvent = await db.prepare(`
+      SELECT id
+      FROM trellis_trace_events
+      WHERE id = ?
+    `).bind(traceEventId).first<{ id: string }>();
+    if (existingTraceEvent) {
+      continue;
+    }
     await insertTraceEvent(env, db, {
-      id: `trace_event_${event.id}`,
+      id: traceEventId,
       traceId: event.traceId ?? traceIdForSignal(run.signal),
       signalId: event.signalId ?? run.signal.id,
       workflow: event.workflow,
@@ -4151,6 +4551,28 @@ async function ensureD1Schema(db: TrellisD1Database) {
       created_at TEXT NOT NULL
     )
   `);
+  await runD1(db, `
+    CREATE INDEX IF NOT EXISTS idx_trellis_trace_events_trace_created
+      ON trellis_trace_events (trace_id, created_at)
+  `);
+  await runD1(db, `
+    CREATE INDEX IF NOT EXISTS idx_trellis_trace_events_signal_created
+      ON trellis_trace_events (signal_id, created_at)
+  `);
+  await runD1(db, `
+    CREATE INDEX IF NOT EXISTS idx_trellis_trace_events_type_created
+      ON trellis_trace_events (type, created_at)
+  `);
+  await runD1(db, `
+    CREATE TABLE IF NOT EXISTS trellis_slack_threads (
+      trace_id TEXT PRIMARY KEY,
+      signal_id TEXT,
+      trellis_thread_id TEXT,
+      slack_channel_id TEXT NOT NULL,
+      slack_thread_ts TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
 }
 
 async function runD1(db: TrellisD1Database, sql: string, bindings: unknown[] = []) {
@@ -4179,7 +4601,7 @@ async function insertTraceEvent(
     payload?: Record<string, unknown>;
   },
 ) {
-  const createdAt = new Date().toISOString();
+  const createdAt = nextTraceCreatedAt();
   const record: TrellisTraceEventRecord = {
     id: event.id,
     traceId: event.traceId,
@@ -4188,7 +4610,7 @@ async function insertTraceEvent(
     span: event.span,
     type: event.type,
     message: event.message,
-    payload: event.payload ?? {},
+    payload: redactTracePayload(event.payload ?? {}),
     createdAt,
   };
 
@@ -4209,6 +4631,15 @@ async function insertTraceEvent(
   ]);
 
   await exportTraceEvent(env, record);
+}
+
+let lastTraceCreatedAtMs = 0;
+
+function nextTraceCreatedAt() {
+  const now = Date.now();
+  const next = Math.max(now, lastTraceCreatedAtMs + 1);
+  lastTraceCreatedAtMs = next;
+  return new Date(next).toISOString();
 }
 
 async function exportTraceEvent(
@@ -7127,6 +7558,700 @@ function parseRecordJson(value: unknown) {
   }
 }
 
+async function handleTraceEventsRequest(url: URL, env: Record<string, unknown> | undefined) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return jsonResponse({
+      ok: false,
+      error: "trace_store_unavailable",
+      detail: "TRELLIS_DB is required before trace events can be read.",
+    }, 501);
+  }
+  const traceId = readString(url.searchParams.get("traceId")) ?? readString(url.searchParams.get("trace_id"));
+  if (!traceId) {
+    return jsonResponse({
+      ok: false,
+      error: "trace_id_required",
+      detail: "Pass traceId=<traceId>.",
+    }, 400);
+  }
+  await ensureD1Schema(db);
+  const limit = clampTraceLimit(readNumber(url.searchParams.get("limit")) ?? 100);
+  const after = readString(url.searchParams.get("after"));
+  const events = await readTraceEvents(db, traceId, { limit, after });
+  return jsonResponse({
+    ok: true,
+    traceId,
+    events,
+  });
+}
+
+async function handleTraceEventStream(request: Request, url: URL, env: Record<string, unknown> | undefined) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return jsonResponse({
+      ok: false,
+      error: "trace_store_unavailable",
+      detail: "TRELLIS_DB is required before trace events can be streamed.",
+    }, 501);
+  }
+  const traceId = readString(url.searchParams.get("traceId")) ?? readString(url.searchParams.get("trace_id"));
+  if (!traceId) {
+    return jsonResponse({
+      ok: false,
+      error: "trace_id_required",
+      detail: "Pass traceId=<traceId>.",
+    }, 400);
+  }
+
+  await ensureD1Schema(db);
+  const after = readString(url.searchParams.get("after")) ?? readString(request.headers.get("last-event-id"));
+  const encoder = new TextEncoder();
+  let closed = false;
+  let lastEventId = after;
+  const startedAt = Date.now();
+  let lastHeartbeatAt = startedAt;
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const write = (chunk: string) => {
+        if (!closed) {
+          controller.enqueue(encoder.encode(chunk));
+        }
+      };
+      const writeEvent = (event: TrellisTraceEventRecord) => {
+        lastEventId = event.id;
+        write(`event: ${event.type}\nid: ${event.id}\ndata: ${JSON.stringify(event)}\n\n`);
+        if (isTerminalTraceEvent(event)) {
+          closed = true;
+        }
+      };
+
+      while (!closed && Date.now() - startedAt < TRACE_STREAM_MAX_MS) {
+        const events = await readTraceEvents(db, traceId, { limit: TRACE_STREAM_BATCH_LIMIT, after: lastEventId });
+        for (const event of events) {
+          writeEvent(event);
+          if (closed) {
+            break;
+          }
+        }
+        if (closed) {
+          break;
+        }
+        const now = Date.now();
+        if (now - lastHeartbeatAt >= TRACE_STREAM_HEARTBEAT_MS) {
+          write(": heartbeat\n\n");
+          lastHeartbeatAt = now;
+        }
+        await sleep(TRACE_STREAM_POLL_MS);
+      }
+      closed = true;
+      controller.close();
+    },
+    cancel() {
+      closed = true;
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+    },
+  });
+}
+
+const TRACE_STREAM_POLL_MS = 1_000;
+const TRACE_STREAM_HEARTBEAT_MS = 15_000;
+const TRACE_STREAM_MAX_MS = 300_000;
+const TRACE_STREAM_BATCH_LIMIT = 500;
+
+function clampTraceLimit(value: number) {
+  return Math.max(1, Math.min(500, Math.floor(value)));
+}
+
+function isTerminalTraceEvent(event: TrellisTraceEventRecord) {
+  return event.type === "run.completed" || event.type === "run.failed";
+}
+
+async function readTraceEvents(
+  db: TrellisD1Database,
+  traceId: string,
+  options: { limit: number; after?: string },
+) {
+  const afterCursor = options.after
+    ? await db.prepare(`
+        SELECT created_at AS createdAt
+        FROM trellis_trace_events
+        WHERE trace_id = ? AND id = ?
+      `).bind(traceId, options.after).first<{ createdAt?: string }>()
+    : null;
+  const afterCreatedAt = readString(afterCursor?.createdAt);
+  const query = afterCreatedAt
+    ? `
+      SELECT
+        id,
+        trace_id AS traceId,
+        signal_id AS signalId,
+        workflow,
+        span,
+        type,
+        message,
+        payload_json AS payloadJson,
+        created_at AS createdAt
+      FROM trellis_trace_events
+      WHERE trace_id = ?
+        AND (created_at > ? OR (created_at = ? AND id > ?))
+      ORDER BY created_at ASC, id ASC
+      LIMIT ?
+    `
+    : `
+      SELECT
+        id,
+        trace_id AS traceId,
+        signal_id AS signalId,
+        workflow,
+        span,
+        type,
+        message,
+        payload_json AS payloadJson,
+        created_at AS createdAt
+      FROM trellis_trace_events
+      WHERE trace_id = ?
+      ORDER BY created_at ASC, id ASC
+      LIMIT ?
+    `;
+  const bindings = afterCreatedAt
+    ? [traceId, afterCreatedAt, afterCreatedAt, options.after, options.limit]
+    : [traceId, options.limit];
+  const rows = await readD1Rows<{
+    id: string;
+    traceId: string;
+    signalId?: string | null;
+    workflow?: string | null;
+    span: string;
+    type: string;
+    message: string;
+    payloadJson?: string;
+    createdAt?: string;
+  }>(db, query, bindings);
+  return rows
+    .filter((row) => row.traceId === traceId)
+    .sort((left, right) => {
+      const byDate = String(left.createdAt ?? "").localeCompare(String(right.createdAt ?? ""));
+      return byDate || String(left.id).localeCompare(String(right.id));
+    })
+    .map((row): TrellisTraceEventRecord => ({
+      id: String(row.id),
+      traceId: String(row.traceId),
+      signalId: readString(row.signalId) ?? null,
+      workflow: readString(row.workflow) ?? null,
+      span: String(row.span),
+      type: String(row.type),
+      message: String(row.message),
+      payload: parseRecordJson(row.payloadJson),
+      createdAt: readString(row.createdAt) ?? "",
+    }));
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function handleSlackWebhook(
+  request: Request,
+  env: Record<string, unknown> | undefined,
+  config: TrellisAgentConfig,
+) {
+  const botResult = await getTrellisSlackBot(env, config);
+  if (!botResult.ok) {
+    const eventSink = createTrellisEventSink(env);
+    await emitTrellisTrace(eventSink, {
+      id: `trace_event_slack_webhook_unavailable_${stableHashPart(String(Date.now()))}`,
+      traceId: "trace_slack_webhook",
+      workflow: "slack",
+      span: "slack",
+      type: "slack.webhook.unavailable",
+      message: "Slack webhook received but ChatSDK Slack is not available.",
+      payload: {
+        error: botResult.error,
+      },
+    });
+    return jsonResponse({
+      ok: false,
+      error: botResult.error,
+      detail: botResult.detail,
+    }, botResult.status);
+  }
+  return botResult.bot.webhooks.slack(request, {
+    waitUntil(promise: Promise<unknown>) {
+      promise.catch(() => undefined);
+    },
+  });
+}
+
+async function getTrellisSlackBot(env: Record<string, unknown> | undefined, config: TrellisAgentConfig) {
+  const factory = env?.TRELLIS_SLACK_BOT_FACTORY;
+  if (typeof factory === "function") {
+    const bot = await Promise.resolve((factory as (input: Record<string, unknown>) => unknown)({
+      env,
+      config,
+      handlers: {
+        handleSlashCommand: (event: unknown) => handleTrellisSlashCommand(event, env),
+        handleAction: (event: unknown) => handleTrellisSlackAction(event, env, config),
+      },
+    }));
+    return isSlackBotLike(bot)
+      ? { ok: true as const, bot }
+      : {
+          ok: false as const,
+          status: 500,
+          error: "invalid_slack_bot_factory",
+          detail: "TRELLIS_SLACK_BOT_FACTORY did not return a ChatSDK-compatible bot.",
+        };
+  }
+
+  const botToken = readString(env?.SLACK_BOT_TOKEN);
+  const signingSecret = readString(env?.SLACK_SIGNING_SECRET);
+  if (!botToken || !signingSecret) {
+    return {
+      ok: false as const,
+      status: 501,
+      error: "slack_not_configured",
+      detail: "SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET are required for /webhooks/slack.",
+    };
+  }
+
+  try {
+    const dynamicImport = new Function("specifier", "return import(specifier)") as (specifier: string) => Promise<Record<string, unknown>>;
+    const chatModule = await dynamicImport("chat");
+    const slackModule = await dynamicImport("@chat-adapter/slack");
+    const Chat = chatModule.Chat as new (config: Record<string, unknown>) => Record<string, unknown>;
+    const createSlackAdapter = slackModule.createSlackAdapter as (config?: Record<string, unknown>) => unknown;
+    const bot = new Chat({
+      userName: readString(env?.TRELLIS_SLACK_BOT_NAME) ?? "trellis",
+      adapters: {
+        slack: createSlackAdapter({
+          botToken,
+          signingSecret,
+        }),
+      },
+      streamingUpdateIntervalMs: 1_000,
+      fallbackStreamingPlaceholderText: "Watching Trellis...",
+      logger: "warn",
+    });
+    registerTrellisSlackHandlers(bot, env, config);
+    return isSlackBotLike(bot)
+      ? { ok: true as const, bot }
+      : {
+          ok: false as const,
+          status: 500,
+          error: "invalid_chat_sdk_bot",
+          detail: "ChatSDK did not expose a Slack webhook handler.",
+        };
+  } catch (error) {
+    return {
+      ok: false as const,
+      status: 501,
+      error: "chat_sdk_unavailable",
+      detail: sanitizeRuntimeError(error),
+    };
+  }
+}
+
+function registerTrellisSlackHandlers(
+  bot: Record<string, unknown>,
+  env: Record<string, unknown> | undefined,
+  config: TrellisAgentConfig,
+) {
+  if (typeof bot.onSlashCommand === "function") {
+    (bot.onSlashCommand as (command: string, handler: (event: unknown) => Promise<void>) => void)("/trellis", async (event) => {
+      await handleTrellisSlashCommand(event, env);
+    });
+  }
+  if (typeof bot.onAction === "function") {
+    (bot.onAction as (actions: string[], handler: (event: unknown) => Promise<void>) => void)(["approve", "reject"], async (event) => {
+      await handleTrellisSlackAction(event, env, config);
+    });
+  }
+}
+
+function isSlackBotLike(value: unknown): value is { webhooks: { slack(request: Request, context?: unknown): Promise<Response> | Response } } {
+  return isRecord(value)
+    && isRecord(value.webhooks)
+    && typeof value.webhooks.slack === "function";
+}
+
+async function handleTrellisSlashCommand(event: unknown, env: Record<string, unknown> | undefined) {
+  const record = isRecord(event) ? event : {};
+  const channel = isRecord(record.channel) ? record.channel : {};
+  const text = readString(record.text) ?? "";
+  const parts = text.trim().split(/\s+/).filter(Boolean);
+  const command = parts[0]?.toLowerCase() ?? "help";
+  const post = async (message: unknown) => {
+    if (typeof channel.post === "function") {
+      await Promise.resolve((channel.post as (message: unknown) => unknown)(message));
+    }
+  };
+
+  if (command === "status") {
+    const lookup = parts[1];
+    await post(await renderSlackStatus(env, lookup));
+    return;
+  }
+  if (command === "watch") {
+    const traceId = parts[1];
+    if (!traceId) {
+      await post("Usage: `/trellis watch <traceId>`");
+      return;
+    }
+    await post(slackTraceWatchStream(env, traceId));
+    return;
+  }
+  if ((command === "pause" || command === "resume") && parts[1] === "thread" && parts[2]) {
+    const status = command === "pause" ? "paused" : "active";
+    const result = await recordOperatorControl(env, {
+      scope: "thread",
+      targetId: parts[2],
+      status,
+      actor: readSlackUserName(record.user),
+      reason: "Slack /trellis command",
+      traceId: `trace_slack_${normalizeIdPart(parts[2])}`,
+    });
+    await post(`${command === "pause" ? "Paused" : "Resumed"} Trellis thread ${parts[2]}. ${result.persistence.enabled ? "" : "State persistence is not configured."}`.trim());
+    return;
+  }
+
+  await post("Usage: `/trellis status <traceId|signalId|threadId>`, `/trellis watch <traceId>`, `/trellis pause thread <threadId>`, `/trellis resume thread <threadId>`");
+}
+
+async function handleTrellisSlackAction(
+  event: unknown,
+  env: Record<string, unknown> | undefined,
+  config: TrellisAgentConfig,
+) {
+  const record = isRecord(event) ? event : {};
+  const actionId = readString(record.actionId);
+  if (actionId !== "approve" && actionId !== "reject") {
+    return;
+  }
+  const input = await resolveSlackApprovalInput(env, record);
+  const status: TrellisApprovalDecisionStatus = actionId === "approve" ? "approved" : "rejected";
+  const decision = await recordApprovalDecision(env, {
+    approvalId: input.approvalId,
+    traceId: input.traceId,
+    signalId: input.signalId,
+    status,
+    action: input.action,
+    draftId: input.draftId,
+    actor: readSlackUserName(record.user),
+    reason: "Slack action",
+  }, config);
+  const thread = isRecord(record.thread) ? record.thread : null;
+  if (thread && typeof thread.post === "function") {
+    await Promise.resolve((thread.post as (message: unknown) => unknown)(`Approval ${input.approvalId} ${status}.`));
+  }
+  return decision;
+}
+
+async function resolveSlackApprovalInput(env: Record<string, unknown> | undefined, event: Record<string, unknown>) {
+  const parsed = parseSlackActionValue(readString(event.value));
+  const approvalId = readString(parsed.approvalId) ?? readString(event.approvalId);
+  if (!approvalId) {
+    throw new Error("Slack approval action is missing approvalId.");
+  }
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  const stored = db?.prepare ? await readApprovalRecord(db, approvalId) : null;
+  return {
+    approvalId,
+    traceId: readString(parsed.traceId) ?? readString(stored?.traceId) ?? traceIdForSignalId(readString(parsed.signalId) ?? readString(stored?.signalId) ?? `approval:${approvalId}`),
+    signalId: readString(parsed.signalId) ?? readString(stored?.signalId) ?? `approval:${approvalId}`,
+    action: readString(parsed.action) ?? readString(stored?.action) ?? inferApprovalAction(approvalId),
+    draftId: readString(parsed.draftId) ?? readString(stored?.draftId) ?? inferApprovalDraftId(approvalId),
+  };
+}
+
+function parseSlackActionValue(value: string | undefined) {
+  if (!value) {
+    return {};
+  }
+  const parsed = parseJsonText(value);
+  return isRecord(parsed) ? parsed : { approvalId: value };
+}
+
+function readSlackUserName(value: unknown) {
+  const user = isRecord(value) ? value : {};
+  return readString(user.fullName) ?? readString(user.userName) ?? readString(user.name) ?? readString(user.id) ?? "slack";
+}
+
+async function readApprovalRecord(db: TrellisD1Database, approvalId: string) {
+  await ensureD1Schema(db);
+  return await db.prepare(`
+    SELECT
+      id,
+      draft_id AS draftId,
+      signal_id AS signalId,
+      action,
+      status,
+      updated_at AS updatedAt
+    FROM trellis_approvals
+    WHERE id = ?
+  `).bind(approvalId).first<Record<string, unknown>>();
+}
+
+async function renderSlackStatus(env: Record<string, unknown> | undefined, lookup: string | undefined) {
+  if (!lookup) {
+    return "Usage: `/trellis status <traceId|signalId|threadId>`";
+  }
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return "Trellis state is not configured yet.";
+  }
+  await ensureD1Schema(db);
+  const traceId = await resolveTraceIdLookup(db, lookup);
+  if (!traceId) {
+    return `No Trellis trace found for ${lookup}.`;
+  }
+  const events = await readTraceEvents(db, traceId, { limit: 25 });
+  const latest = events[events.length - 1];
+  return [
+    `Trellis trace ${traceId}`,
+    `Latest: ${latest?.type ?? "none"}`,
+    latest?.message ? `Message: ${latest.message}` : null,
+    `Events: ${events.length}`,
+  ].filter(Boolean).join("\n");
+}
+
+async function resolveTraceIdLookup(db: TrellisD1Database, lookup: string) {
+  if (lookup.startsWith("trace_")) {
+    return lookup;
+  }
+  const signal = await db.prepare(`
+    SELECT
+      id,
+      payload_json AS payloadJson
+    FROM trellis_signals
+    WHERE id = ? OR thread_id = ?
+  `).bind(lookup, lookup).first<{ id: string; payloadJson?: string }>();
+  const payload = parseRecordJson(signal?.payloadJson);
+  return readString(payload.traceId) ?? (signal?.id ? traceIdForSignalId(signal.id) : undefined);
+}
+
+async function* slackTraceWatchStream(env: Record<string, unknown> | undefined, traceId: string) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    yield "Trellis state is not configured yet.";
+    return;
+  }
+  let after: string | undefined;
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 300_000) {
+    const events = await readTraceEvents(db, traceId, { limit: TRACE_STREAM_BATCH_LIMIT, after });
+    for (const event of events) {
+      after = event.id;
+      yield `${event.type}: ${event.message}\n`;
+      if (isTerminalTraceEvent(event)) {
+        return;
+      }
+    }
+    await sleep(TRACE_STREAM_POLL_MS);
+  }
+}
+
+async function notifySlackForTraceEvent(
+  env: Record<string, unknown> | undefined,
+  event: TrellisTraceEventRecord,
+) {
+  if (!shouldNotifySlackEvent(event) || !readString(env?.SLACK_BOT_TOKEN) || !readString(env?.SLACK_DEFAULT_CHANNEL)) {
+    return;
+  }
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return;
+  }
+  await ensureD1Schema(db);
+  const thread = event.type === "signal.accepted"
+    ? await ensureSlackThread(env, db, event)
+    : await readSlackThread(db, event.traceId);
+  if (!thread) {
+    return;
+  }
+  if (event.type === "signal.accepted") {
+    return;
+  }
+  await postSlackMessage(env, {
+    channel: thread.slackChannelId,
+    thread_ts: thread.slackThreadTs,
+    text: slackTextForTraceEvent(event),
+    blocks: slackBlocksForTraceEvent(event),
+  });
+}
+
+function shouldNotifySlackEvent(event: TrellisTraceEventRecord) {
+  return [
+    "signal.accepted",
+    "skill.completed",
+    "skill.failed",
+    "skill.fallback",
+    "workflow.started",
+    "draft.created",
+    "approval.waiting",
+    "approval.approved",
+    "approval.rejected",
+    "provider_action.queued",
+    "provider_action.completed",
+    "provider_action.failed",
+    "run.completed",
+    "run.failed",
+  ].includes(event.type);
+}
+
+async function ensureSlackThread(
+  env: Record<string, unknown> | undefined,
+  db: TrellisD1Database,
+  event: TrellisTraceEventRecord,
+) {
+  const existing = await readSlackThread(db, event.traceId);
+  if (existing) {
+    return existing;
+  }
+  const channel = readString(env?.SLACK_DEFAULT_CHANNEL);
+  if (!channel) {
+    return null;
+  }
+  const posted = await postSlackMessage(env, {
+    channel,
+    text: slackTextForTraceEvent(event),
+  });
+  const threadTs = readString(posted.ts);
+  if (!threadTs) {
+    throw new Error("Slack did not return message timestamp.");
+  }
+  const now = new Date().toISOString();
+  await runD1(db, `
+    INSERT OR REPLACE INTO trellis_slack_threads
+      (trace_id, signal_id, trellis_thread_id, slack_channel_id, slack_thread_ts, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `, [
+    event.traceId,
+    event.signalId,
+    readString(event.payload.threadId),
+    channel,
+    threadTs,
+    now,
+  ]);
+  return {
+    traceId: event.traceId,
+    signalId: event.signalId,
+    trellisThreadId: readString(event.payload.threadId) ?? null,
+    slackChannelId: channel,
+    slackThreadTs: threadTs,
+    updatedAt: now,
+  };
+}
+
+async function readSlackThread(db: TrellisD1Database, traceId: string) {
+  const row = await db.prepare(`
+    SELECT
+      trace_id AS traceId,
+      signal_id AS signalId,
+      trellis_thread_id AS trellisThreadId,
+      slack_channel_id AS slackChannelId,
+      slack_thread_ts AS slackThreadTs,
+      updated_at AS updatedAt
+    FROM trellis_slack_threads
+    WHERE trace_id = ?
+  `).bind(traceId).first<{
+    traceId: string;
+    signalId?: string | null;
+    trellisThreadId?: string | null;
+    slackChannelId: string;
+    slackThreadTs: string;
+    updatedAt?: string | null;
+  }>();
+  return row ?? null;
+}
+
+async function postSlackMessage(env: Record<string, unknown> | undefined, body: Record<string, unknown>) {
+  const token = readString(env?.SLACK_BOT_TOKEN);
+  if (!token) {
+    throw new Error("SLACK_BOT_TOKEN is required.");
+  }
+  const response = await runtimeFetch(env, slackApiMethodUrl(env, "chat.postMessage"), {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify(body),
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok || !isRecord(json) || json.ok !== true) {
+    throw new Error(`Slack post failed with ${response.status}: ${JSON.stringify(json)}`);
+  }
+  return json;
+}
+
+function slackApiMethodUrl(env: Record<string, unknown> | undefined, method: string) {
+  const configured = readString(env?.SLACK_API_URL);
+  if (!configured) {
+    return `https://slack.com/api/${method}`;
+  }
+  return configured.endsWith(`/${method}`)
+    ? configured
+    : `${configured.replace(/\/+$/, "")}/${method}`;
+}
+
+function slackTextForTraceEvent(event: TrellisTraceEventRecord) {
+  return `[${event.type}] ${event.message}`;
+}
+
+function slackBlocksForTraceEvent(event: TrellisTraceEventRecord) {
+  if (event.type !== "approval.waiting") {
+    return undefined;
+  }
+  const approvalId = readString(event.payload.approvalId);
+  if (!approvalId) {
+    return undefined;
+  }
+  const value = JSON.stringify({
+    approvalId,
+    traceId: event.traceId,
+    signalId: event.signalId,
+    action: readString(event.payload.action),
+    draftId: readString(event.payload.draftId),
+  });
+  return [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*Approval waiting*\n${event.message}`,
+      },
+    },
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Approve" },
+          style: "primary",
+          action_id: "approve",
+          value,
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Reject" },
+          style: "danger",
+          action_id: "reject",
+          value,
+        },
+      ],
+    },
+  ];
+}
+
 async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
   const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
   const packs = await readPackContext(env);
@@ -7138,6 +8263,8 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
       packs,
       controls: await readOperatorControls(env),
       traceExport: summarizeTraceExport(env),
+      events: summarizeEventStreaming(env),
+      slack: summarizeSlackOperator(env),
     };
   }
 
@@ -7161,6 +8288,8 @@ async function readRuntimeSnapshot(env: Record<string, unknown> | undefined) {
     packs,
     controls: await readOperatorControls(env),
     traceExport: summarizeTraceExport(env),
+    events: summarizeEventStreaming(env),
+    slack: summarizeSlackOperator(env),
   };
 }
 

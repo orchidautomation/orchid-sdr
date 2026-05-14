@@ -233,10 +233,11 @@ export function slackHandoffProvider(): AiSdrProviderDefinition {
     displayName: "Slack handoff",
     packageName: "@trellis/slack",
     env: [
-      { name: "SLACK_BOT_TOKEN", description: "Slack bot token for channel handoff." },
-      { name: "SLACK_DEFAULT_CHANNEL", description: "Default Slack channel for handoff." },
+      { name: "SLACK_BOT_TOKEN", description: "Slack bot token for handoff and operator bot posting." },
+      { name: "SLACK_SIGNING_SECRET", description: "Slack signing secret for /webhooks/slack ChatSDK verification." },
+      { name: "SLACK_DEFAULT_CHANNEL", description: "Default Slack channel for handoff and Trellis operator threads." },
       { name: "SLACK_WEBHOOK_URL", description: "Optional webhook URL for handoff." },
     ],
-    capabilities: ["handoff.slack"],
+    capabilities: ["handoff.slack", "operator.slack"],
   });
 }

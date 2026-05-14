@@ -5,5 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@chat-adapter/slack": "^4.28.1",
+    "chat": "^4.28.1"
   }
 }
