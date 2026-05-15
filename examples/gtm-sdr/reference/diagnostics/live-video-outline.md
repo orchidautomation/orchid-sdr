@@ -28,7 +28,7 @@ This demo is a BDR agent. A form-fill signal comes in, Trellis qualifies it, res
 
 Show these in order:
 
-1. `inputs/demo-form-payload.json`
+1. `reference/inputs/demo-form-payload.json`
    - the incoming signal
    - explain that any webhook, form, workspace event, or API call can become a Trellis signal
 
@@ -37,11 +37,11 @@ Show these in order:
    - show providers, model, state, MCP surfaces, knowledge, skills, and safety
    - point to the actual flow: qualification -> research -> copy -> workflow
 
-3. `src/skills/icp-qualification/SKILL.md`
+3. `skills/icp-qualification/SKILL.md`
    - show that skills are reusable method files
    - emphasize that product-specific details are not hard-coded here
 
-4. `src/knowledge/company.md`, `src/knowledge/icp.md`, `src/knowledge/messaging.md`
+4. `knowledge/company.md`, `knowledge/icp.md`, `knowledge/messaging.md`
    - show where company-specific positioning and ICP live
    - frame this as the part a GTM team can edit without rewriting runtime code
 
@@ -49,7 +49,7 @@ Show these in order:
    - show how business state is defined
    - explain that Trellis owns D1 runtime schema, while the app defines queryable business projections
 
-6. `outputs/pylon-live-run.md`
+6. `reference/outputs/pylon-live-run.md`
    - show the real D1-derived result: lead, state, draft, approvals, trace counts, and cost
 
 ## Claude Code Prompts

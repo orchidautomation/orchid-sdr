@@ -4,7 +4,7 @@
 
 Decide whether an inbound reply or GTM workflow result should create a human handoff.
 
-This skill should stay portable across Trellis agents. Persona definitions, product fit, routing destinations, and escalation policies should come from `src/knowledge/icp.md`, `src/knowledge/company.md`, and any account-specific policy files.
+This skill should stay portable across Trellis agents. Persona definitions, product fit, routing destinations, and escalation policies should come from `knowledge/icp.md`, `knowledge/company.md`, and any account-specific policy files.
 
 ## Method
 

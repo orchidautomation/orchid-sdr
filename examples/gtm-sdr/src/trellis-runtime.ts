@@ -85,32 +85,24 @@ async function preloadTrellisPacks(
   const bash = await Promise.resolve(sandbox());
   await bash.fs.mkdir("/workspace/.agents/skills", { recursive: true });
   await bash.fs.mkdir("/workspace/knowledge", { recursive: true });
-  await bash.fs.mkdir("/workspace/src/knowledge", { recursive: true });
-  await bash.fs.mkdir("/workspace/src/skills", { recursive: true });
   await bash.fs.writeFile("/workspace/AGENTS.md", renderAgentsMd(input));
 
   for (const file of readPackFiles(input.packs, "knowledge")) {
     const target = workspaceFile("knowledge", file.path);
     await ensureParentDir(bash, target);
     await bash.fs.writeFile(target, file.text);
-    const sourceTarget = workspaceFile("src/knowledge", file.path);
-    await ensureParentDir(bash, sourceTarget);
-    await bash.fs.writeFile(sourceTarget, file.text);
   }
 
   for (const file of readPackFiles(input.packs, "skills")) {
     const target = workspaceFile(".agents/skills", file.path);
     await ensureParentDir(bash, target);
     await bash.fs.writeFile(target, file.text);
-    const sourceTarget = workspaceFile("src/skills", file.path);
-    await ensureParentDir(bash, sourceTarget);
-    await bash.fs.writeFile(sourceTarget, file.text);
   }
 }
 
 function renderAgentsMd(input: TrellisRuntimeContextFactoryInput) {
   const knowledge = readPackFiles(input.packs, "knowledge")
-    .map((file) => `- src/knowledge/${safePackPath(file.path)}`)
+    .map((file) => `- knowledge/${safePackPath(file.path)}`)
     .join("\n");
   return `You are a Trellis GTM agent.
 

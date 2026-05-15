@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 const [, , inputPath, outputPath, runIdInput] = process.argv;
 
 if (!inputPath || !outputPath) {
-  throw new Error("Usage: node src/scripts/build-demo-payload.mjs <input> <output> [runId]");
+  throw new Error("Usage: node scripts/build-demo-payload.mjs <input> <output> [runId]");
 }
 
 const runId = normalizeRunId(runIdInput || new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14));

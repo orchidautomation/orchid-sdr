@@ -4,15 +4,15 @@
 
 Decide whether an opted-in form, event, product, community, or social signal is worth pursuing for the configured GTM motion.
 
-This skill is deliberately reusable. Company-specific positioning, ICP rules, product language, and examples must come from the mounted `src/knowledge/` files, not from hard-coded skill instructions.
+This skill is deliberately reusable. Company-specific positioning, ICP rules, product language, and examples must come from the mounted `knowledge/` files, not from hard-coded skill instructions.
 
 ## Inputs
 
 Read the mounted knowledge files first:
 
-- `src/knowledge/icp.md`
-- `src/knowledge/company.md`
-- `src/knowledge/messaging.md`
+- `knowledge/icp.md`
+- `knowledge/company.md`
+- `knowledge/messaging.md`
 
 Use the signal context as primary evidence. The best signal payloads include name, email, title, company, companyDomain, consent, formName, message, sourceUrl, and customerStatus.
 

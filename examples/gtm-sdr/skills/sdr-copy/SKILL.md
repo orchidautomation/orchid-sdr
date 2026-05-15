@@ -24,7 +24,7 @@ Rules:
 - 80 to 130 words.
 - 3 short paragraphs max.
 - Mention one concrete signal from the payload or public research.
-- Position the configured offer using the language and claims in `src/knowledge/company.md` and `src/knowledge/messaging.md`.
+- Position the configured offer using the language and claims in `knowledge/company.md` and `knowledge/messaging.md`.
 - Ask a simple, low-pressure question.
 - Do not claim the email has already been sent.
 - Do not mention internal implementation details, databases, Cloudflare, Trellis, Firecrawl, or the agent runtime.

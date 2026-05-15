@@ -4,7 +4,7 @@
 
 Produce a grounded account/person research brief for the configured GTM workflow.
 
-This skill should work for any Trellis GTM agent. Demo-specific company positioning and ICP details must come from `src/knowledge/`, not from this file.
+This skill should work for any Trellis GTM agent. Demo-specific company positioning and ICP details must come from `knowledge/`, not from this file.
 
 ## Inputs
 
@@ -12,9 +12,9 @@ Use:
 
 - the original signal payload
 - the qualification result
-- `src/knowledge/company.md`
-- `src/knowledge/icp.md`
-- `src/knowledge/messaging.md`
+- `knowledge/company.md`
+- `knowledge/icp.md`
+- `knowledge/messaging.md`
 - Firecrawl-backed Trellis research tools when the signal contains a company, domain, person, URL, post, or form message
 
 ## Method
