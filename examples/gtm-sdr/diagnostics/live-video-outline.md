@@ -30,7 +30,7 @@ Show these in order:
 
 1. `inputs/demo-form-payload.json`
    - the incoming signal
-   - explain that any webhook, form, Notion row, Slack event, Linear issue, or API call can become a Trellis signal
+   - explain that any webhook, form, workspace event, or API call can become a Trellis signal
 
 2. `src/agent.ts`
    - the agent blueprint
@@ -103,7 +103,7 @@ npm run trellis -- mcp claude-code --remote --write --json --url "$APP_URL/mcp/t
 - The sample payload is just one way to start a run.
 - D1 gives queryable state, traces, drafts, approvals, and costs.
 - MCP makes the same agent available in Claude Code, Cursor, Codex, and other clients.
-- Slack, Notion, and Linear are surfaces over the same runtime, not separate agent brains.
+- Operator surfaces sit over the same runtime; they are not separate agent brains.
 
 ## Close
 

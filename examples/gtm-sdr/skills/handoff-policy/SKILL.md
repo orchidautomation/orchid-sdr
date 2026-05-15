@@ -38,4 +38,4 @@ Set urgency:
 
 ## Safety
 
-Do not notify Slack or send webhooks from this skill. Trellis will turn the decision into an approval-gated provider action.
+Do not notify operator surfaces or send webhooks from this skill. Trellis will turn the decision into an approval-gated provider action.

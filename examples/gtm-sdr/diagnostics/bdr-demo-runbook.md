@@ -15,7 +15,7 @@ Pylon form fill
   -> SDR draft
   -> D1 trace and state
   -> approval gates for email and CRM
-  -> MCP/Slack/Notion/Linear-ready operator surfaces
+  -> MCP-ready operator surfaces
 ```
 
 ## What Makes This Demo Special
@@ -29,7 +29,7 @@ Pylon form fill
 | Observability | `trellis_trace_events` plus `/events`, `/events/stream`, and SDR run views. | Every step can be inspected and replayed. |
 | Cost visibility | `estimate_cost` on the SDR MCP and `GET /traces/:traceId/cost`. | A team can see what the model run cost. |
 | Human gating | Email and CRM actions become approvals and provider actions. | The agent drafts and queues, but does not send or mutate external systems without a human. |
-| Portability | MCP works in Claude Code; Slack/Notion/Linear are operator surfaces. | The same agent can be used where the team already works. |
+| Portability | MCP works in Claude Code and other compatible clients. | The same agent can be operated from role-specific surfaces without changing the runtime. |
 
 ## Demo Environment Contract
 
@@ -135,7 +135,7 @@ Add `Authorization: Bearer $TRELLIS_API_KEY` if the deployed route is protected.
 4. Ask for the trace. Walk through `signal.accepted -> skill.started/completed -> workflow.started -> draft.created -> approval.waiting -> run.completed`.
 5. Ask for pending approvals. Explain that outbound and CRM writes are gated.
 6. Ask for cost. Show that model usage comes from D1 trace events, not a separate vendor dashboard.
-7. Explain surfaces: `trellis-sdr` is the SDR role surface, `trellis-operator` is the platform surface, and Slack, Notion, and Linear can operate the same runtime without becoming the runtime.
+7. Explain surfaces: `trellis-sdr` is the SDR role surface and `trellis-operator` is the platform surface. The surface is not the runtime; the Trellis agent is.
 
 ## Demo Close
 
@@ -148,4 +148,4 @@ The point is not that Trellis can draft an email. The point is that a GTM team c
 - queryable D1 state
 - approval gates before side effects
 - traces, costs, and replayable operator controls
-- one agent usable from MCP, Slack, Notion, Linear, dashboard, or API
+- one agent usable from MCP, dashboard, or API surfaces

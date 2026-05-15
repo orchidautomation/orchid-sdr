@@ -4,10 +4,9 @@ This repo is the demoable Trellis BDR agent environment.
 
 It shows a Common Room-style BDR agent that turns a Pylon form-fill signal into a qualified prospect, research brief, approval-gated email draft, and CRM update proposal. The point is not "the model can write email." The point is that Trellis gives GTM teams a private, auditable agent runtime with skills, knowledge, tools, traces, approvals, state, provider actions, and portable operator surfaces.
 
-See `docs/bdr-demo-runbook.md` for the complete demo runbook.
+See `diagnostics/bdr-demo-runbook.md` for the complete demo runbook.
 See `diagnostics/live-video-outline.md` for the short video walkthrough and talk track.
-See `docs/trellis-cloud-demo.md` for the original form-fill SDR walkthrough.
-See `docs/notion-command-center-demo.md` for the Notion-style operator demo with Attio readiness.
+See `diagnostics/cloud-walkthrough.md` for the original form-fill SDR walkthrough.
 See `outputs/pylon-live-run.md` for the current D1-derived demo output.
 
 ## Layout
@@ -34,7 +33,7 @@ Pylon form fill
   -> SDR draft
   -> D1 trace and state
   -> approval gates for email and CRM
-  -> MCP/Slack/Notion/Linear-ready operator surfaces
+  -> MCP-ready operator surfaces
 ```
 
 Canonical live worker:
