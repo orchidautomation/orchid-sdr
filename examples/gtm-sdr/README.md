@@ -5,10 +5,21 @@ This repo is the demoable Trellis BDR agent environment.
 It shows a Common Room-style BDR agent that turns a Pylon form-fill signal into a qualified prospect, research brief, approval-gated email draft, and CRM update proposal. The point is not "the model can write email." The point is that Trellis gives GTM teams a private, auditable agent runtime with skills, knowledge, tools, traces, approvals, state, provider actions, and portable operator surfaces.
 
 See `docs/bdr-demo-runbook.md` for the complete demo runbook.
-See `docs/live-video-outline.md` for the short video walkthrough and talk track.
+See `diagnostics/live-video-outline.md` for the short video walkthrough and talk track.
 See `docs/trellis-cloud-demo.md` for the original form-fill SDR walkthrough.
 See `docs/notion-command-center-demo.md` for the Notion-style operator demo with Attio readiness.
 See `outputs/pylon-live-run.md` for the current D1-derived demo output.
+
+## Layout
+
+```text
+inputs/       synthetic signals you can send to the agent
+outputs/      D1-derived run artifacts and proof
+diagnostics/  run summaries, cost, trace counts, and video outline
+src/          the runnable Trellis Worker app
+knowledge/    company, ICP, and messaging context
+skills/       reusable GTM methods used by the agent
+```
 
 ## Current Demo Story
 
@@ -44,7 +55,7 @@ Current seeded trace:
 trace_demo_bdr_pylon_ready_20260515_1512
 ```
 
-See `docs/live-run-result.md` for the current deployed D1 counts, approvals, trace summary, draft, and cost.
+See `diagnostics/live-run-result.md` for the current deployed D1 counts, approvals, trace summary, draft, and cost.
 
 ## First Boot
 
@@ -92,7 +103,7 @@ Seed the curated BDR signal:
 npm run demo:seed-bdr
 ```
 
-The seed posts `docs/demo-form-payload.json` and should create:
+The seed posts `inputs/demo-form-payload.json` and should create:
 
 - one Pylon signal
 - one prospect state projection

@@ -32,7 +32,7 @@ This connects the Notion, Slack, Attio, and Trellis story in one concrete workfl
 Use:
 
 ```text
-docs/demo-notion-command-center-payload.json
+inputs/demo-notion-command-center-payload.json
 ```
 
 The payload represents a Notion database row:
@@ -68,7 +68,7 @@ Submit the signal:
 curl -sS \
   -X POST "https://trellis-cloud-sdr.brandon-ccf.workers.dev/webhooks/signals" \
   -H "content-type: application/json" \
-  --data @docs/demo-notion-command-center-payload.json
+  --data @inputs/demo-notion-command-center-payload.json
 ```
 
 Replay trace events:

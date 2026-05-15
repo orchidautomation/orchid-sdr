@@ -1,59 +1,31 @@
 import { trellis, schema } from "@trellis/gtm";
 import { attio, firecrawl } from "@trellis/providers";
 import attioMap from "./crm/attio.map";
+import { sdrMcpSurface } from "./mcp/sdr-surface";
 import stateMap from "./state/prospect.map";
 
 export default trellis.agent("common-room-bdr", {
+  // Providers are mounted once, then used by skills and workflows through Trellis.
   crm: attio({ map: attioMap }),
   research: firecrawl(),
+
+  // The model, knowledge pack, skill pack, state map, and safety gates define
+  // the agent runtime. The Worker plumbing stays outside this file.
   model: "cloudflare/openai/gpt-5.5",
   state: stateMap,
-  mcp: {
-    name: "trellis-sdr",
-    surface: "sdr",
-    operator: {
-      name: "trellis-operator",
-    },
-    tools: {
-      include: [
-        "describe_agent",
-        "list_leads",
-        "get_lead",
-        "pipeline_stats",
-        "estimate_cost",
-        "list_pending_approvals",
-        "approve_draft",
-        "reject_draft",
-        "edit_and_approve_draft",
-        "list_handoffs",
-        "list_replies",
-        "research_account",
-        "qualify_lead",
-        "draft_email",
-      ],
-      skillTools: [
-        {
-          name: "qualify_lead",
-          skill: "icp-qualification",
-          description: "Run just the BDR ICP qualification skill without starting the full workflow.",
-          schema: schema.qualification(),
-        },
-        {
-          name: "draft_email",
-          skill: "sdr-copy",
-          description: "Run just the BDR outbound copy skill without starting the full workflow.",
-          schema: schema.outboundDraft(),
-        },
-      ],
-    },
-  },
+  mcp: sdrMcpSurface,
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
   safety: trellis.safeOutbound(),
 }, async (app) => {
+  // Every webhook, API call, or operator event enters as a normalized signal.
+  // Context hydrates the signal with mounted knowledge, skills, thread history,
+  // and provider capabilities before any model step runs.
   const signal = await app.signal();
   const context = await app.context(signal);
 
+  // Replies resume the same thread. Trellis classifies the reply, decides
+  // whether a person should take over, then starts a reply workflow.
   if (signal.source === "reply.webhook") {
     const reply = await app.skill("reply-policy", {
       context,
@@ -68,20 +40,30 @@ export default trellis.agent("common-room-bdr", {
     return app.workflow("reply").start({ signal, reply, handoff });
   }
 
+  // New prospect flow: qualify the signal against the knowledge pack and
+  // return schema-shaped data that Trellis can persist and inspect.
   const qualification = await app.skill("icp-qualification", {
     context,
     schema: schema.qualification(),
   });
+
+  // Research uses the qualification result and mounted research provider to
+  // produce grounded account/person evidence for the copy step.
   const research = await app.skill("research-brief", {
     context,
     args: { qualification },
     schema: schema.researchBrief(),
   });
+
+  // Copy creates a draft only. Trellis stores it as blocked until approval
+  // because no-send and provider-action gates are active.
   const draft = await app.skill("sdr-copy", {
     context,
     args: { qualification, research },
     schema: schema.outboundDraft(),
   });
 
+  // The durable workflow persists state, trace events, draft approvals, and
+  // any queued provider actions while keeping the lead's thread resumable.
   return app.workflow("prospect").start({ signal, qualification, research, draft });
 });

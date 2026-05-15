@@ -28,7 +28,7 @@ This demo is a BDR agent. A form-fill signal comes in, Trellis qualifies it, res
 
 Show these in order:
 
-1. `docs/demo-form-payload.json`
+1. `inputs/demo-form-payload.json`
    - the incoming signal
    - explain that any webhook, form, Notion row, Slack event, Linear issue, or API call can become a Trellis signal
 

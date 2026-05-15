@@ -38,7 +38,7 @@ The clean demo environment should contain one curated BDR signal and no verifier
 Base demo payload:
 
 ```text
-file: docs/demo-form-payload.json
+file: inputs/demo-form-payload.json
 workspace: wrk_common_room_demo
 source: website.form
 company: Pylon
@@ -89,7 +89,7 @@ Set `TRELLIS_API_KEY` or `TRELLIS_MCP_TOKEN` locally if the deployed Worker is p
 npm run demo:seed-bdr
 ```
 
-The script posts `docs/demo-form-payload.json` to:
+The script posts `inputs/demo-form-payload.json` to:
 
 ```text
 https://trellis-cloud-sdr.brandon-ccf.workers.dev/webhooks/signals
