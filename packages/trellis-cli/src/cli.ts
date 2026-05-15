@@ -100,6 +100,16 @@ const CLOUDFLARE_CONNECTIONS = {
     requiredEnv: ["ATTIO_API_KEY"],
     optionalEnv: ["ATTIO_DEFAULT_LIST_ID"],
     capabilities: ["crm.syncProspect", "crm.stagePromotion"],
+    sourceMatcher: "attio",
+  },
+  email: {
+    id: "email",
+    kind: "email",
+    displayName: "Email",
+    requiredEnv: [],
+    optionalEnv: ["TRELLIS_EMAIL_FROM", "TRELLIS_EMAIL_BINDING"],
+    capabilities: ["mail.preview", "mail.send", "mail.reply", "reply.webhook"],
+    sourceMatcher: "email",
   },
   agentmail: {
     id: "agentmail",
@@ -108,6 +118,7 @@ const CLOUDFLARE_CONNECTIONS = {
     requiredEnv: ["AGENTMAIL_API_KEY"],
     optionalEnv: ["AGENTMAIL_WEBHOOK_SECRET"],
     capabilities: ["mail.preview", "mail.send", "mail.reply", "reply.webhook"],
+    sourceMatcher: "agentmail",
   },
   firecrawl: {
     id: "firecrawl",
@@ -116,6 +127,7 @@ const CLOUDFLARE_CONNECTIONS = {
     requiredEnv: ["FIRECRAWL_API_KEY"],
     optionalEnv: [],
     capabilities: ["research.search", "research.extract", "browser.run"],
+    sourceMatcher: "firecrawl",
   },
   apify: {
     id: "apify",
@@ -124,6 +136,7 @@ const CLOUDFLARE_CONNECTIONS = {
     requiredEnv: ["APIFY_TOKEN"],
     optionalEnv: ["APIFY_WEBHOOK_SECRET", "APIFY_BASE_URL", "APIFY_DATASET_LIMIT"],
     capabilities: ["signal.discovery", "webhooks.apify", "research.linkedinProfile"],
+    sourceMatcher: "apify",
   },
   prospeo: {
     id: "prospeo",
@@ -132,6 +145,7 @@ const CLOUDFLARE_CONNECTIONS = {
     requiredEnv: ["PROSPEO_API_KEY"],
     optionalEnv: ["PROSPEO_BASE_URL"],
     capabilities: ["email.enrich", "research.enrich"],
+    sourceMatcher: "prospeo",
   },
   langfuse: {
     id: "langfuse",
@@ -140,6 +154,7 @@ const CLOUDFLARE_CONNECTIONS = {
     requiredEnv: ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"],
     optionalEnv: ["LANGFUSE_BASE_URL"],
     capabilities: ["trace.export", "evals.export"],
+    sourceMatcher: "langfuse",
   },
   braintrust: {
     id: "braintrust",
@@ -148,12 +163,13 @@ const CLOUDFLARE_CONNECTIONS = {
     requiredEnv: ["BRAINTRUST_API_KEY", "BRAINTRUST_PROJECT_ID"],
     optionalEnv: ["BRAINTRUST_BASE_URL"],
     capabilities: ["trace.export", "evals.export"],
+    sourceMatcher: "braintrust",
   },
 } as const;
 
 type CloudflareConnectionId = keyof typeof CLOUDFLARE_CONNECTIONS;
-const REQUIRED_PROVIDER_IDS = ["attio", "agentmail", "firecrawl"] as const;
-const OPTIONAL_PROVIDER_IDS = ["apify", "prospeo", "langfuse", "braintrust"] as const;
+const REQUIRED_PROVIDER_IDS = ["attio", "email", "firecrawl"] as const;
+const OPTIONAL_PROVIDER_IDS = ["agentmail", "apify", "prospeo", "langfuse", "braintrust"] as const;
 type CloudflareSecretReadiness = {
   checked: boolean;
   ok: boolean;
@@ -317,7 +333,7 @@ Examples:
 
   npm run trellis -- init ../acme-sdr --name acme-sdr
   npm run trellis -- connect attio
-  npm run trellis -- connect agentmail
+  npm run trellis -- connect email
   npm run trellis -- connect firecrawl
   npm run trellis -- docs add ./product-docs
   npm run trellis -- doctor
@@ -329,7 +345,7 @@ Examples:
   npm run trellis -- verify cloudflare --live --url https://your-worker.workers.dev --api-key $TRELLIS_API_KEY
   npm run trellis -- verify cloudflare --live --url https://your-worker.workers.dev --attio-smoke --provider-smoke-token $TRELLIS_PROVIDER_SMOKE_TOKEN
 
-Simple labels stay short in the CLI: attio, agentmail, firecrawl, apify, prospeo, langfuse, braintrust.
+Simple labels stay short in the CLI: attio, email, agentmail, firecrawl, apify, prospeo, langfuse, braintrust.
 
 Init scaffolds the Trellis GTM path by default.
 Cloudflare is the default deploy target.
@@ -357,7 +373,7 @@ async function handleConnectCommand(moduleId: string | undefined) {
     console.log(`Connection guides:
 
   npm run trellis -- connect attio
-  npm run trellis -- connect agentmail
+  npm run trellis -- connect email
   npm run trellis -- connect firecrawl
   npm run trellis -- connect apify
   npm run trellis -- connect prospeo
@@ -380,7 +396,8 @@ Provider credentials can be connected after the first Cloudflare deploy.`);
 }
 
 function resolveCloudflareConnection(moduleId: string, provider: string | undefined) {
-  const candidate = (provider ?? moduleId).toLowerCase();
+  const rawCandidate = (provider ?? moduleId).toLowerCase();
+  const candidate = rawCandidate === "cloudflare-email" ? "email" : rawCandidate;
   return candidate in CLOUDFLARE_CONNECTIONS
     ? CLOUDFLARE_CONNECTIONS[candidate as CloudflareConnectionId]
     : null;
@@ -388,6 +405,7 @@ function resolveCloudflareConnection(moduleId: string, provider: string | undefi
 
 async function printCloudflareConnectionGuide(guide: (typeof CLOUDFLARE_CONNECTIONS)[CloudflareConnectionId]) {
   const manifest = await writeCloudflareConnectionManifest(guide);
+  const requiredEnvSummary = guide.requiredEnv.length > 0 ? guide.requiredEnv.join(", ") : "none";
   if (jsonOutput) {
     emitJson({
       ok: true,
@@ -400,7 +418,7 @@ async function printCloudflareConnectionGuide(guide: (typeof CLOUDFLARE_CONNECTI
         noSendsModeUntilApproved: true,
       },
       next: [
-        `set ${guide.requiredEnv.join(", ")}`,
+        guide.requiredEnv.length > 0 ? `set ${guide.requiredEnv.join(", ")}` : "configure Cloudflare email routing and sender identity",
         "run trellis smoke",
         "turn off no-send mode only after approvals are configured",
       ],
@@ -410,7 +428,7 @@ async function printCloudflareConnectionGuide(guide: (typeof CLOUDFLARE_CONNECTI
   console.log(`${guide.displayName} connection guide:
 
 Required env:
-${guide.requiredEnv.map((name) => `  - ${name}`).join("\n")}
+${guide.requiredEnv.length > 0 ? guide.requiredEnv.map((name) => `  - ${name}`).join("\n") : "  none"}
 
 Optional env:
 ${guide.optionalEnv.length > 0 ? guide.optionalEnv.map((name) => `  - ${name}`).join("\n") : "  none"}
@@ -420,13 +438,14 @@ Manifest:
   - status: ${manifest.status}
 
 Cloudflare secrets:
-${guide.requiredEnv.map((name) => `  - npx wrangler secret put ${name}`).join("\n")}
+${guide.requiredEnv.length > 0 ? guide.requiredEnv.map((name) => `  - npx wrangler secret put ${name}`).join("\n") : "  none required"}
 
 current behavior:
   - credentials are connected after the Cloudflare app boots
   - deployed agents read provider credentials from Cloudflare Worker secrets
   - smoke mode still runs without this provider
-  - outbound writes stay gated by Trellis safety until approval checks pass`);
+  - outbound writes stay gated by Trellis safety until approval checks pass
+  - required env: ${requiredEnvSummary}`);
 }
 
 async function printLangfuseConnectionGuide() {
@@ -525,6 +544,7 @@ async function handleDoctorCommand() {
       "PROSPECT_WORKFLOW",
       "AI",
       "BROWSER",
+      "EMAIL",
     ].map((binding) =>
       doctorCheck(`binding.${binding}`, wranglerSource.includes(binding), "warn", `${binding} binding ${wranglerSource.includes(binding) ? "declared" : "not declared"}`),
     ),
@@ -1167,7 +1187,7 @@ function readConfiguredProviderIds(cwd: string): CloudflareConnectionId[] {
   const agentPath = path.join(cwd, "src", "agent.ts");
   const source = existsSync(agentPath) ? readFileSync(agentPath, "utf8") : "";
   return (Object.keys(CLOUDFLARE_CONNECTIONS) as CloudflareConnectionId[])
-    .filter((id) => new RegExp(`\\b${id}\\s*\\(`).test(source));
+    .filter((id) => new RegExp(`\\b${CLOUDFLARE_CONNECTIONS[id].sourceMatcher}\\s*\\(`).test(source));
 }
 
 async function loadProviderReadiness(
@@ -1184,7 +1204,7 @@ async function loadProviderReadiness(
   const missingRemoteSecrets = remoteSecrets?.ok
     ? guide.requiredEnv.filter((name) => !remoteSecrets.names.includes(name))
     : guide.requiredEnv;
-  const remoteReady = Boolean(remoteSecrets?.ok) && missingRemoteSecrets.length === 0;
+  const remoteReady = guide.requiredEnv.length === 0 || (Boolean(remoteSecrets?.ok) && missingRemoteSecrets.length === 0);
   const ready = manifestExists && missingRequiredEnv.length === 0 && remoteReady;
   return {
     id,
@@ -1624,7 +1644,7 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
     next: live
       ? [
           "inspect failed checks before connecting live providers",
-          "run trellis connect attio / agentmail / firecrawl after first boot is green",
+          "run trellis connect attio / email / firecrawl after first boot is green",
         ]
       : [
           "trellis deploy",
@@ -1695,7 +1715,7 @@ async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
     next: [
       "trellis smoke",
       "trellis connect attio",
-      "trellis connect agentmail",
+      "trellis connect email",
       "trellis connect firecrawl",
       "trellis docs add ./product-docs",
     ],
@@ -1731,7 +1751,7 @@ First boot:
 Then:
   1. trellis smoke
   2. trellis connect attio
-  3. trellis connect agentmail
+  3. trellis connect email
   4. trellis connect firecrawl
   5. trellis docs add ./product-docs`);
       return;
@@ -2221,7 +2241,7 @@ async function scaffoldCloudflareProject(targetArg: string | undefined, flags: R
     "npm run smoke",
     "npm run verify",
     "npm run trellis -- connect attio",
-    "npm run trellis -- connect agentmail",
+    "npm run trellis -- connect email",
     "npm run trellis -- connect firecrawl",
   ];
 
@@ -2343,6 +2363,11 @@ function renderCloudflareWranglerConfig(workerName: string) {
   "browser": {
     "binding": "BROWSER"
   },
+  "send_email": [
+    {
+      "name": "EMAIL"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {
@@ -2410,8 +2435,8 @@ ATTIO_DEFAULT_LIST_ID=
 TRELLIS_PROVIDER_SMOKE_TOKEN=
 TRELLIS_ATTIO_SMOKE_DOMAIN=
 TRELLIS_ATTIO_SMOKE_EMAIL=
-AGENTMAIL_API_KEY=
-AGENTMAIL_WEBHOOK_SECRET=
+TRELLIS_EMAIL_FROM=
+TRELLIS_EMAIL_BINDING=EMAIL
 FIRECRAWL_API_KEY=
 APIFY_TOKEN=
 APIFY_WEBHOOK_SECRET=
@@ -2442,13 +2467,13 @@ BRAINTRUST_BASE_URL=
 
 function renderCloudflareAgentSource() {
   return `import { trellis, schema } from "@trellis/gtm";
-import { agentmail, attio, firecrawl } from "@trellis/providers";
+import { attio, email, firecrawl } from "@trellis/providers";
 import attioMap from "./crm/attio.map";
 import stateMap from "./state/prospect.map";
 
 export default trellis.agent("sdr", {
   crm: attio({ map: attioMap }),
-  email: agentmail(),
+  email: email(),
   research: firecrawl(),
   model: "anthropic/claude-sonnet-4.6",
   state: stateMap,
@@ -2591,6 +2616,9 @@ export class ProspectWorkflow extends WorkflowEntrypoint<Record<string, unknown>
 export default {
   fetch(request: Request, env: Record<string, unknown>) {
     return runtime.worker.fetch(request, withTrellisRuntime(env, request));
+  },
+  email(message: unknown, env: Record<string, unknown>, ctx: ExecutionContext) {
+    return runtime.worker.email?.(message as never, withTrellisRuntime(env), ctx);
   },
   queue(batch: MessageBatch<unknown>, env: Record<string, unknown>) {
     return runtime.worker.queue?.(batch as never, withTrellisRuntime(env));
@@ -3030,12 +3058,12 @@ npm run smoke
 npm run verify
 \`\`\`
 
-The first deploy is Cloudflare-first and does not require Attio, AgentMail, or Firecrawl credentials. Those are connected after the app boots:
+The first deploy is Cloudflare-first and does not require Attio, Email, or Firecrawl credentials. Those are connected after the app boots:
 
 \`\`\`bash
 npx wrangler secret put TRELLIS_API_KEY
 npm run trellis -- connect attio
-npm run trellis -- connect agentmail
+npm run trellis -- connect email
 npm run trellis -- connect firecrawl
 npm run trellis -- connect apify      # optional discovery source
 npm run trellis -- connect prospeo    # optional email enrichment

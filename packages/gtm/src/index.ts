@@ -31,6 +31,7 @@ export interface TrellisAttioMap {
   people?: TrellisFieldMap;
 }
 
+export type TrellisEmailProviderId = "agentmail" | "email" | "cloudflare-email";
 export type TrellisAgentMailSequenceOperation = "email.send" | "email.reply" | "mail.reply";
 export type TrellisAgentMailSequenceApproval = "required" | "optional" | "none";
 export type TrellisAgentMailSequenceCondition = "always" | "no_reply" | string;
@@ -54,7 +55,7 @@ export interface TrellisAgentMailSequenceStep {
 }
 
 export interface TrellisAgentMailSequenceMap {
-  provider?: "agentmail";
+  provider?: TrellisEmailProviderId;
   defaultInboxId?: string;
   stopOn?: TrellisAgentMailSequenceStopCondition[];
   steps: TrellisAgentMailSequenceStep[];
@@ -223,6 +224,8 @@ export interface TrellisProviderAction {
   operation: string;
   status: "blocked_no_send" | "queued" | "completed" | "failed" | string;
   traceId: string;
+  externalId?: string | null;
+  externalThreadId?: string | null;
 }
 
 export interface TrellisProviderActionExecutionResult {
@@ -326,6 +329,17 @@ export interface TrellisCloudflareRuntime {
   };
   worker: {
     fetch(request: Request, env?: Record<string, unknown>): Promise<Response>;
+    email?(
+      message: {
+        from: string;
+        to: string;
+        headers: { get(name: string): string | null };
+        raw?: ReadableStream<Uint8Array>;
+        rawSize?: number;
+      },
+      env?: Record<string, unknown>,
+      ctx?: { waitUntil?(promise: Promise<unknown>): void },
+    ): Promise<void>;
     queue?(batch: TrellisQueueBatch, env?: Record<string, unknown>): Promise<unknown>;
     scheduled?(controller: unknown, env?: Record<string, unknown>, ctx?: unknown): Promise<unknown>;
   };
@@ -463,6 +477,8 @@ interface TrellisProviderActionTransition {
   status: TrellisProviderActionTransitionStatus;
   actor?: string;
   reason?: string;
+  externalId?: string | null;
+  externalThreadId?: string | null;
 }
 
 interface TrellisProviderActionExecutionRequest {
@@ -2252,6 +2268,33 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           ],
         });
       },
+      async email(message, env, _ctx) {
+        if (agent.config.email?.id !== "email" && agent.config.email?.id !== "cloudflare-email") {
+          return;
+        }
+
+        const inbound = await readCloudflareInboundEmail(message);
+        const signal = await cloudflareEmailToSignal(env, inbound);
+        const packContext = await readPackContext(env);
+        const eventSink = createTrellisEventSink(env);
+        const harness = await createRuntimeHarness(env, agent.config, {
+          signal,
+          packs: packContext,
+          eventSink,
+        });
+        const run = await runTrellisAgent(agent, {
+          signal,
+          context: {
+            packs: packContext,
+            inboundReply: inbound,
+          },
+          harness,
+          eventSink,
+        });
+        await persistRuntimeResult(env, run, agent.config);
+        await enqueueRuntimeEvent(env, run);
+        await dispatchWorkflow(env, run);
+      },
       async queue(batch: TrellisQueueBatch, env?: Record<string, unknown>) {
         return drainTrellisQueue(batch, env, agent.config);
       },
@@ -3971,6 +4014,144 @@ function agentMailWebhookToSignal(
   };
 }
 
+async function readCloudflareInboundEmail(message: {
+  from: string;
+  to: string;
+  headers: { get(name: string): string | null };
+  raw?: ReadableStream<Uint8Array>;
+  rawSize?: number;
+}) {
+  const subject = message.headers.get("subject") ?? "";
+  const providerMessageId = message.headers.get("message-id") ?? message.headers.get("Message-ID") ?? "";
+  const inReplyTo = message.headers.get("in-reply-to") ?? message.headers.get("In-Reply-To") ?? "";
+  const references = message.headers.get("references") ?? message.headers.get("References") ?? "";
+  const rawText = await readCloudflareEmailRawText(message.raw);
+  return {
+    from: message.from,
+    to: message.to,
+    subject,
+    providerMessageId,
+    inReplyTo,
+    references,
+    rawSize: message.rawSize ?? rawText.length,
+    bodyText: extractPlainTextFromMime(rawText) ?? "",
+    rawText,
+  };
+}
+
+async function readCloudflareEmailRawText(raw: ReadableStream<Uint8Array> | undefined) {
+  if (!raw) {
+    return "";
+  }
+  const response = new Response(raw);
+  return await response.text();
+}
+
+function extractPlainTextFromMime(rawText: string) {
+  const normalized = rawText.replace(/\r\n/g, "\n");
+  const plainMatch = normalized.match(/Content-Type:\s*text\/plain[\s\S]*?\n\n([\s\S]*?)(?=\n--|\nContent-Type:|\n$)/i);
+  if (plainMatch?.[1]) {
+    return plainMatch[1].trim();
+  }
+  const headerSplit = normalized.split(/\n\n/, 2);
+  if (headerSplit[1]) {
+    return headerSplit[1].trim();
+  }
+  return normalized.trim();
+}
+
+async function cloudflareEmailToSignal(
+  env: Record<string, unknown> | undefined,
+  email: Awaited<ReturnType<typeof readCloudflareInboundEmail>>,
+) {
+  const referenceIds = uniqueNormalizedMessageIds([
+    email.inReplyTo,
+    ...email.references.split(/\s+/),
+  ]);
+  const routedContext = await readCloudflareReplyContext(env, referenceIds);
+  const idPart = email.providerMessageId || referenceIds[0] || `${email.to}_${Date.now()}`;
+  const signalId = `sig_cloudflare_email_${normalizeIdPart(idPart)}`;
+  const fallbackThreadId = `cloudflare_email_${normalizeIdPart(email.to || idPart)}`;
+  return {
+    id: signalId,
+    traceId: `trace_${normalizeIdPart(signalId)}`,
+    threadId: routedContext?.threadId ?? fallbackThreadId,
+    workspaceId: routedContext?.workspaceId ?? "wrk_default",
+    campaignId: routedContext?.campaignId ?? undefined,
+    provider: "email",
+    source: "reply.webhook",
+    payload: {
+      provider: "email",
+      source: "reply.webhook",
+      eventType: "message.received",
+      from: email.from,
+      to: email.to,
+      subject: email.subject,
+      bodyText: email.bodyText,
+      rawSize: email.rawSize,
+      providerMessageId: email.providerMessageId || null,
+      inReplyTo: email.inReplyTo || null,
+      references: referenceIds,
+      raw: email.rawText,
+    },
+  } satisfies Partial<TrellisSignal>;
+}
+
+function uniqueNormalizedMessageIds(values: string[]) {
+  const ids = new Set<string>();
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const normalized = trimmed.replace(/^<|>$/g, "");
+    if (normalized) {
+      ids.add(normalized);
+    }
+  }
+  return [...ids];
+}
+
+async function readCloudflareReplyContext(
+  env: Record<string, unknown> | undefined,
+  providerMessageIds: string[],
+) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare || providerMessageIds.length === 0) {
+    return null;
+  }
+  await ensureD1Schema(db);
+  for (const providerMessageId of providerMessageIds) {
+    const action = await db.prepare(`
+      SELECT
+        provider_action.signal_id AS signalId,
+        signal.thread_id AS threadId,
+        signal.workspace_id AS workspaceId,
+        signal.campaign_id AS campaignId
+      FROM trellis_provider_actions provider_action
+      LEFT JOIN trellis_signals signal ON signal.id = provider_action.signal_id
+      WHERE provider_action.provider IN ('email', 'cloudflare-email')
+        AND provider_action.external_id = ?
+      ORDER BY provider_action.updated_at DESC
+      LIMIT 1
+    `).bind(providerMessageId).first<{
+      signalId?: string | null;
+      threadId?: string | null;
+      workspaceId?: string | null;
+      campaignId?: string | null;
+    }>();
+    if (action?.threadId && action.workspaceId) {
+      return {
+        signalId: action.signalId ?? null,
+        threadId: action.threadId,
+        workspaceId: action.workspaceId,
+        campaignId: action.campaignId ?? null,
+      };
+    }
+  }
+  return null;
+}
+
 async function recordSignalProviderRunStarted(
   env: Record<string, unknown> | undefined,
   signals: Array<Partial<TrellisSignal>>,
@@ -4553,10 +4734,14 @@ async function ensureD1Schema(db: TrellisD1Database) {
       operation TEXT NOT NULL,
       status TEXT NOT NULL,
       trace_id TEXT NOT NULL,
+      external_id TEXT,
+      external_thread_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   `);
+  await runD1Optional(db, `ALTER TABLE trellis_provider_actions ADD COLUMN external_id TEXT`);
+  await runD1Optional(db, `ALTER TABLE trellis_provider_actions ADD COLUMN external_thread_id TEXT`);
   await runD1(db, `
     CREATE TABLE IF NOT EXISTS trellis_provider_runs (
       id TEXT PRIMARY KEY,
@@ -5000,7 +5185,7 @@ function defaultFollowUpDelay(env: Record<string, unknown> | undefined) {
     ?? "3 days";
 }
 
-function readAgentMailSequence(provider: TrellisProviderDefinition | undefined): TrellisAgentMailSequenceMap | null {
+function readEmailSequence(provider: TrellisProviderDefinition | undefined): TrellisAgentMailSequenceMap | null {
   const sequence = provider?.config?.sequence;
   if (!isRecord(sequence) || !Array.isArray(sequence.steps)) {
     return null;
@@ -5032,7 +5217,7 @@ function readAgentMailSequence(provider: TrellisProviderDefinition | undefined):
   }
 
   return {
-    provider: "agentmail",
+    provider: readEmailProviderId(provider) ?? "agentmail",
     defaultInboxId: readString(sequence.defaultInboxId),
     stopOn: readStringArray(sequence.stopOn),
     steps,
@@ -5055,19 +5240,19 @@ function readAgentMailSequenceApproval(value: unknown): TrellisAgentMailSequence
   return undefined;
 }
 
-async function resolveAgentMailSequencePlan(
+async function resolveEmailSequencePlan(
   env: Record<string, unknown> | undefined,
   context: TrellisProviderExecutionContext,
   config: TrellisAgentConfig,
 ) {
-  if (context.action.provider !== "agentmail" || !isAgentMailOutboundOperation(context.action.operation)) {
+  if (!isEmailProviderId(context.action.provider) || !isEmailOutboundOperation(context.action.operation)) {
     return {
       enabled: false as const,
-      reason: "not_agentmail_outbound",
+      reason: "not_email_outbound",
     };
   }
 
-  const sequence = readAgentMailSequence(config.email);
+  const sequence = readEmailSequence(config.email);
   if (!sequence) {
     if (context.action.operation !== "email.send") {
       return {
@@ -5135,7 +5320,18 @@ async function resolveAgentMailSequencePlan(
   };
 }
 
-function isAgentMailOutboundOperation(operation: string) {
+function readEmailProviderId(provider: TrellisProviderDefinition | undefined): TrellisEmailProviderId | undefined {
+  if (provider?.id === "agentmail" || provider?.id === "email" || provider?.id === "cloudflare-email") {
+    return provider.id;
+  }
+  return undefined;
+}
+
+function isEmailProviderId(providerId: string | null | undefined): providerId is TrellisEmailProviderId {
+  return providerId === "agentmail" || providerId === "email" || providerId === "cloudflare-email";
+}
+
+function isEmailOutboundOperation(operation: string) {
   return operation === "email.send" || operation === "email.reply" || operation === "mail.reply";
 }
 
@@ -5233,7 +5429,12 @@ async function readSequenceStopState(
     const provider = readString(row.provider) ?? readString(payload.provider) ?? "";
     const eventType = `${readString(payload.eventType) ?? ""} ${readString(payload.type) ?? ""}`.toLowerCase();
     const bodyText = `${readString(payload.bodyText) ?? ""} ${readString(payload.text) ?? ""}`.toLowerCase();
-    const isReply = source === "reply.webhook" || provider === "agentmail" || eventType.includes("reply") || eventType.includes("inbound");
+    const isReply = source === "reply.webhook"
+      || provider === "agentmail"
+      || provider === "email"
+      || provider === "cloudflare-email"
+      || eventType.includes("reply")
+      || eventType.includes("inbound");
     const isUnsubscribe = eventType.includes("unsubscribe") || bodyText.includes("unsubscribe");
     const isBounce = eventType.includes("bounce") || eventType.includes("failed_delivery");
 
@@ -5765,7 +5966,7 @@ async function scheduleFollowUpWorkflow(
   result: TrellisProviderActionExecutionResult,
   config: TrellisAgentConfig,
 ) {
-  const sequencePlan = await resolveAgentMailSequencePlan(env, context, config);
+  const sequencePlan = await resolveEmailSequencePlan(env, context, config);
   if (!sequencePlan.enabled) {
     return {
       enabled: false,
@@ -5822,7 +6023,7 @@ async function scheduleFollowUpWorkflow(
       draftSkill: sequencePlan.nextStep.draftSkill ?? null,
       approval: sequencePlan.nextStep.approval ?? "required",
       sequence: {
-        provider: "agentmail",
+        provider: context.action.provider,
         currentStepId: sequencePlan.currentStep.id,
         nextStepId: sequencePlan.nextStep.id,
         stopOn: sequencePlan.stopOn,
@@ -6036,6 +6237,8 @@ function createProviderActionIntent(
     operation: decision.action,
     status,
     traceId: decision.traceId ?? traceIdForSignalId(decision.signalId),
+    externalId: null,
+    externalThreadId: null,
   };
 }
 
@@ -6110,8 +6313,8 @@ async function persistApprovalDecision(
   if (providerAction) {
     await runD1(db, `
       INSERT OR REPLACE INTO trellis_provider_actions
-        (id, approval_id, signal_id, draft_id, provider, operation, status, trace_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, approval_id, signal_id, draft_id, provider, operation, status, trace_id, external_id, external_thread_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       providerAction.id,
       providerAction.approvalId,
@@ -6121,6 +6324,8 @@ async function persistApprovalDecision(
       providerAction.operation,
       providerAction.status,
       providerAction.traceId,
+      providerAction.externalId ?? null,
+      providerAction.externalThreadId ?? null,
       now,
       now,
     ]);
@@ -6228,10 +6433,12 @@ async function persistProviderActionTransition(
   await ensureD1Schema(db);
   await runD1(db, `
     UPDATE trellis_provider_actions
-    SET status = ?, updated_at = ?
+    SET status = ?, external_id = COALESCE(?, external_id), external_thread_id = COALESCE(?, external_thread_id), updated_at = ?
     WHERE id = ?
   `, [
     transition.status,
+    transition.externalId ?? null,
+    transition.externalThreadId ?? null,
     now,
     transition.providerActionId,
   ]);
@@ -6374,6 +6581,8 @@ async function executeProviderAction(
       status: "completed",
       actor: execution.actor ?? "trellis-provider-executor",
       reason: execution.reason ?? `Executed ${action.operation} through ${action.provider}.`,
+      externalId: result.externalId ?? null,
+      externalThreadId: result.externalThreadId ?? null,
     });
     const followUpWorkflow = await scheduleFollowUpWorkflow(env, context, result, config).catch((followUpError: unknown) => ({
       enabled: true,
@@ -6388,6 +6597,8 @@ async function executeProviderAction(
         providerAction: {
           ...action,
           status: "completed",
+          externalId: result.externalId ?? null,
+          externalThreadId: result.externalThreadId ?? null,
         },
         execution: result,
         followUpWorkflow,
@@ -6538,6 +6749,8 @@ async function readProviderActionRecord(db: TrellisD1Database, providerActionId:
       operation,
       status,
       trace_id AS traceId,
+      external_id AS externalId,
+      external_thread_id AS externalThreadId,
       created_at AS createdAt,
       updated_at AS updatedAt
     FROM trellis_provider_actions
@@ -6808,6 +7021,17 @@ async function dispatchProviderAction(
     return executeAgentMailReply(env, context, config);
   }
 
+  if ((context.action.provider === "email" || context.action.provider === "cloudflare-email") && context.action.operation === "email.send") {
+    return executeCloudflareEmailSend(env, context, config);
+  }
+
+  if (
+    (context.action.provider === "email" || context.action.provider === "cloudflare-email")
+    && (context.action.operation === "email.reply" || context.action.operation === "mail.reply")
+  ) {
+    return executeCloudflareEmailReply(env, context, config);
+  }
+
   if (
     context.action.provider === "attio"
     && (context.action.operation === "crm.update" || context.action.operation === "crm.syncProspect")
@@ -6917,7 +7141,7 @@ function resolveAgentMailDefaultInboxId(
   env: Record<string, unknown> | undefined,
   config: TrellisAgentConfig,
 ) {
-  const sequence = readAgentMailSequence(config.email);
+  const sequence = readEmailSequence(config.email);
   const configured = sequence?.defaultInboxId ?? readString(env?.AGENTMAIL_INBOX_ID);
   if (!configured) {
     return undefined;
@@ -6926,6 +7150,30 @@ function resolveAgentMailDefaultInboxId(
     return readString(env?.[configured.slice("env:".length)]);
   }
   return configured;
+}
+
+function readCloudflareEmailConfig(provider: TrellisProviderDefinition | undefined) {
+  const config = isRecord(provider?.config) ? provider.config : {};
+  return {
+    binding: readString(config.binding),
+    from: readString(config.from),
+  };
+}
+
+function resolveCloudflareEmailBinding(
+  env: Record<string, unknown> | undefined,
+  config: TrellisAgentConfig,
+) {
+  const cloudflare = readCloudflareEmailConfig(config.email);
+  return cloudflare.binding ?? readString(env?.TRELLIS_EMAIL_BINDING) ?? readString(env?.CLOUDFLARE_EMAIL_BINDING) ?? "EMAIL";
+}
+
+function resolveCloudflareEmailFrom(
+  env: Record<string, unknown> | undefined,
+  config: TrellisAgentConfig,
+) {
+  const cloudflare = readCloudflareEmailConfig(config.email);
+  return cloudflare.from ?? readString(env?.TRELLIS_EMAIL_FROM) ?? readString(env?.CLOUDFLARE_EMAIL_FROM);
 }
 
 async function executeAgentMailSend(
@@ -7059,6 +7307,142 @@ async function executeAgentMailReply(
     externalThreadId: readString(record.thread_id) ?? readString(record.threadId) ?? null,
     raw,
   };
+}
+
+async function executeCloudflareEmailSend(
+  env: Record<string, unknown> | undefined,
+  context: TrellisProviderExecutionContext,
+  config: TrellisAgentConfig,
+): Promise<TrellisProviderActionExecutionResult> {
+  const bindingName = resolveCloudflareEmailBinding(env, config);
+  const binding = env?.[bindingName] as { send?(message: Record<string, unknown>): Promise<unknown> | unknown } | undefined;
+  if (typeof binding?.send !== "function") {
+    throw new Error(`Cloudflare Email binding "${bindingName}" is not configured.`);
+  }
+
+  const signalPayload = context.signal?.payload ?? {};
+  const input = context.input;
+  const to = readFirstString(input, signalPayload, ["to", "recipient", "recipientEmail", "email"]);
+  const from = readFirstString(input, signalPayload, ["from"]) ?? resolveCloudflareEmailFrom(env, config);
+  const subject = readFirstString(input, signalPayload, ["subject"]) ?? "Trellis outreach";
+  const bodyText = readFirstString(input, signalPayload, ["bodyText", "text", "body"]) ?? context.draft?.body;
+  const bodyHtml = readFirstString(input, signalPayload, ["bodyHtml", "html"]);
+
+  if (!to) {
+    throw new Error("Cloudflare Email send requires a recipient email.");
+  }
+  if (!from) {
+    throw new Error("Email send requires TRELLIS_EMAIL_FROM or an explicit from address.");
+  }
+  if (!bodyText && !bodyHtml) {
+    throw new Error("Cloudflare Email send requires bodyText, bodyHtml, or a draft body.");
+  }
+
+  const headers = trellisProviderHeaders(context);
+  const raw = await binding.send({
+    to,
+    from,
+    subject,
+    text: bodyText,
+    html: bodyHtml,
+    headers,
+  });
+  const record = isRecord(raw) ? raw : {};
+  return {
+    ok: true,
+    provider: "email",
+    operation: "email.send",
+    actionId: context.action.id,
+    externalId: readString(record.messageId) ?? readString(record.id) ?? null,
+    externalThreadId: readString(record.threadId) ?? null,
+    raw,
+  };
+}
+
+async function executeCloudflareEmailReply(
+  env: Record<string, unknown> | undefined,
+  context: TrellisProviderExecutionContext,
+  config: TrellisAgentConfig,
+): Promise<TrellisProviderActionExecutionResult> {
+  const bindingName = resolveCloudflareEmailBinding(env, config);
+  const binding = env?.[bindingName] as { send?(message: Record<string, unknown>): Promise<unknown> | unknown } | undefined;
+  if (typeof binding?.send !== "function") {
+    throw new Error(`Cloudflare Email binding "${bindingName}" is not configured.`);
+  }
+
+  const signalPayload = context.signal?.payload ?? {};
+  const input = context.input;
+  const to = readFirstString(input, signalPayload, ["to", "recipient", "recipientEmail", "email"])
+    ?? readFirstString(signalPayload, input, ["from", "sender", "senderEmail"]);
+  const from = readFirstString(input, signalPayload, ["from"]) ?? resolveCloudflareEmailFrom(env, config);
+  const messageId = readFirstString(input, signalPayload, [
+    "messageId",
+    "providerMessageId",
+    "inboundMessageId",
+    "replyToMessageId",
+    "replyToProviderMessageId",
+    "inReplyTo",
+  ]);
+  const references = readStringArray(input.references) ?? [];
+  const subject = readFirstString(input, signalPayload, ["subject"])
+    ?? prependReToSubject(readFirstString(signalPayload, input, ["subject"]));
+  const bodyText = readFirstString(input, signalPayload, ["bodyText", "text", "body"]) ?? context.draft?.body;
+  const bodyHtml = readFirstString(input, signalPayload, ["bodyHtml", "html"]);
+
+  if (!to) {
+    throw new Error("Cloudflare Email reply requires a recipient email.");
+  }
+  if (!from) {
+    throw new Error("Email reply requires TRELLIS_EMAIL_FROM or an explicit from address.");
+  }
+  if (!messageId) {
+    throw new Error("Cloudflare Email reply requires providerMessageId or inReplyTo.");
+  }
+  if (!bodyText && !bodyHtml) {
+    throw new Error("Cloudflare Email reply requires bodyText, bodyHtml, or a draft body.");
+  }
+
+  const headerBag = {
+    ...trellisProviderHeaders(context),
+    "In-Reply-To": normalizeMessageIdHeader(messageId),
+    References: joinMessageReferences([messageId, ...references]),
+  };
+  const raw = await binding.send({
+    to,
+    from,
+    subject: prependReToSubject(subject),
+    text: bodyText,
+    html: bodyHtml,
+    headers: headerBag,
+  });
+  const record = isRecord(raw) ? raw : {};
+  return {
+    ok: true,
+    provider: "email",
+    operation: context.action.operation,
+    actionId: context.action.id,
+    externalId: readString(record.messageId) ?? readString(record.id) ?? null,
+    externalThreadId: readString(record.threadId) ?? null,
+    raw,
+  };
+}
+
+function prependReToSubject(subject: string | null | undefined) {
+  const trimmed = readString(subject)?.trim();
+  if (!trimmed) {
+    return "Re: Trellis outreach";
+  }
+  return /^re:/i.test(trimmed) ? trimmed : `Re: ${trimmed}`;
+}
+
+function normalizeMessageIdHeader(messageId: string) {
+  const trimmed = messageId.trim();
+  return trimmed.startsWith("<") ? trimmed : `<${trimmed}>`;
+}
+
+function joinMessageReferences(messageIds: string[]) {
+  const normalized = uniqueNormalizedMessageIds(messageIds).map((messageId) => normalizeMessageIdHeader(messageId));
+  return normalized.join(" ");
 }
 
 async function executeAttioCrmUpdate(
