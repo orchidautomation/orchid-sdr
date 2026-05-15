@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "trellis-gtm-sdr",
+  "name": "trellis-cloud-sdr",
   "main": "src/index.ts",
   "compatibility_date": "2026-05-12",
   "compatibility_flags": [
@@ -39,37 +39,38 @@
   "d1_databases": [
     {
       "binding": "TRELLIS_DB",
-      "database_name": "trellis-gtm-sdr-db"
+      "database_name": "trellis-cloud-sdr-db",
+      "database_id": "8cf6e791-3248-4ea9-be4f-80315ef5ecec"
     }
   ],
   "r2_buckets": [
     {
       "binding": "TRELLIS_PACKS",
-      "bucket_name": "trellis-gtm-sdr-packs"
+      "bucket_name": "trellis-cloud-sdr-packs"
     },
     {
       "binding": "TRELLIS_ARTIFACTS",
-      "bucket_name": "trellis-gtm-sdr-artifacts"
+      "bucket_name": "trellis-cloud-sdr-artifacts"
     }
   ],
   "queues": {
     "producers": [
       {
         "binding": "TRELLIS_EVENTS",
-        "queue": "trellis-gtm-sdr-worker-events"
+        "queue": "trellis-cloud-sdr-worker-events"
       }
     ],
     "consumers": [
       {
-        "queue": "trellis-gtm-sdr-worker-events",
-        "dead_letter_queue": "trellis-gtm-sdr-worker-events-dlq"
+        "queue": "trellis-cloud-sdr-worker-events",
+        "dead_letter_queue": "trellis-cloud-sdr-worker-events-dlq"
       }
     ]
   },
   "workflows": [
     {
       "binding": "PROSPECT_WORKFLOW",
-      "name": "trellis-gtm-sdr-prospect",
+      "name": "trellis-cloud-sdr-prospect",
       "class_name": "ProspectWorkflow"
     }
   ]
