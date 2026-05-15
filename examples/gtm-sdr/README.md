@@ -1,8 +1,8 @@
-# Trellis Cloud BDR Demo
+# Trellis GTM SDR Example
 
-This repo is the demoable Trellis BDR agent environment.
+This example is a demoable Trellis SDR agent environment.
 
-It shows a Common Room-style BDR agent that turns a Pylon form-fill signal into a qualified prospect, research brief, approval-gated email draft, and CRM update proposal. The point is not "the model can write email." The point is that Trellis gives GTM teams a private, auditable agent runtime with skills, knowledge, tools, traces, approvals, state, provider actions, and portable operator surfaces.
+It shows a Common Room-style SDR agent that turns a Pylon form-fill signal into a qualified prospect, research brief, approval-gated email draft, and CRM update proposal. The point is not "the model can write email." The point is that Trellis gives GTM teams a private, auditable agent runtime with skills, knowledge, tools, traces, approvals, state, provider actions, and portable operator surfaces.
 
 See `reference/diagnostics/bdr-demo-runbook.md` for the complete demo runbook.
 See `reference/diagnostics/live-video-outline.md` for the short video walkthrough and talk track.
@@ -31,26 +31,20 @@ Pylon form fill
   -> account research
   -> SDR draft
   -> D1 trace and state
-  -> approval gates for email and CRM
+  -> approval gates for no-send email and CRM
   -> MCP-ready operator surfaces
 ```
 
-Canonical live worker:
+Hosted demo worker used by the included seed scripts:
 
 ```text
 https://trellis-cloud-sdr.brandon-ccf.workers.dev
 ```
 
-The seed command generates a fresh signal and trace id each time so Cloudflare Workflow instance ids never collide with an old demo run. The trace id shape is:
+The seed command generates a fresh signal and trace id each time so Workflow instance ids never collide with an old demo run. The trace id shape is:
 
 ```text
 trace_demo_bdr_pylon_<runId>
-```
-
-Current seeded trace:
-
-```text
-trace_demo_bdr_pylon_ready_20260515_1512
 ```
 
 See `reference/diagnostics/live-run-result.md` for the current deployed D1 counts, approvals, trace summary, draft, and cost.
@@ -65,19 +59,16 @@ npm run smoke
 npm run verify
 ```
 
-The first deploy is Cloudflare-first and does not require Attio, AgentMail, or Firecrawl credentials. Those are connected after the app boots:
+The first deploy does not require provider credentials. Add provider secrets when you want live research or explicit CRM smoke writes:
 
 ```bash
 npx wrangler secret put TRELLIS_API_KEY
 npm run trellis -- connect attio
-npm run trellis -- connect agentmail
 npm run trellis -- connect firecrawl
-npm run trellis -- connect apify      # optional discovery source
-npm run trellis -- connect prospeo    # optional email enrichment
-npm run trellis -- docs add ./product-docs
+npm run docs:add
 ```
 
-Your app code stays Trellis-only in `src/agent.ts`. Attio field mapping lives in `src/crm/attio.map.ts`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like `qualification.decision`, `qualification.summary`, or `signal.payload.signal`. Durable business state lives in `src/state/prospect.map.ts`: define tables, fields, indexes, and relationships while Trellis keeps D1 migrations private. The generated `src/trellis-runtime.ts` adapter mounts Trellis R2 markdown packs into the virtual sandbox, uses the Cloudflare AI binding through the default AI Gateway, and stores per-thread agent sessions in `TRELLIS_DB`.
+Your app code stays Trellis-only in `src/agent.ts`. Attio field mapping lives in `src/crm/attio.map.ts`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like `qualification.decision`, `qualification.summary`, or `signal.payload.signal`. Durable business state lives in `src/state/prospect.map.ts`: define tables, fields, indexes, and relationships while Trellis keeps D1 migrations private. The generated `src/trellis-runtime.ts` adapter mounts Trellis markdown packs into the virtual sandbox, uses the configured model route, and stores per-thread agent sessions in `TRELLIS_DB`.
 
 Deploy auto-packs the default `knowledge/**/*.md` files, or uses `.trellis/knowledge-pack.json` when you run `trellis docs add <path>`. It also syncs tracked `skills/**/SKILL.md` files into the `TRELLIS_PACKS` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
 
@@ -95,7 +86,7 @@ Reset the remote D1 runtime tables:
 TRELLIS_DEMO_RESET_CONFIRM=reset npm run demo:reset-db
 ```
 
-Seed the curated BDR signal:
+Seed the curated SDR signal:
 
 ```bash
 npm run demo:seed-bdr
@@ -111,7 +102,7 @@ The seed posts `reference/inputs/demo-form-payload.json` and should create:
 
 ## Claude Code MCP Demo
 
-Claude Code can connect project-locally to:
+Claude Code can connect to the hosted demo endpoint:
 
 ```text
 https://trellis-cloud-sdr.brandon-ccf.workers.dev/mcp/trellis
@@ -164,7 +155,7 @@ mcp: {
 Good prompts:
 
 ```text
-Use trellis-sdr to describe this BDR agent.
+Use trellis-sdr to describe this SDR agent.
 ```
 
 ```text
