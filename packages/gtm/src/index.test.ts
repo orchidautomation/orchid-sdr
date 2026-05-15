@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createTrellisTestApp, runTrellisSmoke, schema, trellis } from "./index.js";
-import { agentmail, attio, firecrawl } from "@trellis/providers";
+import { agentmail, attio, browserrun, firecrawl } from "@trellis/providers";
 
 describe("@trellis/gtm API", () => {
   it("defines the one-screen GTM agent shape without exposing Flue or Cloudflare", async () => {
@@ -3433,6 +3433,161 @@ describe("@trellis/gtm API", () => {
         packs: expect.objectContaining({ enabled: true }),
       }),
     }));
+  });
+
+  it("exposes Cloudflare Browser Run extract, scrape, and map tools to the hidden harness", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("browser-sdr", {
+      research: browserrun(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const skill = vi.fn(async () => ({
+      data: {
+        decision: "qualified",
+        summary: "Browser-backed research path available.",
+        confidence: 0.9,
+        matchedEvidence: ["Browser Run extract"],
+        missingEvidence: [],
+      },
+    }));
+    const session = vi.fn(async () => ({ skill }));
+    const flueContext = {
+      init: vi.fn(async () => ({ session })),
+    };
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (href.endsWith("/browser-rendering/markdown")) {
+        return new Response(JSON.stringify({
+          success: true,
+          result: "# Acme\n\nRendered in Browser Run.",
+        }));
+      }
+      if (href.endsWith("/browser-rendering/scrape")) {
+        return new Response(JSON.stringify({
+          success: true,
+          result: [
+            {
+              selector: "h1",
+              text: "Acme",
+            },
+          ],
+        }));
+      }
+      if (href.endsWith("/browser-rendering/links")) {
+        return new Response(JSON.stringify({
+          success: true,
+          result: [
+            "https://example.com",
+            "https://example.com/pricing",
+          ],
+        }));
+      }
+      return new Response(`unexpected url ${href} ${(init?.method ?? "GET")}`, { status: 500 });
+    });
+
+    const webhook = await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_browserrun",
+        workspaceId: "wrk_browserrun",
+        threadId: "thr_browserrun",
+      }),
+    }), {
+      TRELLIS_FLUE_CONTEXT: flueContext,
+      TRELLIS_FETCH: fetchMock,
+      CLOUDFLARE_ACCOUNT_ID: "acct_test",
+      CLOUDFLARE_API_TOKEN: "cf_token",
+    });
+
+    expect(webhook.status).toBe(202);
+    const initCalls = flueContext.init.mock.calls as unknown as Array<[Record<string, unknown>]>;
+    expect(initCalls.length).toBeGreaterThan(0);
+    const initOptions = initCalls[0]?.[0] ?? {};
+    const tools = initOptions.tools as Array<{
+      name: string;
+      provider?: string;
+      parameters?: Record<string, unknown>;
+      execute?: (input: Record<string, unknown>) => Promise<unknown> | unknown;
+    }>;
+    expect(tools).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "research.extract", provider: "browserrun" }),
+      expect.objectContaining({ name: "research.scrape", provider: "browserrun" }),
+      expect.objectContaining({ name: "research.map", provider: "browserrun" }),
+    ]));
+
+    const extractTool = tools.find((tool) => tool.name === "research.extract");
+    const scrapeTool = tools.find((tool) => tool.name === "research.scrape");
+    const mapTool = tools.find((tool) => tool.name === "research.map");
+
+    const extractResult = await extractTool?.execute?.({ url: "https://example.com" });
+    expect(JSON.parse(String(extractResult))).toMatchObject({
+      provider: "browserrun",
+      operation: "research.extract",
+      url: "https://example.com",
+      markdown: "# Acme\n\nRendered in Browser Run.",
+      raw: {
+        success: true,
+        result: "# Acme\n\nRendered in Browser Run.",
+      },
+    });
+    const scrapeResult = await scrapeTool?.execute?.({
+      url: "https://example.com",
+      elements: [{ selector: "h1" }],
+    });
+    expect(JSON.parse(String(scrapeResult))).toMatchObject({
+      provider: "browserrun",
+      operation: "research.scrape",
+      url: "https://example.com",
+      results: [
+        {
+          selector: "h1",
+          text: "Acme",
+        },
+      ],
+      raw: {
+        success: true,
+        result: [
+          {
+            selector: "h1",
+            text: "Acme",
+          },
+        ],
+      },
+    });
+    const mapResult = await mapTool?.execute?.({
+      url: "https://example.com",
+      visibleLinksOnly: true,
+    });
+    expect(JSON.parse(String(mapResult))).toMatchObject({
+      provider: "browserrun",
+      operation: "research.map",
+      url: "https://example.com",
+      links: [
+        "https://example.com",
+        "https://example.com/pricing",
+      ],
+      raw: {
+        success: true,
+        result: [
+          "https://example.com",
+          "https://example.com/pricing",
+        ],
+      },
+    });
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe("https://api.cloudflare.com/client/v4/accounts/acct_test/browser-rendering/markdown");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe("https://api.cloudflare.com/client/v4/accounts/acct_test/browser-rendering/scrape");
+    expect(String(fetchMock.mock.calls[2]?.[0])).toBe("https://api.cloudflare.com/client/v4/accounts/acct_test/browser-rendering/links");
   });
 
   it("writes ordered redacted trace events and replays them over JSON and SSE", async () => {

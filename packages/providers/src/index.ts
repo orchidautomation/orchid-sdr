@@ -45,6 +45,19 @@ export function firecrawl(): TrellisProviderDefinition {
   });
 }
 
+export function browserrun(): TrellisProviderDefinition {
+  return trellis.provider({
+    id: "browserrun",
+    kind: "research",
+    displayName: "Cloudflare Browser Run",
+    env: [
+      { name: "CLOUDFLARE_ACCOUNT_ID", description: "Cloudflare account id used for Browser Run quick actions." },
+      { name: "CLOUDFLARE_API_TOKEN", description: "Cloudflare API token with Browser Rendering - Edit permission." },
+    ],
+    capabilities: ["research.extract", "research.scrape", "research.map", "browser.run"],
+  });
+}
+
 export function apify(): TrellisProviderDefinition {
   return trellis.provider({
     id: "apify",

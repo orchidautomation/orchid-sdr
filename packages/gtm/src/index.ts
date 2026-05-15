@@ -2832,6 +2832,86 @@ function createTrellisMcpTools(
     );
   }
 
+  if (config.research?.id === "browserrun") {
+    tools.push(
+      {
+        name: "research.extract",
+        description: "Extract markdown from a URL with Cloudflare Browser Run for grounded agent context.",
+        provider: "browserrun",
+        operation: "research.extract",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string", format: "uri" },
+            gotoOptions: { type: "object" },
+            userAgent: { type: "string" },
+            rejectRequestPattern: {
+              type: "array",
+              items: { type: "string" },
+            },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeBrowserRunExtract(env, input);
+        },
+      },
+      {
+        name: "research.scrape",
+        description: "Scrape specific page elements with Cloudflare Browser Run quick actions.",
+        provider: "browserrun",
+        operation: "research.scrape",
+        inputSchema: {
+          type: "object",
+          required: ["url", "elements"],
+          properties: {
+            url: { type: "string", format: "uri" },
+            elements: {
+              type: "array",
+              minItems: 1,
+              items: {
+                type: "object",
+                required: ["selector"],
+                properties: {
+                  selector: { type: "string" },
+                },
+                additionalProperties: true,
+              },
+            },
+            gotoOptions: { type: "object" },
+            userAgent: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeBrowserRunScrape(env, input);
+        },
+      },
+      {
+        name: "research.map",
+        description: "Retrieve page links with Cloudflare Browser Run to discover follow-on URLs.",
+        provider: "browserrun",
+        operation: "research.map",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string", format: "uri" },
+            visibleLinksOnly: { type: "boolean" },
+            excludeExternalLinks: { type: "boolean" },
+            gotoOptions: { type: "object" },
+            userAgent: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeBrowserRunMap(env, input);
+        },
+      },
+    );
+  }
+
   if (readString(env?.PROSPEO_API_KEY)) {
     tools.push({
       name: "email.enrich",
@@ -7627,6 +7707,74 @@ async function executeFirecrawlMap(
   };
 }
 
+async function executeBrowserRunExtract(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const url = readFirstString(input, {}, ["url"]);
+  if (!url) {
+    throw new Error("Browser Run extract requires a URL.");
+  }
+  const response = await browserRunRequest(env, "/markdown", {
+    url,
+    ...pickBrowserRunInput(input, ["gotoOptions", "userAgent", "rejectRequestPattern"]),
+  });
+  return {
+    provider: "browserrun",
+    operation: "research.extract",
+    url,
+    markdown: readString(response.result) ?? "",
+    raw: response,
+  };
+}
+
+async function executeBrowserRunScrape(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const url = readFirstString(input, {}, ["url"]);
+  const elements = Array.isArray(input.elements) ? input.elements : [];
+  if (!url) {
+    throw new Error("Browser Run scrape requires a URL.");
+  }
+  if (elements.length === 0) {
+    throw new Error("Browser Run scrape requires elements.");
+  }
+  const response = await browserRunRequest(env, "/scrape", {
+    url,
+    elements,
+    ...pickBrowserRunInput(input, ["gotoOptions", "userAgent"]),
+  });
+  return {
+    provider: "browserrun",
+    operation: "research.scrape",
+    url,
+    results: Array.isArray(response.result) ? response.result : [],
+    raw: response,
+  };
+}
+
+async function executeBrowserRunMap(
+  env: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+) {
+  const url = readFirstString(input, {}, ["url"]);
+  if (!url) {
+    throw new Error("Browser Run map requires a URL.");
+  }
+  const response = await browserRunRequest(env, "/links", {
+    url,
+    ...pickBrowserRunInput(input, ["visibleLinksOnly", "excludeExternalLinks", "gotoOptions", "userAgent"]),
+  });
+  return {
+    provider: "browserrun",
+    operation: "research.map",
+    url,
+    links: Array.isArray(response.result) ? response.result.filter((value): value is string => typeof value === "string") : [],
+    raw: response,
+  };
+}
+
 async function executeFirecrawlCrawlStart(
   env: Record<string, unknown> | undefined,
   input: Record<string, unknown>,
@@ -7869,6 +8017,38 @@ async function firecrawlRequest(
   return isRecord(parsed) ? parsed : {};
 }
 
+async function browserRunRequest(
+  env: Record<string, unknown> | undefined,
+  path: string,
+  body: Record<string, unknown>,
+) {
+  const accountId = readString(env?.CLOUDFLARE_ACCOUNT_ID);
+  const apiToken = readString(env?.CLOUDFLARE_API_TOKEN);
+  if (!accountId) {
+    throw new Error("CLOUDFLARE_ACCOUNT_ID is not configured.");
+  }
+  if (!apiToken) {
+    throw new Error("CLOUDFLARE_API_TOKEN is not configured.");
+  }
+  const response = await runtimeFetch(
+    env,
+    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/browser-rendering${path}`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiToken}`,
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Browser Run request failed with ${response.status}: ${await response.text()}`);
+  }
+  const parsed = await response.json().catch(() => ({}));
+  return isRecord(parsed) ? parsed : {};
+}
+
 function normalizeFirecrawlScrapeResult(operation: "research.scrape" | "research.extract", url: string, response: Record<string, unknown>) {
   const data = isRecord(response.data) ? response.data : {};
   const metadata = isRecord(data.metadata) ? data.metadata : {};
@@ -7886,6 +8066,16 @@ function normalizeFirecrawlScrapeResult(operation: "research.scrape" | "research
 }
 
 function pickFirecrawlInput(input: Record<string, unknown>, keys: string[]) {
+  const picked: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (input[key] !== undefined) {
+      picked[key] = input[key];
+    }
+  }
+  return picked;
+}
+
+function pickBrowserRunInput(input: Record<string, unknown>, keys: string[]) {
   const picked: Record<string, unknown> = {};
   for (const key of keys) {
     if (input[key] !== undefined) {
