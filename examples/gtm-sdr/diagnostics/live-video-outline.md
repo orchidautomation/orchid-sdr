@@ -37,11 +37,11 @@ Show these in order:
    - show providers, model, state, MCP surfaces, knowledge, skills, and safety
    - point to the actual flow: qualification -> research -> copy -> workflow
 
-3. `skills/icp-qualification/SKILL.md`
+3. `src/skills/icp-qualification/SKILL.md`
    - show that skills are reusable method files
    - emphasize that product-specific details are not hard-coded here
 
-4. `knowledge/company.md`, `knowledge/icp.md`, `knowledge/messaging.md`
+4. `src/knowledge/company.md`, `src/knowledge/icp.md`, `src/knowledge/messaging.md`
    - show where company-specific positioning and ICP live
    - frame this as the part a GTM team can edit without rewriting runtime code
 

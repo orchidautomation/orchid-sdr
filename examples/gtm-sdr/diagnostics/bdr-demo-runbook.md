@@ -23,8 +23,8 @@ Pylon form fill
 | Capability | What to show | Why it matters |
 | --- | --- | --- |
 | Agent runtime | `src/agent.ts` has one clean Trellis BDR flow. | The business logic is readable and not buried in Cloudflare/Flue plumbing. |
-| Skills | `skills/icp-qualification`, `skills/research-brief`, `skills/sdr-copy`, `skills/reply-policy`, `skills/handoff-policy`. | GTM methodology is versioned as explicit playbooks. |
-| Knowledge | `knowledge/company.md`, `knowledge/icp.md`, `knowledge/messaging.md`. | The agent follows company positioning and ICP rules, not generic model memory. |
+| Skills | `src/skills/icp-qualification`, `src/skills/research-brief`, `src/skills/sdr-copy`, `src/skills/reply-policy`, `src/skills/handoff-policy`. | GTM methodology is versioned as explicit playbooks. |
+| Knowledge | `src/knowledge/company.md`, `src/knowledge/icp.md`, `src/knowledge/messaging.md`. | The agent follows company positioning and ICP rules, not generic model memory. |
 | Cloudflare execution | Worker, D1, R2, Queue, Workflow, Workers AI/Gateway, Browser binding. | The demo is deployed production-style instead of running only on a laptop. |
 | Observability | `trellis_trace_events` plus `/events`, `/events/stream`, and SDR run views. | Every step can be inspected and replayed. |
 | Cost visibility | `estimate_cost` on the SDR MCP and `GET /traces/:traceId/cost`. | A team can see what the model run cost. |

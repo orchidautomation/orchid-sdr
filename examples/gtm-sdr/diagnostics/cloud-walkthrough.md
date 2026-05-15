@@ -23,8 +23,8 @@ export default trellis.agent("common-room-sdr", {
   research: firecrawl(),                    // live company/person research
   model: "@cf/openai/gpt-oss-20b",           // Cloudflare AI Gateway model route
   state,                                    // D1 tables, indexes, relationships
-  knowledge: "knowledge/**/*.md",           // ICP, company, messaging
-  skills: "skills/**/SKILL.md",             // qualification, research, copy, reply policy
+  knowledge: "src/knowledge/**/*.md",       // ICP, company, messaging
+  skills: "src/skills/**/SKILL.md",         // qualification, research, copy, reply policy
   safety: trellis.safeOutbound(),           // no sends or CRM writes without approval
 }, async (app) => {
   const signal = await app.signal();        // website/LinkedIn form payload

@@ -15,9 +15,7 @@ See `outputs/pylon-live-run.md` for the current D1-derived demo output.
 inputs/       synthetic signals you can send to the agent
 outputs/      D1-derived run artifacts and proof
 diagnostics/  run summaries, cost, trace counts, and video outline
-src/          the runnable Trellis Worker app
-knowledge/    company, ICP, and messaging context
-skills/       reusable GTM methods used by the agent
+src/          the runnable Trellis Worker app, skills, knowledge, and scripts
 ```
 
 ## Current Demo Story
@@ -80,7 +78,9 @@ npm run trellis -- docs add ./product-docs
 
 Your app code stays Trellis-only in `src/agent.ts`. Attio field mapping lives in `src/crm/attio.map.ts`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like `qualification.decision`, `qualification.summary`, or `signal.payload.signal`. Durable business state lives in `src/state/prospect.map.ts`: define tables, fields, indexes, and relationships while Trellis keeps D1 migrations private. The generated `src/trellis-runtime.ts` adapter mounts Trellis R2 markdown packs into the virtual sandbox, uses the Cloudflare AI binding through the default AI Gateway, and stores per-thread agent sessions in `TRELLIS_DB`.
 
-Deploy auto-packs the default `knowledge/**/*.md` files, or uses `.trellis/knowledge-pack.json` when you run `trellis docs add <path>`. It also syncs tracked `SKILL.md` files into the `TRELLIS_PACKS` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
+Deploy packs the configured `src/knowledge/**/*.md` files, or uses `.trellis/knowledge-pack.json` when you run `trellis docs add <path>`. It also syncs tracked `src/skills/**/SKILL.md` files into the `TRELLIS_PACKS` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
+
+The npm scripts run through `src/scripts/with-src-packs.sh` where needed so the Trellis CLI can sync the `src/knowledge` and `src/skills` packs while the example source stays contained under `src`.
 
 `GET /smoke` is safe and never writes to providers. `POST /smoke/attio` is an explicit provider smoke: it requires `ATTIO_API_KEY` plus `TRELLIS_PROVIDER_SMOKE_TOKEN`, writes a deterministic smoke company/person through the Attio field map, and returns HTTP 200 only when Attio accepts the mapped write.
 

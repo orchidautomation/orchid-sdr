@@ -14,8 +14,8 @@ export default trellis.agent("common-room-bdr", {
   model: "cloudflare/openai/gpt-5.5",
   state: stateMap,
   mcp: sdrMcpSurface,
-  knowledge: "knowledge/**/*.md",
-  skills: "skills/**/SKILL.md",
+  knowledge: "src/knowledge/**/*.md",
+  skills: "src/skills/**/SKILL.md",
   safety: trellis.safeOutbound(),
 }, async (app) => {
   // Every webhook, API call, or operator event enters as a normalized signal.

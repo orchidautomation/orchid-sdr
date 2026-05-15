@@ -14,7 +14,7 @@ fi
 TMP_PAYLOAD="$(mktemp)"
 trap 'rm -f "${TMP_PAYLOAD}"' EXIT
 
-node scripts/build-demo-payload.mjs "${PAYLOAD}" "${TMP_PAYLOAD}" "${RUN_ID}"
+node src/scripts/build-demo-payload.mjs "${PAYLOAD}" "${TMP_PAYLOAD}" "${RUN_ID}"
 
 headers=(-H "content-type: application/json")
 if [[ -n "${TOKEN}" ]]; then
