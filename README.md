@@ -15,6 +15,7 @@ trellis smoke
 trellis connect attio
 trellis connect agentmail
 trellis connect firecrawl
+trellis connect browserrun # optional native Browser Run extraction/scraping/mapping
 trellis connect apify      # optional discovery
 trellis connect prospeo    # optional enrichment
 trellis docs add ./product-docs
@@ -61,7 +62,7 @@ The first deploy should require only Cloudflare auth. CRM, email, research, opti
 | Browser automation | Browser Run / sandbox provider slot |
 | Observability | D1 trace events, Workers logs, AI Gateway logs, audit events, optional generic/Langfuse/Braintrust export |
 
-Generated apps install `@flue/sdk` and create a hidden Flue context factory in the Worker wrapper. `app.skill(...)` stays Trellis-only: Trellis hydrates R2 markdown packs, passes Firecrawl/Trellis MCP tools into Flue, opens the session by thread id, and validates returned `data` or JSON text with Zod.
+Generated apps install `@flue/sdk` and create a hidden Flue context factory in the Worker wrapper. `app.skill(...)` stays Trellis-only: Trellis hydrates R2 markdown packs, passes configured research/Trellis MCP tools into Flue, opens the session by thread id, and validates returned `data` or JSON text with Zod.
 
 ## Public API Target
 

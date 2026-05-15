@@ -117,6 +117,14 @@ const CLOUDFLARE_CONNECTIONS = {
     optionalEnv: [],
     capabilities: ["research.search", "research.extract", "browser.run"],
   },
+  browserrun: {
+    id: "browserrun",
+    kind: "research",
+    displayName: "Cloudflare Browser Run",
+    requiredEnv: ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"],
+    optionalEnv: [],
+    capabilities: ["research.extract", "research.scrape", "research.map", "browser.run"],
+  },
   apify: {
     id: "apify",
     kind: "source",
@@ -153,7 +161,7 @@ const CLOUDFLARE_CONNECTIONS = {
 
 type CloudflareConnectionId = keyof typeof CLOUDFLARE_CONNECTIONS;
 const REQUIRED_PROVIDER_IDS = ["attio", "agentmail", "firecrawl"] as const;
-const OPTIONAL_PROVIDER_IDS = ["apify", "prospeo", "langfuse", "braintrust"] as const;
+const OPTIONAL_PROVIDER_IDS = ["browserrun", "apify", "prospeo", "langfuse", "braintrust"] as const;
 type CloudflareSecretReadiness = {
   checked: boolean;
   ok: boolean;
@@ -319,6 +327,7 @@ Examples:
   npm run trellis -- connect attio
   npm run trellis -- connect agentmail
   npm run trellis -- connect firecrawl
+  npm run trellis -- connect browserrun
   npm run trellis -- docs add ./product-docs
   npm run trellis -- doctor
   npm run trellis -- smoke
@@ -329,7 +338,7 @@ Examples:
   npm run trellis -- verify cloudflare --live --url https://your-worker.workers.dev --api-key $TRELLIS_API_KEY
   npm run trellis -- verify cloudflare --live --url https://your-worker.workers.dev --attio-smoke --provider-smoke-token $TRELLIS_PROVIDER_SMOKE_TOKEN
 
-Simple labels stay short in the CLI: attio, agentmail, firecrawl, apify, prospeo, langfuse, braintrust.
+Simple labels stay short in the CLI: attio, agentmail, firecrawl, browserrun, apify, prospeo, langfuse, braintrust.
 
 Init scaffolds the Trellis GTM path by default.
 Cloudflare is the default deploy target.
@@ -359,6 +368,7 @@ async function handleConnectCommand(moduleId: string | undefined) {
   npm run trellis -- connect attio
   npm run trellis -- connect agentmail
   npm run trellis -- connect firecrawl
+  npm run trellis -- connect browserrun
   npm run trellis -- connect apify
   npm run trellis -- connect prospeo
   npm run trellis -- connect langfuse
@@ -2400,6 +2410,8 @@ function renderCloudflareWranglerConfig(workerName: string) {
 
 function renderCloudflareEnvExample() {
   return `# First deploy only needs Cloudflare auth via wrangler login or CLOUDFLARE_API_TOKEN.
+# If you later use Browser Run quick actions as a Trellis research provider,
+# this token also needs Browser Rendering - Edit permission.
 CLOUDFLARE_ACCOUNT_ID=
 CLOUDFLARE_API_TOKEN=
 
