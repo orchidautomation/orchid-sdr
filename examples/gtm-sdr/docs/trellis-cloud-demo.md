@@ -21,11 +21,10 @@ import state from "./state/prospect.map";
 
 export default trellis.agent("common-room-sdr", {
   research: firecrawl(),                    // live company/person research
-  model: "anthropic/claude-sonnet-4.6",      // Cloudflare AI Gateway model route
+  model: "@cf/openai/gpt-oss-20b",           // Cloudflare AI Gateway model route
   state,                                    // D1 tables, indexes, relationships
   knowledge: "knowledge/**/*.md",           // ICP, company, messaging
   skills: "skills/**/SKILL.md",             // qualification, research, copy, reply policy
-  auth: trellis.auth.apiKey(),              // protect operator/webhook routes with an API key
   safety: trellis.safeOutbound(),           // no sends or CRM writes without approval
 }, async (app) => {
   const signal = await app.signal();        // website/LinkedIn form payload
@@ -62,8 +61,6 @@ export default trellis.agent("common-room-sdr", {
 6. The copy skill drafts a short email grounded in the form signal and public evidence.
 7. Trellis writes structured state according to `src/state/prospect.map.ts`.
 8. The workflow returns a 202 with a traceable result; outbound stays blocked until approved.
-
-Set `TRELLIS_API_KEY` as a Worker secret to protect operator routes and generic signal webhooks. Health and safe smoke routes remain public-safe.
 
 ## Threading
 

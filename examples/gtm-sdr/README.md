@@ -1,8 +1,50 @@
-# Trellis Cloud SDR Demo
+# Trellis Cloud BDR Demo
 
-Trellis GTM agent scaffold for a realistic form-fill SDR workflow. The demo uses a Common Room-style GTM company profile, a real Pylon account research target, Firecrawl-backed Trellis research tools, Cloudflare primitives, durable per-lead threads, and approval-gated outbound drafts.
+This repo is the demoable Trellis BDR agent environment.
 
-See `docs/trellis-cloud-demo.md` for the pitch, payload, state map, and workflow walkthrough.
+It shows a Common Room-style BDR agent that turns a Pylon form-fill signal into a qualified prospect, research brief, approval-gated email draft, and CRM update proposal. The point is not "the model can write email." The point is that Trellis gives GTM teams a private, auditable agent runtime with skills, knowledge, tools, traces, approvals, state, provider actions, and portable operator surfaces.
+
+See `docs/bdr-demo-runbook.md` for the complete demo runbook.
+See `docs/live-video-outline.md` for the short video walkthrough and talk track.
+See `docs/trellis-cloud-demo.md` for the original form-fill SDR walkthrough.
+See `docs/notion-command-center-demo.md` for the Notion-style operator demo with Attio readiness.
+See `outputs/pylon-live-run.md` for the current D1-derived demo output.
+
+## Current Demo Story
+
+```text
+Pylon form fill
+  -> Trellis signal
+  -> durable thread
+  -> R2 knowledge and skills
+  -> GPT-5.5 through Cloudflare AI Gateway
+  -> qualification
+  -> account research
+  -> SDR draft
+  -> D1 trace and state
+  -> approval gates for email and CRM
+  -> MCP/Slack/Notion/Linear-ready operator surfaces
+```
+
+Canonical live worker:
+
+```text
+https://trellis-cloud-sdr.brandon-ccf.workers.dev
+```
+
+The seed command generates a fresh signal and trace id each time so Cloudflare Workflow instance ids never collide with an old demo run. The trace id shape is:
+
+```text
+trace_demo_bdr_pylon_<runId>
+```
+
+Current seeded trace:
+
+```text
+trace_demo_bdr_pylon_ready_20260515_1512
+```
+
+See `docs/live-run-result.md` for the current deployed D1 counts, approvals, trace summary, draft, and cost.
 
 ## First Boot
 
@@ -26,10 +68,104 @@ npm run trellis -- connect prospeo    # optional email enrichment
 npm run trellis -- docs add ./product-docs
 ```
 
-Your app code stays Trellis-only in `src/agent.ts`. Durable business state lives in `src/state/prospect.map.ts`: define tables, fields, indexes, and relationships while Trellis keeps D1 migrations private. The generated `src/trellis-runtime.ts` adapter mounts Trellis R2 markdown packs into the virtual sandbox, uses the Cloudflare AI binding through the default AI Gateway, and stores per-thread agent sessions in `TRELLIS_DB`.
+Your app code stays Trellis-only in `src/agent.ts`. Attio field mapping lives in `src/crm/attio.map.ts`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like `qualification.decision`, `qualification.summary`, or `signal.payload.signal`. Durable business state lives in `src/state/prospect.map.ts`: define tables, fields, indexes, and relationships while Trellis keeps D1 migrations private. The generated `src/trellis-runtime.ts` adapter mounts Trellis R2 markdown packs into the virtual sandbox, uses the Cloudflare AI binding through the default AI Gateway, and stores per-thread agent sessions in `TRELLIS_DB`.
 
 Deploy auto-packs the default `knowledge/**/*.md` files, or uses `.trellis/knowledge-pack.json` when you run `trellis docs add <path>`. It also syncs tracked `SKILL.md` files into the `TRELLIS_PACKS` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
 
-`GET /healthz` and `GET /smoke` stay public-safe. Once `TRELLIS_API_KEY` is set as a Worker secret, Trellis protects `/webhooks/signals`, `/mcp/trellis`, `/dashboard`, `/approvals/*`, `/operator/*`, and `/provider-actions/*`; call them with `Authorization: Bearer <key>` or `x-trellis-api-key: <key>`.
+`GET /smoke` is safe and never writes to providers. `POST /smoke/attio` is an explicit provider smoke: it requires `ATTIO_API_KEY` plus `TRELLIS_PROVIDER_SMOKE_TOKEN`, writes a deterministic smoke company/person through the Attio field map, and returns HTTP 200 only when Attio accepts the mapped write.
 
-`POST /smoke/attio` is an explicit provider smoke: it requires `ATTIO_API_KEY` plus `TRELLIS_PROVIDER_SMOKE_TOKEN`, writes a deterministic smoke company/person through the Attio field map, and returns HTTP 200 only when Attio accepts the mapped write.
+## Demo Reset And Seed
+
+Use these when the live demo environment has verifier traces or old test rows.
+
+The reset/seed scripts default to the canonical hosted demo. Set `TRELLIS_DEMO_BASE_URL` and `TRELLIS_DEMO_DB_NAME` when running against your own deployed copy.
+
+Reset the remote D1 runtime tables:
+
+```bash
+TRELLIS_DEMO_RESET_CONFIRM=reset npm run demo:reset-db
+```
+
+Seed the curated BDR signal:
+
+```bash
+npm run demo:seed-bdr
+```
+
+The seed posts `docs/demo-form-payload.json` and should create:
+
+- one Pylon signal
+- one prospect state projection
+- one approval-gated draft
+- two pending approvals: `email.send` and `crm.update`
+- trace events for qualification, research, copy, workflow, draft, approval waiting, and run completion
+
+## Claude Code MCP Demo
+
+Claude Code can connect project-locally to:
+
+```text
+https://trellis-cloud-sdr.brandon-ccf.workers.dev/mcp/trellis
+```
+
+The configured MCP name is `trellis-sdr`. It exposes the SDR-facing surface, not the full Trellis operator control plane:
+
+```text
+describe_agent
+list_leads
+get_lead
+pipeline_stats
+estimate_cost
+list_pending_approvals
+approve_draft
+reject_draft
+edit_and_approve_draft
+list_handoffs
+list_replies
+research_account
+qualify_lead
+draft_email
+```
+
+This list is declared on the agent, so another Trellis agent can expose a different role surface without framework edits:
+
+```ts
+mcp: {
+  name: "trellis-sdr",
+  surface: "sdr",
+  operator: {
+    name: "trellis-operator",
+  },
+  tools: {
+    include: ["list_leads", "get_lead", "approve_draft", "qualify_lead"],
+    exclude: ["edit_and_approve_draft"],
+    skillTools: [
+      {
+        name: "qualify_lead",
+        skill: "icp-qualification",
+        schema: schema.qualification(),
+      },
+    ],
+  },
+}
+```
+
+`trellis-operator` points at `/mcp/operator` and keeps the full runtime control plane separate from the SDR pipeline tools.
+
+Good prompts:
+
+```text
+Use trellis-sdr to describe this BDR agent.
+```
+
+```text
+Use trellis-sdr to show the current leads and pending approvals.
+```
+
+```text
+Use trellis-sdr to estimate the cost of the latest Pylon trace.
+```
+
+```text
+Use trellis-sdr to explain why the Pylon draft is blocked and what a human can approve.
+```

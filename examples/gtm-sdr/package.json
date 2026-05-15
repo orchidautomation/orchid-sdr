@@ -11,6 +11,8 @@
     "deploy": "trellis deploy",
     "smoke": "trellis smoke",
     "verify": "trellis verify cloudflare",
+    "demo:reset-db": "bash scripts/reset-demo-db.sh",
+    "demo:seed-bdr": "bash scripts/seed-demo-bdr.sh",
     "typecheck": "tsc --noEmit",
     "cf:login": "wrangler login",
     "cf:deploy": "wrangler deploy",

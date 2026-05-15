@@ -1,0 +1,14 @@
+DELETE FROM trellis_slack_threads;
+DELETE FROM trellis_operator_controls;
+DELETE FROM trellis_agent_sessions;
+DELETE FROM trellis_provider_actions;
+DELETE FROM trellis_approvals;
+DELETE FROM trellis_drafts;
+DELETE FROM trellis_prospects;
+DELETE FROM trellis_state_records;
+DELETE FROM trellis_workflow_runs;
+DELETE FROM trellis_provider_runs;
+DELETE FROM trellis_audit_events;
+DELETE FROM trellis_trace_events;
+DELETE FROM trellis_smoke_runs;
+DELETE FROM trellis_signals;

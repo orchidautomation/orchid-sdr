@@ -10,8 +10,9 @@
     "enabled": true
   },
   "vars": {
-    "TRELLIS_MODEL": "anthropic/claude-sonnet-4.6",
-    "TRELLIS_SKILL_TIMEOUT_MS": "60000"
+    "TRELLIS_MODEL": "cloudflare/openai/gpt-5.5",
+    "TRELLIS_AI_GATEWAY_ID": "default",
+    "TRELLIS_SKILL_TIMEOUT_MS": "120000"
   },
   "ai": {
     "binding": "AI"
