@@ -31,6 +31,35 @@ export interface TrellisAttioMap {
   people?: TrellisFieldMap;
 }
 
+export type TrellisAgentMailSequenceOperation = "email.send" | "email.reply" | "mail.reply";
+export type TrellisAgentMailSequenceApproval = "required" | "optional" | "none";
+export type TrellisAgentMailSequenceCondition = "always" | "no_reply" | string;
+export type TrellisAgentMailSequenceStopCondition =
+  | "reply.received"
+  | "unsubscribe"
+  | "bounce"
+  | "manual.pause"
+  | "kill_switch"
+  | string;
+
+export interface TrellisAgentMailSequenceStep {
+  id: string;
+  operation: TrellisAgentMailSequenceOperation;
+  draftSkill?: string;
+  delay?: string;
+  condition?: TrellisAgentMailSequenceCondition;
+  approval?: TrellisAgentMailSequenceApproval;
+  subject?: string;
+  bodyText?: string;
+}
+
+export interface TrellisAgentMailSequenceMap {
+  provider?: "agentmail";
+  defaultInboxId?: string;
+  stopOn?: TrellisAgentMailSequenceStopCondition[];
+  steps: TrellisAgentMailSequenceStep[];
+}
+
 export type TrellisStateFieldType = "string" | "number" | "boolean" | "json" | "datetime";
 
 export type TrellisStateFieldDefinition =
@@ -87,8 +116,36 @@ export interface TrellisAuthConfig {
   apiKey?: TrellisApiKeyAuthConfig;
 }
 
+export type TrellisMcpSurface = "operator" | "sdr";
+export type TrellisMcpRole = "viewer" | "operator" | "executor" | "admin";
+export type TrellisMcpToolCategory = "inspection" | "operation" | "provider" | "operator" | "admin";
+
+export interface TrellisMcpToolsConfig {
+  include?: string[];
+  exclude?: string[];
+  aliases?: Record<string, string>;
+  skillTools?: TrellisMcpSkillToolConfig[];
+}
+
+export interface TrellisMcpSkillToolConfig {
+  name: string;
+  skill: string;
+  description?: string;
+  role?: TrellisMcpRole;
+  category?: TrellisMcpToolCategory;
+  schema?: z.ZodTypeAny;
+  inputSchema?: Record<string, unknown>;
+  args?: Record<string, unknown>;
+}
+
 export interface TrellisMcpConfig {
   name?: string;
+  surface?: TrellisMcpSurface;
+  tools?: TrellisMcpToolsConfig;
+  operator?: {
+    name?: string;
+    tools?: TrellisMcpToolsConfig;
+  };
 }
 
 const DEFAULT_TRELLIS_MODEL = "anthropic/claude-sonnet-4.6";
@@ -270,6 +327,7 @@ export interface TrellisCloudflareRuntime {
   worker: {
     fetch(request: Request, env?: Record<string, unknown>): Promise<Response>;
     queue?(batch: TrellisQueueBatch, env?: Record<string, unknown>): Promise<unknown>;
+    scheduled?(controller: unknown, env?: Record<string, unknown>, ctx?: unknown): Promise<unknown>;
   };
 }
 
@@ -2196,6 +2254,9 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
       },
       async queue(batch: TrellisQueueBatch, env?: Record<string, unknown>) {
         return drainTrellisQueue(batch, env, agent.config);
+      },
+      async scheduled(controller: unknown, env?: Record<string, unknown>) {
+        return sweepTrellisSchedules(env, agent.config, controller);
       },
   };
 
@@ -4860,6 +4921,46 @@ async function runFollowUpWorkflow(
     }),
   );
   const sleep = await runWorkflowSleep(input.step, "wait for follow-up window", delay);
+  const sequence = isRecord(followUp.sequence) ? followUp.sequence : {};
+  const stopOn = readStringArray(sequence.stopOn);
+  const stopped = stopOn.length > 0
+    ? await readSequenceStopState(env, input.signal, stopOn)
+    : { stopped: false, reason: null };
+  if (stopped.stopped) {
+    const stoppedRecord = await runWorkflowStep(input.step, "record follow-up stopped", () =>
+      recordWorkflowRun(env, {
+        id: input.runId,
+        traceId: input.traceId,
+        signalId: input.signal.id,
+        workflow: "follow_up",
+        status: "follow_up_stopped",
+        params: {
+          ...input.params,
+          checkpoint: {
+            ...checkpoint,
+            stopped,
+          },
+        },
+      }),
+    );
+
+    return {
+      ok: true,
+      workflow: "follow_up",
+      runId: input.runId,
+      traceId: input.traceId,
+      signalId: input.signal.id,
+      status: "follow_up_stopped",
+      reason: readString(stopped.reason) ?? "sequence_stop_condition",
+      checkpoint,
+      stopped,
+      sleep,
+      persistence: {
+        scheduled,
+        stopped: stoppedRecord,
+      },
+    };
+  }
   const due = await runWorkflowStep(input.step, "record follow-up due", () =>
     recordWorkflowRun(env, {
       id: input.runId,
@@ -4897,6 +4998,363 @@ function defaultFollowUpDelay(env: Record<string, unknown> | undefined) {
   return readString(env?.TRELLIS_FOLLOW_UP_DELAY)
     ?? readString(env?.FOLLOW_UP_DELAY)
     ?? "3 days";
+}
+
+function readAgentMailSequence(provider: TrellisProviderDefinition | undefined): TrellisAgentMailSequenceMap | null {
+  const sequence = provider?.config?.sequence;
+  if (!isRecord(sequence) || !Array.isArray(sequence.steps)) {
+    return null;
+  }
+  const steps: TrellisAgentMailSequenceStep[] = [];
+  for (const rawStep of sequence.steps) {
+    if (!isRecord(rawStep)) {
+      continue;
+    }
+    const id = readString(rawStep.id);
+    const operation = readAgentMailSequenceOperation(rawStep.operation);
+    if (!id || !operation) {
+      continue;
+    }
+    steps.push({
+      id,
+      operation,
+      draftSkill: readString(rawStep.draftSkill),
+      delay: readString(rawStep.delay),
+      condition: readString(rawStep.condition),
+      approval: readAgentMailSequenceApproval(rawStep.approval),
+      subject: readString(rawStep.subject),
+      bodyText: readString(rawStep.bodyText),
+    });
+  }
+
+  if (steps.length === 0) {
+    return null;
+  }
+
+  return {
+    provider: "agentmail",
+    defaultInboxId: readString(sequence.defaultInboxId),
+    stopOn: readStringArray(sequence.stopOn),
+    steps,
+  };
+}
+
+function readAgentMailSequenceOperation(value: unknown): TrellisAgentMailSequenceOperation | undefined {
+  const operation = readString(value);
+  if (operation === "email.send" || operation === "email.reply" || operation === "mail.reply") {
+    return operation;
+  }
+  return undefined;
+}
+
+function readAgentMailSequenceApproval(value: unknown): TrellisAgentMailSequenceApproval | undefined {
+  const approval = readString(value);
+  if (approval === "required" || approval === "optional" || approval === "none") {
+    return approval;
+  }
+  return undefined;
+}
+
+async function resolveAgentMailSequencePlan(
+  env: Record<string, unknown> | undefined,
+  context: TrellisProviderExecutionContext,
+  config: TrellisAgentConfig,
+) {
+  if (context.action.provider !== "agentmail" || !isAgentMailOutboundOperation(context.action.operation)) {
+    return {
+      enabled: false as const,
+      reason: "not_agentmail_outbound",
+    };
+  }
+
+  const sequence = readAgentMailSequence(config.email);
+  if (!sequence) {
+    if (context.action.operation !== "email.send") {
+      return {
+        enabled: false as const,
+        reason: "not_initial_outbound_email",
+      };
+    }
+    const defaultCurrentStep: TrellisAgentMailSequenceStep = {
+      id: "initial",
+      operation: "email.send",
+    };
+    const defaultNextStep: TrellisAgentMailSequenceStep = {
+      id: "draft_follow_up_if_no_reply",
+      operation: "email.reply",
+      delay: defaultFollowUpDelay(env),
+      condition: "no_reply",
+      approval: "required",
+    };
+    return {
+      enabled: true as const,
+      sequence: null,
+      currentStep: defaultCurrentStep,
+      nextStep: defaultNextStep,
+      stopOn: ["reply.received", "unsubscribe", "bounce", "manual.pause", "kill_switch"],
+    };
+  }
+
+  const stopOn = sequence.stopOn?.length
+    ? sequence.stopOn
+    : ["reply.received", "unsubscribe", "bounce", "manual.pause", "kill_switch"];
+  const stopped = await readSequenceStopState(env, context.signal, stopOn);
+  if (stopped.stopped) {
+    return {
+      enabled: false as const,
+      reason: stopped.reason,
+      stopped,
+    };
+  }
+
+  const currentStepId = readFirstString(context.input, context.signal?.payload ?? {}, [
+    "sequenceStepId",
+    "sequenceStep",
+    "stepId",
+  ]);
+  const currentStepIndex = Math.max(0, sequence.steps.findIndex((step) =>
+    currentStepId ? step.id === currentStepId : step.operation === context.action.operation
+  ));
+  const currentStep = sequence.steps[currentStepIndex];
+  const nextStep = sequence.steps[currentStepIndex + 1];
+  if (!currentStep || !nextStep) {
+    return {
+      enabled: false as const,
+      reason: "sequence_complete",
+      sequence,
+      currentStep,
+    };
+  }
+
+  return {
+    enabled: true as const,
+    sequence,
+    currentStep,
+    nextStep,
+    stopOn,
+  };
+}
+
+function isAgentMailOutboundOperation(operation: string) {
+  return operation === "email.send" || operation === "email.reply" || operation === "mail.reply";
+}
+
+function addDurationToIso(start: Date, duration: string | number) {
+  const milliseconds = durationToMilliseconds(duration);
+  if (!milliseconds) {
+    return null;
+  }
+  return new Date(start.getTime() + milliseconds).toISOString();
+}
+
+function durationToMilliseconds(duration: string | number) {
+  if (typeof duration === "number" && Number.isFinite(duration)) {
+    return duration;
+  }
+  const value = readString(duration)?.trim().toLowerCase();
+  if (!value) {
+    return null;
+  }
+  const match = value.match(/^(\d+(?:\.\d+)?)\s*(ms|millisecond|milliseconds|s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours|d|day|days)$/);
+  if (!match?.[1] || !match[2]) {
+    return null;
+  }
+  const amount = Number(match[1]);
+  const unit = match[2];
+  const multiplier = unit.startsWith("ms")
+    ? 1
+    : unit === "s" || unit.startsWith("sec")
+      ? 1_000
+      : unit === "m" || unit.startsWith("min")
+        ? 60_000
+        : unit === "h" || unit === "hr" || unit.startsWith("hour")
+          ? 3_600_000
+          : 86_400_000;
+  return amount * multiplier;
+}
+
+async function readSequenceStopState(
+  env: Record<string, unknown> | undefined,
+  signal: TrellisSignalRecord | TrellisSignal | null,
+  stopOn: string[],
+) {
+  if (!signal) {
+    return {
+      stopped: false,
+      reason: null,
+    };
+  }
+
+  if (stopOn.includes("manual.pause") || stopOn.includes("kill_switch")) {
+    const controls = await readOperatorControls(env, signal);
+    if (controls.blocked) {
+      return {
+        stopped: true,
+        reason: controls.reasons.join("; "),
+        controls,
+      };
+    }
+  }
+
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare || !signal.threadId) {
+    return {
+      stopped: false,
+      reason: null,
+    };
+  }
+
+  await ensureD1Schema(db);
+  const rows = await readD1Rows<{
+    id: string;
+    provider?: string | null;
+    source?: string | null;
+    payloadJson?: string | null;
+    createdAt?: string | null;
+  }>(db, `
+    SELECT
+      id,
+      provider,
+      source,
+      payload_json AS payloadJson,
+      created_at AS createdAt
+    FROM trellis_signals
+    WHERE thread_id = ?
+    ORDER BY created_at DESC
+    LIMIT 25
+  `, [signal.threadId]);
+
+  for (const row of rows) {
+    if (row.id === signal.id) {
+      continue;
+    }
+    const payload = parseRecordJson(row.payloadJson);
+    const source = readString(row.source) ?? readString(payload.source) ?? "";
+    const provider = readString(row.provider) ?? readString(payload.provider) ?? "";
+    const eventType = `${readString(payload.eventType) ?? ""} ${readString(payload.type) ?? ""}`.toLowerCase();
+    const bodyText = `${readString(payload.bodyText) ?? ""} ${readString(payload.text) ?? ""}`.toLowerCase();
+    const isReply = source === "reply.webhook" || provider === "agentmail" || eventType.includes("reply") || eventType.includes("inbound");
+    const isUnsubscribe = eventType.includes("unsubscribe") || bodyText.includes("unsubscribe");
+    const isBounce = eventType.includes("bounce") || eventType.includes("failed_delivery");
+
+    if (stopOn.includes("unsubscribe") && isUnsubscribe) {
+      return {
+        stopped: true,
+        reason: "unsubscribe",
+        signalId: row.id,
+      };
+    }
+    if (stopOn.includes("bounce") && isBounce) {
+      return {
+        stopped: true,
+        reason: "bounce",
+        signalId: row.id,
+      };
+    }
+    if (stopOn.includes("reply.received") && isReply) {
+      return {
+        stopped: true,
+        reason: "reply.received",
+        signalId: row.id,
+      };
+    }
+  }
+
+  return {
+    stopped: false,
+    reason: null,
+  };
+}
+
+async function sweepTrellisSchedules(
+  env: Record<string, unknown> | undefined,
+  _config: TrellisAgentConfig,
+  controller: unknown,
+) {
+  const db = env?.TRELLIS_DB as TrellisD1Database | undefined;
+  if (!db?.prepare) {
+    return {
+      ok: true,
+      enabled: false,
+      reason: "d1_unavailable",
+    };
+  }
+
+  await ensureD1Schema(db);
+  const scheduledTime = isRecord(controller)
+    ? readNumber(controller.scheduledTime) ?? Date.now()
+    : Date.now();
+  const nowIso = new Date(scheduledTime).toISOString();
+  const rows = await readD1Rows<TrellisWorkflowRunRow>(db, `
+    SELECT
+      id,
+      signal_id AS signalId,
+      workflow,
+      status,
+      params_json AS paramsJson,
+      updated_at AS updatedAt
+    FROM trellis_workflow_runs
+    WHERE workflow = ?
+      AND status IN (?, ?)
+    ORDER BY updated_at ASC
+    LIMIT 100
+  `, ["follow_up", "scheduled", "follow_up_scheduled"]);
+
+  let due = 0;
+  let stopped = 0;
+  let skipped = 0;
+  for (const row of rows) {
+    if (row.workflow !== "follow_up" || (row.status !== "scheduled" && row.status !== "follow_up_scheduled")) {
+      skipped += 1;
+      continue;
+    }
+    const params = parseRecordJson(row.paramsJson);
+    const followUp = isRecord(params.followUp) ? params.followUp : {};
+    const dueAt = readString(followUp.dueAt);
+    if (!dueAt || dueAt > nowIso) {
+      skipped += 1;
+      continue;
+    }
+
+    const signal = readWorkflowSignal(isRecord(params.signal) ? params.signal : { id: row.signalId });
+    const sequence = isRecord(followUp.sequence) ? followUp.sequence : {};
+    const stopOn = readStringArray(sequence.stopOn);
+    const stopState = stopOn.length > 0
+      ? await readSequenceStopState(env, signal, stopOn)
+      : { stopped: false, reason: null };
+    const nextStatus = stopState.stopped ? "follow_up_stopped" : "follow_up_due";
+    await recordWorkflowRun(env, {
+      id: row.id,
+      traceId: readString(params.traceId) ?? traceIdForSignal(signal),
+      signalId: row.signalId,
+      workflow: "follow_up",
+      status: nextStatus,
+      params: {
+        ...params,
+        sweptAt: nowIso,
+        sweep: {
+          cron: isRecord(controller) ? readString(controller.cron) ?? null : null,
+          stopState,
+        },
+      },
+    });
+
+    if (stopState.stopped) {
+      stopped += 1;
+    } else {
+      due += 1;
+    }
+  }
+
+  return {
+    ok: true,
+    enabled: true,
+    checked: rows.length,
+    due,
+    stopped,
+    skipped,
+    scheduledTime: nowIso,
+  };
 }
 
 function readWorkflowSignal(value: unknown): TrellisSignal {
@@ -5305,11 +5763,13 @@ async function scheduleFollowUpWorkflow(
   env: Record<string, unknown> | undefined,
   context: TrellisProviderExecutionContext,
   result: TrellisProviderActionExecutionResult,
+  config: TrellisAgentConfig,
 ) {
-  if (context.action.operation !== "email.send") {
+  const sequencePlan = await resolveAgentMailSequencePlan(env, context, config);
+  if (!sequencePlan.enabled) {
     return {
       enabled: false,
-      reason: "not_outbound_email",
+      reason: sequencePlan.reason,
     };
   }
 
@@ -5343,7 +5803,9 @@ async function scheduleFollowUpWorkflow(
   const id = `trellis_${normalizeIdPart(context.action.signalId)}_follow_up_${normalizeIdPart(context.action.id)}`;
   const delay = readString(context.input.followUpDelay)
     ?? readString(context.input.follow_up_delay)
+    ?? sequencePlan.nextStep.delay
     ?? defaultFollowUpDelay(env);
+  const dueAt = addDurationToIso(new Date(), delay);
   const params = {
     workflowRunId: id,
     traceId: context.action.traceId,
@@ -5353,7 +5815,18 @@ async function scheduleFollowUpWorkflow(
     draftId: context.action.draftId ?? null,
     followUp: {
       delay,
-      next: "draft_follow_up_if_no_reply",
+      dueAt,
+      next: sequencePlan.nextStep.id,
+      condition: sequencePlan.nextStep.condition ?? "no_reply",
+      operation: sequencePlan.nextStep.operation,
+      draftSkill: sequencePlan.nextStep.draftSkill ?? null,
+      approval: sequencePlan.nextStep.approval ?? "required",
+      sequence: {
+        provider: "agentmail",
+        currentStepId: sequencePlan.currentStep.id,
+        nextStepId: sequencePlan.nextStep.id,
+        stopOn: sequencePlan.stopOn,
+      },
     },
     execution: {
       externalId: result.externalId ?? null,
@@ -5407,7 +5880,13 @@ async function scheduleFollowUpWorkflow(
       workflow: "follow_up",
       instanceId: readString(record.id) ?? id,
       delay,
-      next: "draft_follow_up_if_no_reply",
+      dueAt,
+      next: sequencePlan.nextStep.id,
+      sequence: {
+        currentStepId: sequencePlan.currentStep.id,
+        nextStepId: sequencePlan.nextStep.id,
+        stopOn: sequencePlan.stopOn,
+      },
       persistence,
     };
   } catch (error) {
@@ -5896,7 +6375,7 @@ async function executeProviderAction(
       actor: execution.actor ?? "trellis-provider-executor",
       reason: execution.reason ?? `Executed ${action.operation} through ${action.provider}.`,
     });
-    const followUpWorkflow = await scheduleFollowUpWorkflow(env, context, result).catch((followUpError: unknown) => ({
+    const followUpWorkflow = await scheduleFollowUpWorkflow(env, context, result, config).catch((followUpError: unknown) => ({
       enabled: true,
       ok: false,
       workflow: "follow_up",
@@ -6319,14 +6798,14 @@ async function dispatchProviderAction(
   }
 
   if (context.action.provider === "agentmail" && context.action.operation === "email.send") {
-    return executeAgentMailSend(env, context);
+    return executeAgentMailSend(env, context, config);
   }
 
   if (
     context.action.provider === "agentmail"
     && (context.action.operation === "email.reply" || context.action.operation === "mail.reply")
   ) {
-    return executeAgentMailReply(env, context);
+    return executeAgentMailReply(env, context, config);
   }
 
   if (
@@ -6434,9 +6913,25 @@ function addHeaderIfString(headers: Record<string, string>, name: string, value:
   }
 }
 
+function resolveAgentMailDefaultInboxId(
+  env: Record<string, unknown> | undefined,
+  config: TrellisAgentConfig,
+) {
+  const sequence = readAgentMailSequence(config.email);
+  const configured = sequence?.defaultInboxId ?? readString(env?.AGENTMAIL_INBOX_ID);
+  if (!configured) {
+    return undefined;
+  }
+  if (configured.startsWith("env:")) {
+    return readString(env?.[configured.slice("env:".length)]);
+  }
+  return configured;
+}
+
 async function executeAgentMailSend(
   env: Record<string, unknown> | undefined,
   context: TrellisProviderExecutionContext,
+  config: TrellisAgentConfig,
 ): Promise<TrellisProviderActionExecutionResult> {
   const apiKey = readString(env?.AGENTMAIL_API_KEY);
   if (!apiKey) {
@@ -6445,7 +6940,8 @@ async function executeAgentMailSend(
 
   const signalPayload = context.signal?.payload ?? {};
   const input = context.input;
-  const inboxId = readFirstString(input, signalPayload, ["inboxId", "providerInboxId", "senderProviderInboxId"]);
+  const inboxId = readFirstString(input, signalPayload, ["inboxId", "providerInboxId", "senderProviderInboxId"])
+    ?? resolveAgentMailDefaultInboxId(env, config);
   const to = readFirstString(input, signalPayload, ["to", "recipient", "recipientEmail", "email"]);
   const subject = readFirstString(input, signalPayload, ["subject"]) ?? "Trellis outreach";
   const bodyText = readFirstString(input, signalPayload, ["bodyText", "text", "body"]) ?? context.draft?.body;
@@ -6497,6 +6993,7 @@ async function executeAgentMailSend(
 async function executeAgentMailReply(
   env: Record<string, unknown> | undefined,
   context: TrellisProviderExecutionContext,
+  config: TrellisAgentConfig,
 ): Promise<TrellisProviderActionExecutionResult> {
   const apiKey = readString(env?.AGENTMAIL_API_KEY);
   if (!apiKey) {
@@ -6505,7 +7002,8 @@ async function executeAgentMailReply(
 
   const signalPayload = context.signal?.payload ?? {};
   const input = context.input;
-  const inboxId = readFirstString(input, signalPayload, ["inboxId", "providerInboxId", "senderProviderInboxId"]);
+  const inboxId = readFirstString(input, signalPayload, ["inboxId", "providerInboxId", "senderProviderInboxId"])
+    ?? resolveAgentMailDefaultInboxId(env, config);
   const messageId = readFirstString(input, signalPayload, [
     "messageId",
     "providerMessageId",

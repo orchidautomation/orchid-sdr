@@ -2014,10 +2014,10 @@ describe("@trellis/gtm API", () => {
           workflow: "follow_up",
           providerActionId: "provider_action_approval_draft_sig_execute_email_send",
           draftId: "draft_sig_execute",
-          followUp: {
+          followUp: expect.objectContaining({
             delay: "2 days",
             next: "draft_follow_up_if_no_reply",
-          },
+          }),
           execution: {
             externalId: "msg_agentmail_123",
             externalThreadId: "thread_agentmail_123",
@@ -2071,6 +2071,159 @@ describe("@trellis/gtm API", () => {
           },
         },
       });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("uses AgentMail sequence maps for default inboxes, follow-up steps, and cron sweeps", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: agentmail({
+        sequence: {
+          provider: "agentmail",
+          defaultInboxId: "env:AGENTMAIL_INBOX_ID",
+          stopOn: ["reply.received", "unsubscribe", "bounce", "manual.pause", "kill_switch"],
+          steps: [
+            {
+              id: "initial",
+              operation: "email.send",
+              approval: "required",
+            },
+            {
+              id: "follow_up_1",
+              operation: "email.reply",
+              delay: "1 ms",
+              condition: "no_reply",
+              approval: "required",
+            },
+          ],
+        },
+      }),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound({ noSends: false }),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    const fakeQueue = createFakeQueue();
+    const fakeWorkflow = {
+      create: vi.fn(async (options: Record<string, unknown>) => ({ id: options.id })),
+    };
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({
+        id: "msg_sequence_123",
+        thread_id: "thread_sequence_123",
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const env = {
+        TRELLIS_DB: fakeD1,
+        TRELLIS_EVENTS: fakeQueue,
+        PROSPECT_WORKFLOW: fakeWorkflow,
+        AGENTMAIL_API_KEY: "am_sequence",
+        AGENTMAIL_BASE_URL: "https://agentmail.test",
+        AGENTMAIL_INBOX_ID: "inbox_sequence",
+      };
+
+      await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+        method: "POST",
+        body: JSON.stringify({
+          id: "sig_sequence",
+          workspaceId: "wrk_sequence",
+          threadId: "thr_sequence",
+          provider: "test",
+          source: "unit.test",
+          to: "sequence-buyer@example.com",
+          subject: "Sequence hello",
+        }),
+      }), env);
+      await runtime.worker.fetch(new Request("https://example.com/approvals/approval_draft_sig_sequence_email_send/approve", {
+        method: "POST",
+        body: JSON.stringify({
+          signalId: "sig_sequence",
+          draftId: "draft_sig_sequence",
+          action: "email.send",
+          actor: "operator@example.com",
+        }),
+      }), env);
+
+      const execution = await runtime.worker.fetch(new Request("https://example.com/provider-actions/provider_action_approval_draft_sig_sequence_email_send/execute", {
+        method: "POST",
+        body: JSON.stringify({
+          actor: "agentmail-worker",
+        }),
+      }), env);
+      const body = await execution.json();
+
+      expect(execution.status).toBe(200);
+      expect(body).toMatchObject({
+        ok: true,
+        followUpWorkflow: {
+          enabled: true,
+          ok: true,
+          workflow: "follow_up",
+          next: "follow_up_1",
+          delay: "1 ms",
+          sequence: {
+            currentStepId: "initial",
+            nextStepId: "follow_up_1",
+            stopOn: ["reply.received", "unsubscribe", "bounce", "manual.pause", "kill_switch"],
+          },
+        },
+      });
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string | URL | Request, RequestInit];
+      expect(String(url)).toBe("https://agentmail.test/v0/inboxes/inbox_sequence/messages/send");
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        to: ["sequence-buyer@example.com"],
+        subject: "Sequence hello",
+      });
+      expect(fakeWorkflow.create).toHaveBeenCalledWith({
+        id: "trellis_sig_sequence_follow_up_provider_action_approval_draft_sig_sequence_email_send",
+        params: expect.objectContaining({
+          followUp: expect.objectContaining({
+            next: "follow_up_1",
+            operation: "email.reply",
+            condition: "no_reply",
+            sequence: {
+              provider: "agentmail",
+              currentStepId: "initial",
+              nextStepId: "follow_up_1",
+              stopOn: ["reply.received", "unsubscribe", "bounce", "manual.pause", "kill_switch"],
+            },
+          }),
+        }),
+      });
+
+      const sweep = await runtime.worker.scheduled?.({
+        scheduledTime: Date.now() + 1_000,
+        cron: "*/15 * * * *",
+      }, env);
+      expect(sweep).toMatchObject({
+        ok: true,
+        enabled: true,
+        checked: 1,
+        due: 1,
+      });
+      expect(fakeD1.statements.some((statement) =>
+        statement.sql.includes("INSERT OR REPLACE INTO trellis_workflow_runs")
+          && statement.bindings[2] === "follow_up"
+          && statement.bindings[3] === "follow_up_due",
+      )).toBe(true);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -3873,6 +4026,17 @@ function createFakeD1() {
                 slackThreads,
                 smokeRuns,
               }).filter((row) => {
+                if (normalized.includes("FROM trellis_workflow_runs") && normalized.includes("WHERE workflow = ?")) {
+                  if (row.workflow !== bindings[0]) {
+                    return false;
+                  }
+                  if (normalized.includes("status IN (?, ?)")) {
+                    return row.status === bindings[1] || row.status === bindings[2];
+                  }
+                }
+                if (normalized.includes("FROM trellis_signals") && normalized.includes("WHERE thread_id = ?")) {
+                  return row.threadId === bindings[0];
+                }
                 if (!normalized.includes("FROM trellis_trace_events") || !normalized.includes("WHERE trace_id = ?")) {
                   return true;
                 }

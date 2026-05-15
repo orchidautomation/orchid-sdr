@@ -26,4 +26,7 @@ export default {
   queue(batch: MessageBatch<unknown>, env: Record<string, unknown>) {
     return runtime.worker.queue?.(batch as never, withTrellisRuntime(env));
   },
+  scheduled(controller: ScheduledController, env: Record<string, unknown>, ctx: ExecutionContext) {
+    ctx.waitUntil(runtime.worker.scheduled?.(controller, withTrellisRuntime(env), ctx) ?? Promise.resolve());
+  },
 };

@@ -10,16 +10,20 @@ This demo shows how a GTM team can turn an opted-in form fill into a researched,
 - Runtime: Cloudflare Worker, D1, R2, Queue, Workflow, AI Gateway, and Trellis virtual sandbox.
 - Research tools: Trellis `research.search`, `research.extract`, and `research.map`, backed by Firecrawl.
 - State: `src/state/prospect.map.ts` defines accounts, people, prospects, drafts, signals, indexes, and relationships.
+- Email sequence: `src/email/agentmail.sequence.map.ts` defines AgentMail steps, delays, and stop rules.
 - Safety: outbound is draft-only until an approval gate allows a provider action.
 
 ## 25-Line Pitch Example
 
 ```ts
 import { trellis, schema } from "@trellis/gtm";
-import { firecrawl } from "@trellis/providers";
+import { agentmail, attio, firecrawl } from "@trellis/providers";
+import agentmailSequence from "./email/agentmail.sequence.map";
 import state from "./state/prospect.map";
 
 export default trellis.agent("common-room-sdr", {
+  crm: attio(),
+  email: agentmail({ sequence: agentmailSequence }),
   research: firecrawl(),                    // live company/person research
   model: "@cf/openai/gpt-oss-20b",           // Cloudflare AI Gateway model route
   state,                                    // D1 tables, indexes, relationships
@@ -50,7 +54,12 @@ export default trellis.agent("common-room-sdr", {
     schema: schema.outboundDraft(),          // approval-gated email draft
   });
 
-  return app.workflow("prospect").start({ signal, qualification, research, draft });
+  const approvalRequiredFor = [
+    // "email.send",
+    "crm.update",
+  ];
+
+  return app.workflow("prospect").start({ signal, qualification, research, draft, approvalRequiredFor });
 });
 ```
 
@@ -64,6 +73,7 @@ export default trellis.agent("common-room-sdr", {
 6. The copy skill drafts a short email grounded in the form signal and public evidence.
 7. Trellis writes structured state according to `src/state/prospect.map.ts`.
 8. The workflow returns a 202 with a traceable result; outbound stays blocked until approved.
+9. If email sending is enabled later, AgentMail follow-ups use the sequence map and the 15-minute cron sweeper repairs overdue D1 follow-up rows.
 
 ## Threading
 

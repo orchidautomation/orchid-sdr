@@ -68,9 +68,31 @@ npm run trellis -- connect firecrawl
 npm run docs:add
 ```
 
-Your app code stays Trellis-only in `src/agent.ts`. Attio field mapping lives in `src/crm/attio.map.ts`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like `qualification.decision`, `qualification.summary`, or `signal.payload.signal`. Durable business state lives in `src/state/prospect.map.ts`: define tables, fields, indexes, and relationships while Trellis keeps D1 migrations private. The generated `src/trellis-runtime.ts` adapter mounts Trellis markdown packs into the virtual sandbox, uses the configured model route, and stores per-thread agent sessions in `TRELLIS_DB`.
+Your app code stays Trellis-only in `src/agent.ts`. Attio field mapping lives in `src/crm/attio.map.ts`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like `qualification.decision`, `qualification.summary`, or `signal.payload.signal`. AgentMail sequencing lives in `src/email/agentmail.sequence.map.ts`: define the initial send, follow-up reply steps, delays, approval policy, and stop rules while Trellis keeps provider actions approval-gated and traceable. Durable business state lives in `src/state/prospect.map.ts`: define tables, fields, indexes, and relationships while Trellis keeps D1 migrations private. The generated `src/trellis-runtime.ts` adapter mounts Trellis markdown packs into the virtual sandbox, uses the configured model route, and stores per-thread agent sessions in `TRELLIS_DB`.
 
-Deploy auto-packs the default `knowledge/**/*.md` files, or uses `.trellis/knowledge-pack.json` when you run `trellis docs add <path>`. It also syncs tracked `skills/**/SKILL.md` files into the `TRELLIS_PACKS` R2 bucket. Email sending is intentionally commented out in this demo; CRM writes still require approval before execution.
+Deploy auto-packs the default `knowledge/**/*.md` files, or uses `.trellis/knowledge-pack.json` when you run `trellis docs add <path>`. It also syncs tracked `skills/**/SKILL.md` files into the `TRELLIS_PACKS` R2 bucket. AgentMail is mounted with a sequence map, but `email.send` is intentionally omitted from the current demo approval list; CRM writes still require approval before execution.
+
+## AgentMail Sequence Map
+
+The sequence map is the email-motion equivalent of the Attio and state maps:
+
+```text
+src/email/agentmail.sequence.map.ts
+```
+
+It declares:
+
+- `defaultInboxId`: usually `env:AGENTMAIL_INBOX_ID`
+- `stopOn`: reply, unsubscribe, bounce, manual pause, and kill switch conditions
+- `steps`: initial send and follow-up reply steps with delays and approval policy
+
+Cloudflare Workflows handle per-lead waits. The Worker also has a cron trigger in `wrangler.jsonc`:
+
+```text
+*/15 * * * *
+```
+
+That scheduled handler sweeps D1 for overdue follow-up workflow rows and marks them due or stopped. This gives the sequence system both durable sleeps and a repair loop.
 
 `GET /smoke` is safe and never writes to providers. `POST /smoke/attio` is an explicit provider smoke: it requires `ATTIO_API_KEY` plus `TRELLIS_PROVIDER_SMOKE_TOKEN`, writes a deterministic smoke company/person through the Attio field map, and returns HTTP 200 only when Attio accepts the mapped write.
 

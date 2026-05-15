@@ -1,4 +1,4 @@
-import { trellis, type TrellisAttioMap, type TrellisProviderDefinition } from "@trellis/gtm";
+import { trellis, type TrellisAgentMailSequenceMap, type TrellisAttioMap, type TrellisProviderDefinition } from "@trellis/gtm";
 
 export function attio(options: { map?: TrellisAttioMap } = {}): TrellisProviderDefinition {
   return trellis.provider({
@@ -16,13 +16,17 @@ export function attio(options: { map?: TrellisAttioMap } = {}): TrellisProviderD
   });
 }
 
-export function agentmail(): TrellisProviderDefinition {
+export function agentmail(options: { sequence?: TrellisAgentMailSequenceMap } = {}): TrellisProviderDefinition {
   return trellis.provider({
     id: "agentmail",
     kind: "email",
     displayName: "AgentMail",
+    config: {
+      sequence: options.sequence,
+    },
     env: [
       { name: "AGENTMAIL_API_KEY", description: "AgentMail API key used for outbound and replies." },
+      { name: "AGENTMAIL_INBOX_ID", description: "Default AgentMail inbox id for sequence sends and replies." },
       { name: "AGENTMAIL_WEBHOOK_SECRET", description: "Svix webhook secret for inbound events." },
     ],
     capabilities: ["mail.send", "mail.reply", "mail.preview", "reply.webhook"],

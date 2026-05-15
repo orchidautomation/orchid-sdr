@@ -1,12 +1,14 @@
 import { trellis, schema } from "@trellis/gtm";
-import { attio, firecrawl } from "@trellis/providers";
+import { agentmail, attio, firecrawl } from "@trellis/providers";
 import attioMap from "./crm/attio.map";
+import agentmailSequenceMap from "./email/agentmail.sequence.map";
 import { sdrMcpSurface } from "./mcp/sdr-surface";
 import stateMap from "./state/prospect.map";
 
 export default trellis.agent("common-room-bdr", {
   // Providers are mounted once, then used by skills and workflows through Trellis.
   crm: attio({ map: attioMap }),
+  email: agentmail({ sequence: agentmailSequenceMap }),
   research: firecrawl(),
 
   // The model, knowledge pack, skill pack, state map, and safety gates define
@@ -16,8 +18,9 @@ export default trellis.agent("common-room-bdr", {
   mcp: sdrMcpSurface,
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
-  // Demo mode intentionally omits email sending. CRM is still approval-gated,
-  // but no-send is lifted so approving crm.update can execute the Attio write.
+  // Demo mode keeps AgentMail configured for sequence demos, but the live
+  // walkthrough below omits email.send from the approval list so the current
+  // demo can focus on approving one CRM update.
   safety: trellis.safeOutbound({
     noSends: false,
     requireApproval: ["crm.update"],
