@@ -2,7 +2,7 @@
 
 This example is a demoable Trellis SDR agent environment.
 
-It shows a Common Room-style SDR agent that turns a Pylon form-fill signal into a qualified prospect, research brief, approval-gated email draft, and CRM update proposal. The point is not "the model can write email." The point is that Trellis gives GTM teams a private, auditable agent runtime with skills, knowledge, tools, traces, approvals, state, provider actions, and portable operator surfaces.
+It shows a Common Room-style SDR agent that turns a Pylon form-fill signal into a qualified prospect, research brief, email draft, and approval-gated CRM update proposal. The point is not "the model can write email." The point is that Trellis gives GTM teams a private, auditable agent runtime with skills, knowledge, tools, traces, approvals, state, provider actions, and portable operator surfaces.
 
 See `reference/diagnostics/bdr-demo-runbook.md` for the complete demo runbook.
 See `reference/diagnostics/live-video-outline.md` for the short video walkthrough and talk track.
@@ -31,7 +31,7 @@ Pylon form fill
   -> account research
   -> SDR draft
   -> D1 trace and state
-  -> approval gates for no-send email and CRM
+  -> approval gate for the CRM update
   -> MCP-ready operator surfaces
 ```
 
@@ -70,7 +70,7 @@ npm run docs:add
 
 Your app code stays Trellis-only in `src/agent.ts`. Attio field mapping lives in `src/crm/attio.map.ts`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like `qualification.decision`, `qualification.summary`, or `signal.payload.signal`. Durable business state lives in `src/state/prospect.map.ts`: define tables, fields, indexes, and relationships while Trellis keeps D1 migrations private. The generated `src/trellis-runtime.ts` adapter mounts Trellis markdown packs into the virtual sandbox, uses the configured model route, and stores per-thread agent sessions in `TRELLIS_DB`.
 
-Deploy auto-packs the default `knowledge/**/*.md` files, or uses `.trellis/knowledge-pack.json` when you run `trellis docs add <path>`. It also syncs tracked `skills/**/SKILL.md` files into the `TRELLIS_PACKS` R2 bucket. Outbound writes stay in no-send mode until approval gates are configured.
+Deploy auto-packs the default `knowledge/**/*.md` files, or uses `.trellis/knowledge-pack.json` when you run `trellis docs add <path>`. It also syncs tracked `skills/**/SKILL.md` files into the `TRELLIS_PACKS` R2 bucket. Email sending is intentionally commented out in this demo; CRM writes still require approval before execution.
 
 `GET /smoke` is safe and never writes to providers. `POST /smoke/attio` is an explicit provider smoke: it requires `ATTIO_API_KEY` plus `TRELLIS_PROVIDER_SMOKE_TOKEN`, writes a deterministic smoke company/person through the Attio field map, and returns HTTP 200 only when Attio accepts the mapped write.
 
@@ -96,8 +96,8 @@ The seed posts `reference/inputs/demo-form-payload.json` and should create:
 
 - one Pylon signal
 - one prospect state projection
-- one approval-gated draft
-- two pending approvals: `email.send` and `crm.update`
+- one generated email draft
+- one pending approval: `crm.update`
 - trace events for qualification, research, copy, workflow, draft, approval waiting, and run completion
 
 ## Claude Code MCP Demo

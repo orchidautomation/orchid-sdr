@@ -14,7 +14,7 @@ Pylon form fill
   -> account research
   -> SDR draft
   -> D1 trace and state
-  -> approval gates for email and CRM
+  -> approval gate for the CRM update
   -> MCP-ready operator surfaces
 ```
 
@@ -28,7 +28,7 @@ Pylon form fill
 | Cloudflare execution | Worker, D1, R2, Queue, Workflow, Workers AI/Gateway, Browser binding. | The demo is deployed production-style instead of running only on a laptop. |
 | Observability | `trellis_trace_events` plus `/events`, `/events/stream`, and SDR run views. | Every step can be inspected and replayed. |
 | Cost visibility | `estimate_cost` on the SDR MCP and `GET /traces/:traceId/cost`. | A team can see what the model run cost. |
-| Human gating | Email and CRM actions become approvals and provider actions. | The agent drafts and queues, but does not send or mutate external systems without a human. |
+| Human gating | CRM actions become approvals and provider actions. | The agent drafts email for review, but the live approval demo is the Attio CRM update. |
 | Portability | MCP works in Claude Code and other compatible clients. | The same agent can be operated from role-specific surfaces without changing the runtime. |
 
 ## Demo Environment Contract
@@ -101,7 +101,7 @@ Expected result:
 - one signal
 - one prospect
 - one draft
-- two pending approvals: `email.send` and `crm.update`
+- one pending approval: `crm.update`
 - trace events for signal, provider run, skills, workflow, draft, approvals, and run completion
 
 ## Verify The Demo State
@@ -133,7 +133,7 @@ Add `Authorization: Bearer $TRELLIS_API_KEY` if the deployed route is protected.
 2. Ask `trellis-sdr` to describe the agent. It should identify Cloudflare runtime, D1, R2 knowledge, skills, safety rails, and providers.
 3. Ask whether there are leads. It should show the curated Pylon BDR signal, not verifier/test rows.
 4. Ask for the trace. Walk through `signal.accepted -> skill.started/completed -> workflow.started -> draft.created -> approval.waiting -> run.completed`.
-5. Ask for pending approvals. Explain that outbound and CRM writes are gated.
+5. Ask for pending approvals. Explain that email sending is commented out for the demo and the CRM write is gated.
 6. Ask for cost. Show that model usage comes from D1 trace events, not a separate vendor dashboard.
 7. Explain surfaces: `trellis-sdr` is the SDR role surface and `trellis-operator` is the platform surface. The surface is not the runtime; the Trellis agent is.
 
@@ -146,6 +146,6 @@ The point is not that Trellis can draft an email. The point is that a GTM team c
 - model/tool orchestration in a durable session
 - Cloudflare runtime primitives
 - queryable D1 state
-- approval gates before side effects
+- approval gates before CRM side effects
 - traces, costs, and replayable operator controls
 - one agent usable from MCP, dashboard, or API surfaces

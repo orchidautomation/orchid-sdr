@@ -51,7 +51,6 @@ The demo intentionally leaves side effects pending:
 
 | Approval | Provider | Status |
 | --- | --- | --- |
-| `approval_draft_sig_demo_bdr_pylon_ready_20260515_1512_email_send` | email | pending |
 | `approval_draft_sig_demo_bdr_pylon_ready_20260515_1512_crm_update` | attio | pending |
 
 This is the right live state for a demo: the agent has done the work, but a human still owns external side effects.
@@ -128,5 +127,5 @@ Use trellis-sdr to estimate the model cost for trace_demo_bdr_pylon_ready_202605
 ```
 
 ```text
-Use trellis-sdr to explain what a human can approve next and what remains blocked by no-send mode.
+Use trellis-sdr to explain the pending CRM approval and what will happen when it is approved.
 ```

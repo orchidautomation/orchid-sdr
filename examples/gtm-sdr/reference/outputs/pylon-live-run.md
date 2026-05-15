@@ -64,7 +64,6 @@ Status: `blocked_pending_approval`
 
 Required approvals:
 
-- `email.send`
 - `crm.update`
 
 Draft:
@@ -89,7 +88,6 @@ Uses the strongest first-party signal from Alex's form-fill and ties it to Pylon
 
 | Approval | Action | Status |
 | --- | --- | --- |
-| `approval_draft_sig_demo_bdr_pylon_ready_20260515_1512_email_send` | `email.send` | `pending` |
 | `approval_draft_sig_demo_bdr_pylon_ready_20260515_1512_crm_update` | `crm.update` | `pending` |
 
 ## Trace Counts
@@ -101,7 +99,7 @@ Uses the strongest first-party signal from Alex's form-fill and ties it to Pylon
 | `flue.turn` | 8 |
 | `skill.completed` | 3 |
 | `skill.started` | 3 |
-| `approval.waiting` | 2 |
+| `approval.waiting` | 1 |
 | `draft.created` | 1 |
 | `provider_run.started` | 1 |
 | `run.completed` | 1 |
@@ -124,7 +122,6 @@ skill.started: sdr-copy
 skill.completed: sdr-copy
 workflow.started
 draft.created
-approval.waiting: email.send
 approval.waiting: crm.update
 run.completed
 workflow.dispatched

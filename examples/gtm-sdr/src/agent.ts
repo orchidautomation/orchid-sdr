@@ -16,7 +16,12 @@ export default trellis.agent("common-room-bdr", {
   mcp: sdrMcpSurface,
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
-  safety: trellis.safeOutbound(),
+  // Demo mode intentionally omits email sending. CRM is still approval-gated,
+  // but no-send is lifted so approving crm.update can execute the Attio write.
+  safety: trellis.safeOutbound({
+    noSends: false,
+    requireApproval: ["crm.update"],
+  }),
 }, async (app) => {
   // Every webhook, API call, or operator event enters as a normalized signal.
   // Context hydrates the signal with mounted knowledge, skills, thread history,
@@ -55,15 +60,20 @@ export default trellis.agent("common-room-bdr", {
     schema: schema.researchBrief(),
   });
 
-  // Copy creates a draft only. Trellis stores it as blocked until approval
-  // because no-send and provider-action gates are active.
+  // Copy creates a draft only. This demo shows approval on CRM update, so
+  // email.send stays commented out below instead of becoming an approval.
   const draft = await app.skill("sdr-copy", {
     context,
     args: { qualification, research },
     schema: schema.outboundDraft(),
   });
 
+  const approvalRequiredFor = [
+    // "email.send",
+    "crm.update",
+  ];
+
   // The durable workflow persists state, trace events, draft approvals, and
   // any queued provider actions while keeping the lead's thread resumable.
-  return app.workflow("prospect").start({ signal, qualification, research, draft });
+  return app.workflow("prospect").start({ signal, qualification, research, draft, approvalRequiredFor });
 });

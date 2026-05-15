@@ -1508,6 +1508,11 @@ function readWorkflowDraftBody(name: string, workflowInput: TrellisWorkflowStart
 }
 
 function approvalActionsForWorkflow(name: string, workflowInput: TrellisWorkflowStartInput) {
+  const explicitApprovalActions = readStringArray(workflowInput.approvalRequiredFor);
+  if (explicitApprovalActions.length > 0) {
+    return explicitApprovalActions;
+  }
+
   if (name !== "reply") {
     return ["email.send", "crm.update"];
   }

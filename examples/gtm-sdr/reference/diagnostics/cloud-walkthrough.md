@@ -25,7 +25,10 @@ export default trellis.agent("common-room-sdr", {
   state,                                    // D1 tables, indexes, relationships
   knowledge: "knowledge/**/*.md",           // ICP, company, messaging
   skills: "skills/**/SKILL.md",             // qualification, research, copy, reply policy
-  safety: trellis.safeOutbound(),           // no sends or CRM writes without approval
+  safety: trellis.safeOutbound({
+    noSends: false,                         // CRM can execute after approval
+    requireApproval: ["crm.update"],        // email.send is intentionally omitted
+  }),
 }, async (app) => {
   const signal = await app.signal();        // website/LinkedIn form payload
   const context = await app.context(signal); // payload + knowledge + date + thread
