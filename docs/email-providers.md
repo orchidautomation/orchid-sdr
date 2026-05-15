@@ -6,22 +6,28 @@ Which email provider is the best fit for Trellis?
 
 Short answer:
 
-- `Cloudflare Email Service` is the best default fit when the agent is running on Cloudflare Workers and you want the platform-native path.
+- `email` should be the default Trellis email provider surface.
 - `AgentMail` is the best default fit for Trellis's architecture.
 
-That is not the same as saying it is universally the best email provider. It means it is the best match for the way Trellis already works:
+That does not mean every underlying transport is equal. It means Trellis should expose one stable email contract while swapping implementations underneath it.
+
+For the current Cloudflare deployment path, the default `email` provider is backed by Cloudflare Email Service.
+
+What Trellis needs from that contract:
 
 - campaign-scoped sender identities
-- inbox provisioning
-- inbound webhook wake-ups
+- outbound send
+- inbound wake-ups
 - thread continuity
-- agent-owned mailboxes instead of human-owned mailboxes
+- reply handling
+- rejection / suppression awareness
+- room for richer inbox semantics when a provider supports them
 
 ## Recommendation
 
-If you are deploying the agent on Cloudflare Workers and want the fewest moving parts, use:
+If you are deploying on Cloudflare Workers and want the fewest moving parts, use:
 
-1. `Cloudflare Email Service`
+1. Trellis `email` backed by `Cloudflare Email Service`
 2. `AgentMail`
 
 If you want Trellis to run as an agent-native outbound system, use:
@@ -64,15 +70,46 @@ AgentMail is built around those ideas:
 
 That makes it a strong fit for agent-native SDR workflows rather than just generic application email.
 
-## Why Cloudflare Email Service Now Fits Cloudflare Deployments
+## Why The Default `email` Provider Fits Cloudflare Deployments
 
 When the agent already runs inside Cloudflare Workers, the native email path has a different advantage:
 
 - outbound send runs through a Worker binding instead of a separate email API
 - inbound replies arrive through the Worker `email()` handler
-- no extra webhook signing or third-party inbox credential is required just to get send-plus-reply working
+- no extra inbox API credential is required just to get send-plus-reply working
 
 That makes it the best default for Cloudflare-native Trellis deployments, even though AgentMail still has the richer inbox-control-plane story.
+
+## Trellis Capability Matrix
+
+This is the contract Trellis should stabilize around.
+
+| Trellis capability | Default `email` on Cloudflare | `AgentMail` | Notes |
+|---|---|---|---|
+| `mail.send` | Yes | Yes | Cloudflare uses `env.EMAIL.send()`. AgentMail uses inbox send APIs. |
+| `mail.reply` | Yes | Yes | Cloudflare supports reply semantics through `message.reply()` on inbound mail and standard header threading on outbound replies. AgentMail exposes explicit reply APIs. |
+| `reply.webhook` | Yes | Yes | Cloudflare uses the Worker `email()` handler / Email Workers routing. AgentMail uses webhooks and event delivery. |
+| Thread continuity | Partial native, Trellis-managed | Native + provider-managed | Cloudflare exposes `Message-ID`, `In-Reply-To`, and `References`; Trellis must persist and map them. AgentMail manages threads directly. |
+| Forward inbound mail | Yes | Yes | Cloudflare has `message.forward()`. AgentMail inboxes can forward mail. |
+| Reject inbound mail | Yes | Provider-specific | Cloudflare has `message.setReject()`. AgentMail typically models this at inbox/workflow level rather than SMTP reject inside Trellis. |
+| Bounce / suppression signal | Partial | Stronger | Cloudflare documents suppression and delivery errors; Trellis should normalize these as lifecycle signals. AgentMail has richer inbox/event abstractions. |
+| Inbox provisioning | No | Yes | This is the main capability gap. Cloudflare is transport/routing native, not inbox-control-plane native. |
+| Org-wide thread inspection | No | Yes | AgentMail exposes thread APIs across inboxes. |
+| Scheduled send / inbox ops | Limited | Yes | Keep these out of the core Trellis email contract unless multiple providers can satisfy them. |
+
+## Cloudflare Notes
+
+Cloudflare docs confirm the current native surface includes:
+
+- outbound send via `send_email` bindings and `env.EMAIL.send()`
+- inbound processing through Worker `email(message, env, ctx)`
+- `message.forward()`
+- `message.reply()`
+- `message.setReject()`
+- raw MIME/header access for parsing subject, `Message-ID`, `In-Reply-To`, and `References`
+- send-time suppression and delivery errors such as recipient suppression, sender verification, rate limits, and delivery failure
+
+That is enough for Trellis to standardize `send`, `reply`, inbound wake-up, basic threading, and rejection semantics on the default path.
 
 ## Comparison Matrix
 

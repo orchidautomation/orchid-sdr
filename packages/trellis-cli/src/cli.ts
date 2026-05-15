@@ -102,14 +102,14 @@ const CLOUDFLARE_CONNECTIONS = {
     capabilities: ["crm.syncProspect", "crm.stagePromotion"],
     sourceMatcher: "attio",
   },
-  "cloudflare-email": {
-    id: "cloudflare-email",
+  email: {
+    id: "email",
     kind: "email",
-    displayName: "Cloudflare Email Service",
+    displayName: "Email",
     requiredEnv: [],
-    optionalEnv: ["CLOUDFLARE_EMAIL_FROM", "CLOUDFLARE_EMAIL_BINDING"],
+    optionalEnv: ["TRELLIS_EMAIL_FROM", "TRELLIS_EMAIL_BINDING"],
     capabilities: ["mail.preview", "mail.send", "mail.reply", "reply.webhook"],
-    sourceMatcher: "cloudflareEmail",
+    sourceMatcher: "email",
   },
   agentmail: {
     id: "agentmail",
@@ -168,7 +168,7 @@ const CLOUDFLARE_CONNECTIONS = {
 } as const;
 
 type CloudflareConnectionId = keyof typeof CLOUDFLARE_CONNECTIONS;
-const REQUIRED_PROVIDER_IDS = ["attio", "cloudflare-email", "firecrawl"] as const;
+const REQUIRED_PROVIDER_IDS = ["attio", "email", "firecrawl"] as const;
 const OPTIONAL_PROVIDER_IDS = ["agentmail", "apify", "prospeo", "langfuse", "braintrust"] as const;
 type CloudflareSecretReadiness = {
   checked: boolean;
@@ -333,7 +333,7 @@ Examples:
 
   npm run trellis -- init ../acme-sdr --name acme-sdr
   npm run trellis -- connect attio
-  npm run trellis -- connect cloudflare-email
+  npm run trellis -- connect email
   npm run trellis -- connect firecrawl
   npm run trellis -- docs add ./product-docs
   npm run trellis -- doctor
@@ -345,7 +345,7 @@ Examples:
   npm run trellis -- verify cloudflare --live --url https://your-worker.workers.dev --api-key $TRELLIS_API_KEY
   npm run trellis -- verify cloudflare --live --url https://your-worker.workers.dev --attio-smoke --provider-smoke-token $TRELLIS_PROVIDER_SMOKE_TOKEN
 
-Simple labels stay short in the CLI: attio, cloudflare-email, agentmail, firecrawl, apify, prospeo, langfuse, braintrust.
+Simple labels stay short in the CLI: attio, email, agentmail, firecrawl, apify, prospeo, langfuse, braintrust.
 
 Init scaffolds the Trellis GTM path by default.
 Cloudflare is the default deploy target.
@@ -373,7 +373,7 @@ async function handleConnectCommand(moduleId: string | undefined) {
     console.log(`Connection guides:
 
   npm run trellis -- connect attio
-  npm run trellis -- connect cloudflare-email
+  npm run trellis -- connect email
   npm run trellis -- connect firecrawl
   npm run trellis -- connect apify
   npm run trellis -- connect prospeo
@@ -396,7 +396,8 @@ Provider credentials can be connected after the first Cloudflare deploy.`);
 }
 
 function resolveCloudflareConnection(moduleId: string, provider: string | undefined) {
-  const candidate = (provider ?? moduleId).toLowerCase();
+  const rawCandidate = (provider ?? moduleId).toLowerCase();
+  const candidate = rawCandidate === "cloudflare-email" ? "email" : rawCandidate;
   return candidate in CLOUDFLARE_CONNECTIONS
     ? CLOUDFLARE_CONNECTIONS[candidate as CloudflareConnectionId]
     : null;
@@ -1643,7 +1644,7 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
     next: live
       ? [
           "inspect failed checks before connecting live providers",
-          "run trellis connect attio / cloudflare-email / firecrawl after first boot is green",
+          "run trellis connect attio / email / firecrawl after first boot is green",
         ]
       : [
           "trellis deploy",
@@ -1714,7 +1715,7 @@ async function handleCloudflareDeploy(flags: Record<string, string | boolean>) {
     next: [
       "trellis smoke",
       "trellis connect attio",
-      "trellis connect cloudflare-email",
+      "trellis connect email",
       "trellis connect firecrawl",
       "trellis docs add ./product-docs",
     ],
@@ -1750,7 +1751,7 @@ First boot:
 Then:
   1. trellis smoke
   2. trellis connect attio
-  3. trellis connect cloudflare-email
+  3. trellis connect email
   4. trellis connect firecrawl
   5. trellis docs add ./product-docs`);
       return;
@@ -2240,7 +2241,7 @@ async function scaffoldCloudflareProject(targetArg: string | undefined, flags: R
     "npm run smoke",
     "npm run verify",
     "npm run trellis -- connect attio",
-    "npm run trellis -- connect cloudflare-email",
+    "npm run trellis -- connect email",
     "npm run trellis -- connect firecrawl",
   ];
 
@@ -2434,8 +2435,8 @@ ATTIO_DEFAULT_LIST_ID=
 TRELLIS_PROVIDER_SMOKE_TOKEN=
 TRELLIS_ATTIO_SMOKE_DOMAIN=
 TRELLIS_ATTIO_SMOKE_EMAIL=
-CLOUDFLARE_EMAIL_FROM=
-CLOUDFLARE_EMAIL_BINDING=EMAIL
+TRELLIS_EMAIL_FROM=
+TRELLIS_EMAIL_BINDING=EMAIL
 FIRECRAWL_API_KEY=
 APIFY_TOKEN=
 APIFY_WEBHOOK_SECRET=
@@ -2466,13 +2467,13 @@ BRAINTRUST_BASE_URL=
 
 function renderCloudflareAgentSource() {
   return `import { trellis, schema } from "@trellis/gtm";
-import { attio, cloudflareEmail, firecrawl } from "@trellis/providers";
+import { attio, email, firecrawl } from "@trellis/providers";
 import attioMap from "./crm/attio.map";
 import stateMap from "./state/prospect.map";
 
 export default trellis.agent("sdr", {
   crm: attio({ map: attioMap }),
-  email: cloudflareEmail(),
+  email: email(),
   research: firecrawl(),
   model: "anthropic/claude-sonnet-4.6",
   state: stateMap,
@@ -3057,12 +3058,12 @@ npm run smoke
 npm run verify
 \`\`\`
 
-The first deploy is Cloudflare-first and does not require Attio, Cloudflare Email Service, or Firecrawl credentials. Those are connected after the app boots:
+The first deploy is Cloudflare-first and does not require Attio, Email, or Firecrawl credentials. Those are connected after the app boots:
 
 \`\`\`bash
 npx wrangler secret put TRELLIS_API_KEY
 npm run trellis -- connect attio
-npm run trellis -- connect cloudflare-email
+npm run trellis -- connect email
 npm run trellis -- connect firecrawl
 npm run trellis -- connect apify      # optional discovery source
 npm run trellis -- connect prospeo    # optional email enrichment

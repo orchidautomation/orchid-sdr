@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createTrellisTestApp, runTrellisSmoke, schema, trellis } from "./index.js";
-import { agentmail, attio, cloudflareEmail, firecrawl } from "@trellis/providers";
+import { agentmail, attio, firecrawl } from "@trellis/providers";
 
 describe("@trellis/gtm API", () => {
   it("defines the one-screen GTM agent shape without exposing Flue or Cloudflare", async () => {
@@ -1896,7 +1896,13 @@ describe("@trellis/gtm API", () => {
   it("routes native Cloudflare email replies back onto the original Trellis thread", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
-      email: cloudflareEmail({ from: "agent@trellis.dev" }),
+      email: trellis.provider({
+        id: "email",
+        kind: "email",
+        displayName: "Email",
+        config: { from: "agent@trellis.dev" },
+        capabilities: ["mail.send", "mail.reply", "mail.preview", "reply.webhook"],
+      }),
       research: firecrawl(),
       knowledge: "knowledge/**/*.md",
       skills: "skills/**/SKILL.md",
@@ -1948,7 +1954,7 @@ describe("@trellis/gtm API", () => {
     const execution = await runtime.worker.fetch(new Request("https://example.com/provider-actions/provider_action_approval_draft_sig_cloudflare_send_email_send/execute", {
       method: "POST",
       body: JSON.stringify({
-        actor: "cloudflare-email-worker",
+          actor: "email-worker",
       }),
     }), env);
 
@@ -1956,7 +1962,7 @@ describe("@trellis/gtm API", () => {
     await expect(execution.json()).resolves.toMatchObject({
       ok: true,
       execution: {
-        provider: "cloudflare-email",
+        provider: "email",
         operation: "email.send",
         externalId: "cf-msg-123",
       },
@@ -4082,7 +4088,7 @@ function createFakeD1() {
               }
               if (normalized.includes("FROM trellis_provider_actions provider_action")) {
                 const action = sortRows(providerActions).find((row) =>
-                  row.provider === "cloudflare-email" && row.externalId === bindings[0],
+                  (row.provider === "email" || row.provider === "cloudflare-email") && row.externalId === bindings[0],
                 );
                 if (!action) {
                   return null;

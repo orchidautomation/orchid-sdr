@@ -33,27 +33,29 @@ export function agentmail(options: { sequence?: TrellisAgentMailSequenceMap } = 
   });
 }
 
-export function cloudflareEmail(options: {
+export function email(options: {
   sequence?: TrellisAgentMailSequenceMap;
   binding?: string;
   from?: string;
 } = {}): TrellisProviderDefinition {
   return trellis.provider({
-    id: "cloudflare-email",
+    id: "email",
     kind: "email",
-    displayName: "Cloudflare Email Service",
+    displayName: "Email",
     config: {
       sequence: options.sequence,
       binding: options.binding,
       from: options.from,
     },
     env: [
-      { name: "CLOUDFLARE_EMAIL_BINDING", description: "Optional Worker binding name for Email Service. Defaults to EMAIL." },
-      { name: "CLOUDFLARE_EMAIL_FROM", description: "Default From address used for outbound and reply sends." },
+      { name: "TRELLIS_EMAIL_BINDING", description: "Optional Worker binding name for the default email transport. Defaults to EMAIL." },
+      { name: "TRELLIS_EMAIL_FROM", description: "Default From address used for outbound and reply sends." },
     ],
     capabilities: ["mail.send", "mail.reply", "mail.preview", "reply.webhook"],
   });
 }
+
+export const cloudflareEmail = email;
 
 export function firecrawl(): TrellisProviderDefinition {
   return trellis.provider({

@@ -31,7 +31,7 @@ export interface TrellisAttioMap {
   people?: TrellisFieldMap;
 }
 
-export type TrellisEmailProviderId = "agentmail" | "cloudflare-email";
+export type TrellisEmailProviderId = "agentmail" | "email" | "cloudflare-email";
 export type TrellisAgentMailSequenceOperation = "email.send" | "email.reply" | "mail.reply";
 export type TrellisAgentMailSequenceApproval = "required" | "optional" | "none";
 export type TrellisAgentMailSequenceCondition = "always" | "no_reply" | string;
@@ -2269,7 +2269,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
         });
       },
       async email(message, env, _ctx) {
-        if (agent.config.email?.id !== "cloudflare-email") {
+        if (agent.config.email?.id !== "email" && agent.config.email?.id !== "cloudflare-email") {
           return;
         }
 
@@ -4078,10 +4078,10 @@ async function cloudflareEmailToSignal(
     threadId: routedContext?.threadId ?? fallbackThreadId,
     workspaceId: routedContext?.workspaceId ?? "wrk_default",
     campaignId: routedContext?.campaignId ?? undefined,
-    provider: "cloudflare-email",
+    provider: "email",
     source: "reply.webhook",
     payload: {
-      provider: "cloudflare-email",
+      provider: "email",
       source: "reply.webhook",
       eventType: "message.received",
       from: email.from,
@@ -4130,7 +4130,7 @@ async function readCloudflareReplyContext(
         signal.campaign_id AS campaignId
       FROM trellis_provider_actions provider_action
       LEFT JOIN trellis_signals signal ON signal.id = provider_action.signal_id
-      WHERE provider_action.provider = 'cloudflare-email'
+      WHERE provider_action.provider IN ('email', 'cloudflare-email')
         AND provider_action.external_id = ?
       ORDER BY provider_action.updated_at DESC
       LIMIT 1
@@ -5321,14 +5321,14 @@ async function resolveEmailSequencePlan(
 }
 
 function readEmailProviderId(provider: TrellisProviderDefinition | undefined): TrellisEmailProviderId | undefined {
-  if (provider?.id === "agentmail" || provider?.id === "cloudflare-email") {
+  if (provider?.id === "agentmail" || provider?.id === "email" || provider?.id === "cloudflare-email") {
     return provider.id;
   }
   return undefined;
 }
 
 function isEmailProviderId(providerId: string | null | undefined): providerId is TrellisEmailProviderId {
-  return providerId === "agentmail" || providerId === "cloudflare-email";
+  return providerId === "agentmail" || providerId === "email" || providerId === "cloudflare-email";
 }
 
 function isEmailOutboundOperation(operation: string) {
@@ -5431,6 +5431,7 @@ async function readSequenceStopState(
     const bodyText = `${readString(payload.bodyText) ?? ""} ${readString(payload.text) ?? ""}`.toLowerCase();
     const isReply = source === "reply.webhook"
       || provider === "agentmail"
+      || provider === "email"
       || provider === "cloudflare-email"
       || eventType.includes("reply")
       || eventType.includes("inbound");
@@ -7020,12 +7021,12 @@ async function dispatchProviderAction(
     return executeAgentMailReply(env, context, config);
   }
 
-  if (context.action.provider === "cloudflare-email" && context.action.operation === "email.send") {
+  if ((context.action.provider === "email" || context.action.provider === "cloudflare-email") && context.action.operation === "email.send") {
     return executeCloudflareEmailSend(env, context, config);
   }
 
   if (
-    context.action.provider === "cloudflare-email"
+    (context.action.provider === "email" || context.action.provider === "cloudflare-email")
     && (context.action.operation === "email.reply" || context.action.operation === "mail.reply")
   ) {
     return executeCloudflareEmailReply(env, context, config);
@@ -7164,7 +7165,7 @@ function resolveCloudflareEmailBinding(
   config: TrellisAgentConfig,
 ) {
   const cloudflare = readCloudflareEmailConfig(config.email);
-  return cloudflare.binding ?? readString(env?.CLOUDFLARE_EMAIL_BINDING) ?? "EMAIL";
+  return cloudflare.binding ?? readString(env?.TRELLIS_EMAIL_BINDING) ?? readString(env?.CLOUDFLARE_EMAIL_BINDING) ?? "EMAIL";
 }
 
 function resolveCloudflareEmailFrom(
@@ -7172,7 +7173,7 @@ function resolveCloudflareEmailFrom(
   config: TrellisAgentConfig,
 ) {
   const cloudflare = readCloudflareEmailConfig(config.email);
-  return cloudflare.from ?? readString(env?.CLOUDFLARE_EMAIL_FROM);
+  return cloudflare.from ?? readString(env?.TRELLIS_EMAIL_FROM) ?? readString(env?.CLOUDFLARE_EMAIL_FROM);
 }
 
 async function executeAgentMailSend(
@@ -7331,7 +7332,7 @@ async function executeCloudflareEmailSend(
     throw new Error("Cloudflare Email send requires a recipient email.");
   }
   if (!from) {
-    throw new Error("Cloudflare Email send requires CLOUDFLARE_EMAIL_FROM or an explicit from address.");
+    throw new Error("Email send requires TRELLIS_EMAIL_FROM or an explicit from address.");
   }
   if (!bodyText && !bodyHtml) {
     throw new Error("Cloudflare Email send requires bodyText, bodyHtml, or a draft body.");
@@ -7349,7 +7350,7 @@ async function executeCloudflareEmailSend(
   const record = isRecord(raw) ? raw : {};
   return {
     ok: true,
-    provider: "cloudflare-email",
+    provider: "email",
     operation: "email.send",
     actionId: context.action.id,
     externalId: readString(record.messageId) ?? readString(record.id) ?? null,
@@ -7392,7 +7393,7 @@ async function executeCloudflareEmailReply(
     throw new Error("Cloudflare Email reply requires a recipient email.");
   }
   if (!from) {
-    throw new Error("Cloudflare Email reply requires CLOUDFLARE_EMAIL_FROM or an explicit from address.");
+    throw new Error("Email reply requires TRELLIS_EMAIL_FROM or an explicit from address.");
   }
   if (!messageId) {
     throw new Error("Cloudflare Email reply requires providerMessageId or inReplyTo.");
@@ -7417,7 +7418,7 @@ async function executeCloudflareEmailReply(
   const record = isRecord(raw) ? raw : {};
   return {
     ok: true,
-    provider: "cloudflare-email",
+    provider: "email",
     operation: context.action.operation,
     actionId: context.action.id,
     externalId: readString(record.messageId) ?? readString(record.id) ?? null,
