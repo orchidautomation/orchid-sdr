@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createTrellisTestApp, runTrellisSmoke, schema, trellis } from "./index.js";
-import { agentmail, attio, firecrawl } from "@trellis/providers";
+import { agentmail, attio, cloudflareEmail, firecrawl } from "@trellis/providers";
 
 describe("@trellis/gtm API", () => {
   it("defines the one-screen GTM agent shape without exposing Flue or Cloudflare", async () => {
@@ -1889,6 +1889,102 @@ describe("@trellis/gtm API", () => {
         type: "trellis.signal.processed",
         signalId: "sig_agentmail_am_msg_in_1",
         threadId: "agentmail_am_thread_1",
+      }),
+    ]));
+  });
+
+  it("routes native Cloudflare email replies back onto the original Trellis thread", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      crm: attio(),
+      email: cloudflareEmail({ from: "agent@trellis.dev" }),
+      research: firecrawl(),
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound({ noSends: false }),
+    }, async (app) => {
+      const signal = await app.signal();
+      if (signal.source === "reply.webhook") {
+        return app.workflow("reply").start({ signal });
+      }
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    const fakeD1 = createFakeD1();
+    const fakeQueue = createFakeQueue();
+    const sendMock = vi.fn(async () => ({ messageId: "cf-msg-123" }));
+    const env = {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_EVENTS: fakeQueue,
+      EMAIL: {
+        send: sendMock,
+      },
+    };
+
+    await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "sig_cloudflare_send",
+        workspaceId: "wrk_cloudflare",
+        threadId: "thr_cloudflare",
+        provider: "test",
+        source: "unit.test",
+        email: "buyer@example.com",
+        subject: "Native email",
+      }),
+    }), env);
+    await runtime.worker.fetch(new Request("https://example.com/approvals/approval_draft_sig_cloudflare_send_email_send/approve", {
+      method: "POST",
+      body: JSON.stringify({
+        signalId: "sig_cloudflare_send",
+        draftId: "draft_sig_cloudflare_send",
+        action: "email.send",
+        actor: "operator@example.com",
+      }),
+    }), env);
+    const execution = await runtime.worker.fetch(new Request("https://example.com/provider-actions/provider_action_approval_draft_sig_cloudflare_send_email_send/execute", {
+      method: "POST",
+      body: JSON.stringify({
+        actor: "cloudflare-email-worker",
+      }),
+    }), env);
+
+    expect(execution.status).toBe(200);
+    await expect(execution.json()).resolves.toMatchObject({
+      ok: true,
+      execution: {
+        provider: "cloudflare-email",
+        operation: "email.send",
+        externalId: "cf-msg-123",
+      },
+    });
+    expect(sendMock).toHaveBeenCalledWith(expect.objectContaining({
+      to: "buyer@example.com",
+      from: "agent@trellis.dev",
+      subject: "Native email",
+    }));
+
+    await runtime.worker.email?.({
+      from: "buyer@example.com",
+      to: "agent@trellis.dev",
+      headers: new Headers({
+        subject: "Re: Native email",
+        "message-id": "<cf-reply-1>",
+        "in-reply-to": "<cf-msg-123>",
+      }),
+      raw: new Response("Subject: Re: Native email\r\nMessage-ID: <cf-reply-1>\r\nIn-Reply-To: <cf-msg-123>\r\n\r\nLooks good, send pricing.").body ?? undefined,
+      rawSize: 120,
+    }, env, {});
+
+    expect(fakeQueue.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "trellis.signal.processed",
+        signalId: "sig_cloudflare_email_cf-reply-1",
+        threadId: "thr_cloudflare",
+        workspaceId: "wrk_cloudflare",
       }),
     ]));
   });
@@ -3826,8 +3922,10 @@ function createFakeD1() {
                   operation: bindings[5],
                   status: bindings[6],
                   traceId: bindings[7],
-                  createdAt: bindings[8],
-                  updatedAt: bindings[9],
+                  externalId: bindings[8],
+                  externalThreadId: bindings[9],
+                  createdAt: bindings[10],
+                  updatedAt: bindings[11],
                 });
               }
               if (normalized.includes("INSERT OR REPLACE INTO trellis_provider_runs")) {
@@ -3911,10 +4009,12 @@ function createFakeD1() {
                 });
               }
               if (normalized.includes("UPDATE trellis_provider_actions SET status = ?")) {
-                const row = providerActions.get(String(bindings[2]));
+                const row = providerActions.get(String(bindings[4]));
                 if (row) {
                   row.status = bindings[0];
-                  row.updatedAt = bindings[1];
+                  row.externalId = bindings[1] ?? row.externalId;
+                  row.externalThreadId = bindings[2] ?? row.externalThreadId;
+                  row.updatedAt = bindings[3];
                 }
               }
               if (normalized.includes("UPDATE trellis_approvals SET status = ?")) {
@@ -3979,6 +4079,21 @@ function createFakeD1() {
               }
               if (normalized.includes("FROM trellis_provider_actions WHERE id = ?")) {
                 return providerActions.get(String(bindings[0])) ?? null;
+              }
+              if (normalized.includes("FROM trellis_provider_actions provider_action")) {
+                const action = sortRows(providerActions).find((row) =>
+                  row.provider === "cloudflare-email" && row.externalId === bindings[0],
+                );
+                if (!action) {
+                  return null;
+                }
+                const signal = signals.get(String(action.signalId));
+                return {
+                  signalId: action.signalId,
+                  threadId: signal?.threadId ?? null,
+                  workspaceId: signal?.workspaceId ?? null,
+                  campaignId: signal?.campaignId ?? null,
+                };
               }
               if (normalized.includes("FROM trellis_workflow_runs WHERE id = ?")) {
                 return workflowRuns.get(String(bindings[0])) ?? null;

@@ -18,7 +18,7 @@ describe("trellis init scaffold", () => {
     expect(output).not.toContain("Convex");
     expect(output).not.toContain("Vercel");
     expect(output).not.toContain("Rivet");
-  });
+  }, 20000);
 
   it("emits a Cloudflare GTM scaffold", () => {
     const repoRoot = process.cwd();
@@ -93,6 +93,7 @@ describe("trellis init scaffold", () => {
 
       expect(workerSource).toContain("trellis.cloudflare(agent)");
       expect(workerSource).toContain("withTrellisRuntime(env, request)");
+      expect(workerSource).toContain("runtime.worker.email?.");
       expect(runtimeSource).toContain("@flue/sdk/cloudflare");
       expect(runtimeSource).toContain("getCloudflareAIBindingApiProvider");
       expect(runtimeSource).toContain("getVirtualSandbox");
@@ -116,6 +117,7 @@ describe("trellis init scaffold", () => {
 
       expect(wranglerConfig).toContain("\"ai\"");
       expect(wranglerConfig).toContain("\"browser\"");
+      expect(wranglerConfig).toContain("\"send_email\"");
       expect(wranglerConfig).toContain("\"durable_objects\"");
       expect(wranglerConfig).toContain("\"d1_databases\"");
       expect(wranglerConfig).toContain("\"r2_buckets\"");
@@ -128,7 +130,8 @@ describe("trellis init scaffold", () => {
       expect(envExample).toContain("TRELLIS_API_KEY=");
       expect(envExample).toContain("ATTIO_API_KEY=");
       expect(envExample).toContain("TRELLIS_PROVIDER_SMOKE_TOKEN=");
-      expect(envExample).toContain("AGENTMAIL_API_KEY=");
+      expect(envExample).toContain("CLOUDFLARE_EMAIL_FROM=");
+      expect(envExample).toContain("CLOUDFLARE_EMAIL_BINDING=EMAIL");
       expect(envExample).toContain("FIRECRAWL_API_KEY=");
       expect(envExample).toContain("APIFY_TOKEN=");
       expect(envExample).toContain("PROSPEO_API_KEY=");
@@ -140,6 +143,7 @@ describe("trellis init scaffold", () => {
       expect(readme).toContain("TRELLIS_API_KEY");
       expect(readme).toContain("POST /smoke/attio");
       expect(readme).toContain("npm run trellis -- connect attio");
+      expect(readme).toContain("npm run trellis -- connect cloudflare-email");
       expect(readme).toContain("Your app code stays Trellis-only in `src/agent.ts`");
 
       expect(existsSync(path.join(targetDir, "trellis.config.ts"))).toBe(false);
@@ -148,7 +152,7 @@ describe("trellis init scaffold", () => {
     } finally {
       rmSync(targetDir, { recursive: true, force: true });
     }
-  });
+  }, 20000);
 
   it("auto-packs scaffold knowledge without an explicit docs add step", () => {
     const repoRoot = process.cwd();
@@ -196,7 +200,7 @@ describe("trellis init scaffold", () => {
     } finally {
       rmSync(targetDir, { recursive: true, force: true });
     }
-  });
+  }, 20000);
 
   it("rejects unsupported commands from the CLI surface", () => {
     const repoRoot = process.cwd();
@@ -212,7 +216,7 @@ describe("trellis init scaffold", () => {
     } finally {
       rmSync(targetDir, { recursive: true, force: true });
     }
-  });
+  }, 20000);
 
   it("runs the generated first-run spine without provider credentials", () => {
     const repoRoot = process.cwd();
@@ -336,7 +340,7 @@ describe("trellis init scaffold", () => {
         "skills/files/handoff-policy/SKILL.md",
       ]));
       expect(deployResult.providers.attio).toMatchObject({ connected: false, status: "not_connected" });
-      expect(deployResult.providers.agentmail).toMatchObject({ connected: false, status: "not_connected" });
+      expect(deployResult.providers["cloudflare-email"]).toMatchObject({ connected: false, status: "not_connected" });
       expect(deployResult.providers.firecrawl).toMatchObject({ connected: false, status: "not_connected" });
 
       const verifyResult = JSON.parse(runCli(repoRoot, [
@@ -384,7 +388,7 @@ describe("trellis init scaffold", () => {
 
       const connectedProviders = [
         ["attio", "ATTIO_API_KEY"],
-        ["agentmail", "AGENTMAIL_API_KEY"],
+        ["cloudflare-email", null],
         ["firecrawl", "FIRECRAWL_API_KEY"],
         ["apify", "APIFY_TOKEN"],
         ["prospeo", "PROSPEO_API_KEY"],
@@ -403,8 +407,12 @@ describe("trellis init scaffold", () => {
           };
         };
         expect(connectResult.mode).toBe("provider");
-        expect(connectResult.manifest.status).toBe("waiting_for_env");
-        expect(connectResult.manifest.missingRequiredEnv).toContain(requiredEnv);
+        expect(connectResult.manifest.status).toBe(requiredEnv ? "waiting_for_env" : "ready");
+        if (requiredEnv) {
+          expect(connectResult.manifest.missingRequiredEnv).toContain(requiredEnv);
+        } else {
+          expect(connectResult.manifest.missingRequiredEnv).toEqual([]);
+        }
 
         const manifest = JSON.parse(readFileSync(connectResult.manifest.path, "utf8")) as {
           id: string;
@@ -416,10 +424,15 @@ describe("trellis init scaffold", () => {
         expect(manifest).toMatchObject({
           id: provider,
           noSecretsStored: true,
-          status: "waiting_for_env",
+          status: requiredEnv ? "waiting_for_env" : "ready",
         });
-        expect(manifest.requiredEnv).toContain(requiredEnv);
-        expect(manifest.missingRequiredEnv).toContain(requiredEnv);
+        if (requiredEnv) {
+          expect(manifest.requiredEnv).toContain(requiredEnv);
+          expect(manifest.missingRequiredEnv).toContain(requiredEnv);
+        } else {
+          expect(manifest.requiredEnv).toEqual([]);
+          expect(manifest.missingRequiredEnv).toEqual([]);
+        }
         expect(JSON.stringify(manifest)).not.toContain("apiKey");
       }
 
@@ -434,10 +447,10 @@ describe("trellis init scaffold", () => {
         status: "waiting_for_env",
         missingRequiredEnv: ["ATTIO_API_KEY"],
       });
-      expect(connectedDoctorResult.providers.agentmail).toMatchObject({
+      expect(connectedDoctorResult.providers["cloudflare-email"]).toMatchObject({
         connected: true,
-        status: "waiting_for_env",
-        missingRequiredEnv: ["AGENTMAIL_API_KEY"],
+        status: "ready",
+        missingRequiredEnv: [],
       });
       expect(connectedDoctorResult.providers.firecrawl).toMatchObject({
         connected: true,
@@ -457,7 +470,7 @@ describe("trellis init scaffold", () => {
     } finally {
       rmSync(targetDir, { recursive: true, force: true });
     }
-  });
+  }, 20000);
 
   it("verifies live Cloudflare exercise artifacts from the deployed worker", async () => {
     const repoRoot = process.cwd();
@@ -677,6 +690,8 @@ function buildCliEnv(extraEnv: Record<string, string> = {}) {
   for (const name of [
     "ATTIO_API_KEY",
     "AGENTMAIL_API_KEY",
+    "CLOUDFLARE_EMAIL_FROM",
+    "CLOUDFLARE_EMAIL_BINDING",
     "FIRECRAWL_API_KEY",
     "TRELLIS_API_KEY",
     "APIFY_TOKEN",

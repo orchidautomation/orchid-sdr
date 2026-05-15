@@ -6,6 +6,7 @@ Which email provider is the best fit for Trellis?
 
 Short answer:
 
+- `Cloudflare Email Service` is the best default fit when the agent is running on Cloudflare Workers and you want the platform-native path.
 - `AgentMail` is the best default fit for Trellis's architecture.
 
 That is not the same as saying it is universally the best email provider. It means it is the best match for the way Trellis already works:
@@ -17,6 +18,11 @@ That is not the same as saying it is universally the best email provider. It mea
 - agent-owned mailboxes instead of human-owned mailboxes
 
 ## Recommendation
+
+If you are deploying the agent on Cloudflare Workers and want the fewest moving parts, use:
+
+1. `Cloudflare Email Service`
+2. `AgentMail`
 
 If you want Trellis to run as an agent-native outbound system, use:
 
@@ -57,6 +63,16 @@ AgentMail is built around those ideas:
 - guidance for warm-up and multi-inbox volume distribution
 
 That makes it a strong fit for agent-native SDR workflows rather than just generic application email.
+
+## Why Cloudflare Email Service Now Fits Cloudflare Deployments
+
+When the agent already runs inside Cloudflare Workers, the native email path has a different advantage:
+
+- outbound send runs through a Worker binding instead of a separate email API
+- inbound replies arrive through the Worker `email()` handler
+- no extra webhook signing or third-party inbox credential is required just to get send-plus-reply working
+
+That makes it the best default for Cloudflare-native Trellis deployments, even though AgentMail still has the richer inbox-control-plane story.
 
 ## Comparison Matrix
 
