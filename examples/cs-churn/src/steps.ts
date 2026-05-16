@@ -13,8 +13,8 @@ type StepRunInput = {
 
 type StepDefinition = {
   skill: string;
-  uses: string[];
-  relatedMcp?: string[];
+  agent_tools: string[];
+  operator_tools?: string[];
   produces: string;
   schema: z.ZodTypeAny;
   observability?: TrellisSkillTraceContext;
@@ -70,8 +70,8 @@ function skillStep(definition: StepDefinition) {
 
 const salesforceEvidence = skillStep({
   skill: "churn-salesforce",
-  uses: ["crm.readAccount", "crm.query", "optional Composio Salesforce toolkit"],
-  relatedMcp: [],
+  agent_tools: ["crm.readAccount", "crm.query", "optional Composio Salesforce toolkit"],
+  operator_tools: [],
   produces: "CRM evidence about renewal, sponsor, QBR, and health status",
   schema: evidence,
   observability: {
@@ -84,8 +84,8 @@ const salesforceEvidence = skillStep({
 
 const zendeskEvidence = skillStep({
   skill: "churn-zendesk",
-  uses: ["support.ticket.search", "support.ticket.read", "optional Composio Zendesk toolkit"],
-  relatedMcp: [],
+  agent_tools: ["support.ticket.search", "support.ticket.read", "optional Composio Zendesk toolkit"],
+  operator_tools: [],
   produces: "support evidence about volume, escalations, themes, SLA, and CSAT",
   schema: evidence,
   observability: {
@@ -98,8 +98,8 @@ const zendeskEvidence = skillStep({
 
 const usageEvidence = skillStep({
   skill: "churn-usage",
-  uses: ["usage.query", "Snowflake/Postgres/read-only warehouse"],
-  relatedMcp: [],
+  agent_tools: ["usage.query", "Snowflake/Postgres/read-only warehouse"],
+  operator_tools: [],
   produces: "usage evidence about registration, utilization, admin cadence, and activity",
   schema: evidence,
   observability: {
@@ -117,8 +117,8 @@ export const steps = {
 
   scoreChurnRisk: skillStep({
     skill: "churn-risk-score",
-    uses: ["Salesforce evidence", "Zendesk evidence", "usage evidence"],
-    relatedMcp: ["inspect_churn_score"],
+    agent_tools: ["Salesforce evidence", "Zendesk evidence", "usage evidence"],
+    operator_tools: ["inspect_churn_score"],
     produces: "Red/Orange/Yellow/Green churn score",
     schema: riskScore,
     observability: {
@@ -132,8 +132,8 @@ export const steps = {
 
   recommendSavePlan: skillStep({
     skill: "churn-playbook",
-    uses: ["risk score", "account context"],
-    relatedMcp: ["draft_save_playbook", "list_pending_approvals", "approve_draft"],
+    agent_tools: ["risk score", "account context"],
+    operator_tools: ["draft_save_playbook", "list_pending_approvals", "approve_draft"],
     produces: "CSM save plan with owner, persona, timeframe, and next action",
     schema: playbook,
     observability: {

@@ -33,28 +33,28 @@ export default trellis.agent("spring-health-cs-churn", {
   // Each skill reads one system and returns a small, redacted evidence object.
   const [salesforce, zendesk, usage] = await Promise.all([
     // Skill: churn-salesforce
-    // Uses: crm.readAccount, crm.query, optional Composio Salesforce toolkit
-    // Related MCP: none yet; this is a runtime-only evidence step.
+    // agent_tools: crm.readAccount, crm.query, optional Composio Salesforce toolkit
+    // operator_tools: none yet; this is a runtime-only evidence step.
     // Output schema: evidence in src/steps.ts
     steps.salesforceEvidence.run(app, { context, args: account }),
 
     // Skill: churn-zendesk
-    // Uses: support.ticket.search, support.ticket.read, optional Composio Zendesk toolkit
-    // Related MCP: none yet; this is a runtime-only evidence step.
+    // agent_tools: support.ticket.search, support.ticket.read, optional Composio Zendesk toolkit
+    // operator_tools: none yet; this is a runtime-only evidence step.
     // Output schema: evidence in src/steps.ts
     steps.zendeskEvidence.run(app, { context, args: account }),
 
     // Skill: churn-usage
-    // Uses: usage.query, Snowflake/Postgres/read-only warehouse
-    // Related MCP: none yet; this is a runtime-only evidence step.
+    // agent_tools: usage.query, Snowflake/Postgres/read-only warehouse
+    // operator_tools: none yet; this is a runtime-only evidence step.
     // Output schema: evidence in src/steps.ts
     steps.usageEvidence.run(app, { context, args: account }),
   ]);
 
   // Step 2: score churn risk using only the evidence from Step 1.
   // Skill: churn-risk-score
-  // Uses: Salesforce evidence, Zendesk evidence, usage evidence
-  // Related MCP: inspect_churn_score
+  // agent_tools: Salesforce evidence, Zendesk evidence, usage evidence
+  // operator_tools: inspect_churn_score
   // Output schema: riskScore in src/steps.ts
   const score = await steps.scoreChurnRisk.run(app, {
     context,
@@ -63,8 +63,8 @@ export default trellis.agent("spring-health-cs-churn", {
 
   // Step 3: recommend a concrete save plan for the CSM team.
   // Skill: churn-playbook
-  // Uses: risk score, account context
-  // Related MCP: draft_save_playbook, list_pending_approvals, approve_draft
+  // agent_tools: risk score, account context
+  // operator_tools: draft_save_playbook, list_pending_approvals, approve_draft
   // Output schema: playbook in src/steps.ts
   const savePlan = await steps.recommendSavePlan.run(app, {
     context,
@@ -73,7 +73,7 @@ export default trellis.agent("spring-health-cs-churn", {
 
   // Step 4: record the run and wait for approval before any CRM write.
   // Approval gate: crm.update
-  // Related MCP: list_pending_approvals, approve_draft, reject_draft
+  // operator_tools: list_pending_approvals, approve_draft, reject_draft
   return app.workflow("churn-assessment").start({
     signal,
     salesforce,

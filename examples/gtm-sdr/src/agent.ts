@@ -37,15 +37,15 @@ export default trellis.agent("common-room-bdr", {
   if (signal.source === "reply.webhook") {
     // Reply Step 1
     // Skill: reply-policy
-    // Uses: thread.history, mail.reply
-    // Related MCP: list_replies
+    // agent_tools: thread.history, mail.reply
+    // operator_tools: list_replies
     // Output schema: replyPolicy in src/steps.ts
     const reply = await steps.classifyReply.run(app, { context });
 
     // Reply Step 2
     // Skill: handoff-policy
-    // Uses: reply classification, handoff.webhook
-    // Related MCP: list_handoffs
+    // agent_tools: reply classification, handoff.webhook
+    // operator_tools: list_handoffs
     // Output schema: handoffPolicy in src/steps.ts
     const handoff = await steps.decideHandoff.run(app, {
       context,
@@ -58,15 +58,15 @@ export default trellis.agent("common-room-bdr", {
   // New prospect path: qualify, research, draft, then queue the CRM update.
   // Prospect Step 1
   // Skill: icp-qualification
-  // Uses: knowledge.icp, crm.readAccount
-  // Related MCP: qualify_lead, list_leads, get_lead
+  // agent_tools: knowledge.icp, crm.readAccount
+  // operator_tools: qualify_lead, list_leads, get_lead
   // Output schema: qualification in src/steps.ts
   const qualification = await steps.qualifyLead.run(app, { context });
 
   // Prospect Step 2
   // Skill: research-brief
-  // Uses: research.search, research.scrape, browser.session.run
-  // Related MCP: research_account
+  // agent_tools: research.search, research.scrape, browser.session.run
+  // operator_tools: research_account
   // Output schema: researchBrief in src/steps.ts
   const research = await steps.researchAccount.run(app, {
     context,
@@ -75,8 +75,8 @@ export default trellis.agent("common-room-bdr", {
 
   // Prospect Step 3
   // Skill: sdr-copy
-  // Uses: knowledge.messaging, qualification output, research output
-  // Related MCP: draft_email, list_pending_approvals, approve_draft
+  // agent_tools: knowledge.messaging, qualification output, research output
+  // operator_tools: draft_email, list_pending_approvals, approve_draft
   // Output schema: outboundDraft in src/steps.ts
   const draft = await steps.draftOutbound.run(app, {
     context,
@@ -85,7 +85,7 @@ export default trellis.agent("common-room-bdr", {
 
   // Prospect Step 4: record the run and wait for human approval before CRM writes.
   // Approval gate: crm.update
-  // Related MCP: list_pending_approvals, approve_draft, reject_draft
+  // operator_tools: list_pending_approvals, approve_draft, reject_draft
   return app.workflow("prospect").start({
     signal,
     qualification,

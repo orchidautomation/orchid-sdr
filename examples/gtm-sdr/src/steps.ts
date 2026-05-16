@@ -8,8 +8,8 @@ type StepRunInput = {
 
 type StepDefinition = {
   skill: string;
-  uses: string[];
-  relatedMcp?: string[];
+  agent_tools: string[];
+  operator_tools?: string[];
   produces: string;
   schema: z.ZodTypeAny;
   observability?: TrellisSkillTraceContext;
@@ -32,8 +32,8 @@ function skillStep(definition: StepDefinition) {
 export const steps = {
   classifyReply: skillStep({
     skill: "reply-policy",
-    uses: ["thread.history", "mail.reply"],
-    relatedMcp: ["list_replies"],
+    agent_tools: ["thread.history", "mail.reply"],
+    operator_tools: ["list_replies"],
     produces: "reply classification and next action",
     schema: schema.replyPolicy(),
     observability: {
@@ -46,8 +46,8 @@ export const steps = {
 
   decideHandoff: skillStep({
     skill: "handoff-policy",
-    uses: ["reply classification", "handoff.webhook"],
-    relatedMcp: ["list_handoffs"],
+    agent_tools: ["reply classification", "handoff.webhook"],
+    operator_tools: ["list_handoffs"],
     produces: "human handoff recommendation",
     schema: schema.handoffPolicy(),
     observability: {
@@ -61,8 +61,8 @@ export const steps = {
 
   qualifyLead: skillStep({
     skill: "icp-qualification",
-    uses: ["knowledge.icp", "crm.readAccount"],
-    relatedMcp: ["qualify_lead", "list_leads", "get_lead"],
+    agent_tools: ["knowledge.icp", "crm.readAccount"],
+    operator_tools: ["qualify_lead", "list_leads", "get_lead"],
     produces: "qualified/disqualified lead verdict",
     schema: schema.qualification(),
     observability: {
@@ -75,8 +75,8 @@ export const steps = {
 
   researchAccount: skillStep({
     skill: "research-brief",
-    uses: ["research.search", "research.scrape", "browser.session.run"],
-    relatedMcp: ["research_account"],
+    agent_tools: ["research.search", "research.scrape", "browser.session.run"],
+    operator_tools: ["research_account"],
     produces: "account and buyer research brief",
     schema: schema.researchBrief(),
     observability: {
@@ -90,8 +90,8 @@ export const steps = {
 
   draftOutbound: skillStep({
     skill: "sdr-copy",
-    uses: ["knowledge.messaging", "qualification output", "research output"],
-    relatedMcp: ["draft_email", "list_pending_approvals", "approve_draft"],
+    agent_tools: ["knowledge.messaging", "qualification output", "research output"],
+    operator_tools: ["draft_email", "list_pending_approvals", "approve_draft"],
     produces: "approval-gated outbound draft",
     schema: schema.outboundDraft(),
     observability: {
