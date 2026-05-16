@@ -2,7 +2,7 @@
 
 The score is a 0-100 sum of explicit risk flags. Cap the total at 100.
 
-| Flag | Slice | Weight |
+| Flag | Source | Weight |
 |---|---|---:|
 | Renewal within 90 days | Salesforce | 20 |
 | Renewal within 30 days of plan-year cutover | Salesforce | +10 |
@@ -38,7 +38,7 @@ If renewal is within 30 days of the customer's plan-year cutover and the score w
 ## Confidence
 
 - High: Salesforce, Zendesk, and usage all returned recent data.
-- Medium: one slice is stale or partial.
-- Low: one slice is missing entirely or any source is clearly simulated.
+- Medium: one source is stale or partial.
+- Low: one source is missing entirely or any source is clearly simulated.
 
 If confidence is Low, put that in the headline.

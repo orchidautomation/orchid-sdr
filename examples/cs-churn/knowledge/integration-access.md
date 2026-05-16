@@ -33,7 +33,7 @@ Preferred path today: official Zendesk Ticketing API.
 - A third-party or internal MCP bridge can wrap those APIs, but it should be reviewed as infrastructure, not treated as first-party by default.
 - Composio toolkits may be a practical managed option for Zendesk access if OAuth scopes, logging, data retention, and enterprise controls pass review.
 - Start with read-only scopes for ticket search and metadata.
-- Never persist or quote full ticket bodies into Trellis traces or final briefs.
+- Never persist or quote full ticket bodies into Trellis observability events or final briefs.
 - Source: https://developer.zendesk.com/api-reference/ticketing/ticket-management/search/
 
 ## Usage Data
@@ -57,7 +57,7 @@ Composio can be useful when a team wants one managed integration layer across Sa
 
 - Good fit: fast proof-of-concept access to Salesforce, Zendesk, Slack, Gmail, Linear, and other SaaS tools.
 - Review required: OAuth scopes, tenant isolation, audit logs, token storage, data retention, and whether raw ticket/customer content leaves the approved boundary.
-- Trellis rule: Composio tools should map into the same provider capabilities, such as `crm.readAccount`, `support.ticket.search`, or `crm.update`; they should not bypass Trellis approvals or traces.
+- Trellis rule: Composio tools should map into the same provider capabilities, such as `crm.readAccount`, `support.ticket.search`, or `crm.update`; they should not bypass Trellis approvals or observability.
 - For write-capable tools, keep Trellis `crm.update` approval-gated.
 - Source: https://docs.composio.dev/docs/mcp
 
@@ -75,7 +75,7 @@ MCPs expose data capabilities. Trellis still owns:
 
 - role-aware access
 - skill orchestration
-- redacted traces
+- redacted observability events
 - approval gates
 - provider action queueing
 - final state

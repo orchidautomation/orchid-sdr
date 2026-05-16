@@ -2,7 +2,7 @@
 
 This file is the Trellis version of the original `CLAUDE.md` project pointer. It is mounted as regular agent knowledge so Claude Code, Codex, MCP clients, Slack, Notion, and the deployed runtime all share the same context.
 
-The agent assesses churn risk for a customer account by combining three evidence slices:
+The agent assesses churn risk for a customer account by combining three evidence sources:
 
 - Salesforce account, contract, renewal, sponsor, QBR, and CSM health signals
 - Zendesk support volume, escalation, theme, SLA, and CSAT signals
@@ -14,9 +14,9 @@ The runtime graph lives in `src/agent.ts`, not in prose:
 2. Run `churn-salesforce`, `churn-zendesk`, and `churn-usage` in parallel.
 3. Run `churn-risk-score` over those three outputs.
 4. Run `churn-playbook` over the score.
-5. Start a durable `churn-assessment` workflow that persists state, traces every skill boundary, and blocks CRM updates behind approval.
+5. Start a durable `churn-assessment` workflow that persists state, records the run timeline, and blocks CRM updates behind approval.
 
-Skills may reference the outputs of earlier skills, but they should not secretly invoke other skills. Trellis owns orchestration in code so runs are traceable, testable, and auditable.
+Skills may reference the outputs of earlier skills, but they should not secretly invoke other skills. Trellis owns orchestration in code so runs are observable, testable, and auditable.
 
 ## Safety Rules
 
@@ -25,7 +25,7 @@ Skills may reference the outputs of earlier skills, but they should not secretly
 - Mask personal phone numbers, private emails, PHI, salary, compensation, and sensitive clinical content.
 - Treat missing data as `Not available`; do not infer false from unknown.
 - CRM updates require `crm.update` approval before execution.
-- If any evidence slice fails, continue with available slices and lower confidence.
+- If any evidence source fails, continue with available sources and lower confidence.
 
 ## Output Contract
 

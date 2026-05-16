@@ -36,7 +36,7 @@ Use practical GTM language:
 - "research and draft from evidence, not generic scraped facts"
 - "route the right accounts to the right rep"
 - "keep every lead in a durable thread"
-- "approval-gated outbound with traceable reasoning"
+- "approval-gated outbound with auditable reasoning"
 
 Avoid:
 

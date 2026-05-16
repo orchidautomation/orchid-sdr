@@ -1580,7 +1580,7 @@ function defaultSkillResult(name: string) {
       };
     case "churn-salesforce":
       return {
-        summary: "Fixture Salesforce slice found renewal timing and sponsor risk.",
+        summary: "Fixture Salesforce evidence found renewal timing and sponsor risk.",
         flags: ["Renewal within 90 days", "No executive sponsor on file"],
         confidence: 0.7,
         dataFreshness: "fixture",
@@ -1591,7 +1591,7 @@ function defaultSkillResult(name: string) {
       };
     case "churn-zendesk":
       return {
-        summary: "Fixture Zendesk slice found rising ticket volume and one recurring reporting theme.",
+        summary: "Fixture Zendesk evidence found rising ticket volume and one recurring reporting theme.",
         flags: ["Ticket volume up >50%", "Recurring unresolved theme"],
         confidence: 0.66,
         dataFreshness: "fixture",
@@ -1602,7 +1602,7 @@ function defaultSkillResult(name: string) {
       };
     case "churn-usage":
       return {
-        summary: "Fixture usage slice found weak registration and dormant admin cadence.",
+        summary: "Fixture usage evidence found weak registration and dormant admin cadence.",
         flags: ["Registration rate <20%", "HR admin login cadence dormant"],
         confidence: 0.68,
         dataFreshness: "fixture",
@@ -1619,12 +1619,12 @@ function defaultSkillResult(name: string) {
         topDrivers: [
           {
             driver: "Renewal risk without executive sponsorship",
-            evidence: "Salesforce slice flagged renewal within 90 days and no executive sponsor.",
+            evidence: "Salesforce evidence flagged renewal within 90 days and no executive sponsor.",
             weight: 30,
           },
           {
             driver: "Low registration is weakening ROI story",
-            evidence: "Usage slice flagged registration below 20%.",
+            evidence: "Usage evidence flagged registration below 20%.",
             weight: 15,
           },
         ],

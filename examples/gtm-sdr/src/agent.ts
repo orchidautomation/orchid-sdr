@@ -1,84 +1,64 @@
-import { trellis, schema } from "@trellis/gtm";
-import { attio, browser, mail, research } from "@trellis/providers";
+import { trellis } from "@trellis/gtm";
+import { attio, browser, mail, research as researchProvider } from "@trellis/providers";
 import browserProfiles from "./browser/profiles.map";
 import attioMap from "./crm/attio.map";
 import agentmailSequenceMap from "./email/agentmail.sequence.map";
 import { sdrMcpSurface } from "./mcp/sdr-surface";
 import stateMap from "./state/prospect.map";
+import { approvalGates, steps } from "./steps";
 
 export default trellis.agent("common-room-bdr", {
-  // Providers are mounted once, then used by skills and workflows through Trellis.
+  // Runtime capabilities the agent can use while doing SDR work.
   crm: attio({ map: attioMap }),
   mail: mail({ adapter: "agentmail", sequence: agentmailSequenceMap }),
   browser: browser({ profiles: browserProfiles }),
-  research: research({ profiles: browserProfiles }),
+  research: researchProvider({ profiles: browserProfiles }),
 
-  // The model, knowledge pack, skill pack, state map, and safety gates define
-  // the agent runtime. The Worker plumbing stays outside this file.
+  // Human/operator surface available through MCP clients.
+  mcp: sdrMcpSurface,
+
+  // Runtime shape: model route, mounted knowledge, mounted skills, state, safety.
   model: "cloudflare/openai/gpt-5.5",
   state: stateMap,
-  mcp: sdrMcpSurface,
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
-  // Demo mode keeps a mail adapter configured for sequence demos, but the live
-  // walkthrough below omits email.send from the approval list so the current
-  // demo can focus on approving one CRM update.
   safety: trellis.safeOutbound({
     noSends: false,
-    requireApproval: ["crm.update"],
+    requireApproval: approvalGates.prospect,
   }),
 }, async (app) => {
   // Every webhook, API call, or operator event enters as a normalized signal.
-  // Context hydrates the signal with mounted knowledge, skills, thread history,
-  // and provider capabilities before any model step runs.
   const signal = await app.signal();
   const context = await app.context(signal);
 
-  // Replies resume the same thread. Trellis classifies the reply, decides
-  // whether a person should take over, then starts a reply workflow.
+  // Reply path: classify the response, then decide if a person should take over.
   if (signal.source === "reply.webhook") {
-    const reply = await app.skill("reply-policy", {
-      context,
-      schema: schema.replyPolicy(),
-    });
-    const handoff = await app.skill("handoff-policy", {
+    const reply = await steps.classifyReply.run(app, { context });
+    const handoff = await steps.decideHandoff.run(app, {
       context,
       args: { reply },
-      schema: schema.handoffPolicy(),
     });
 
     return app.workflow("reply").start({ signal, reply, handoff });
   }
 
-  // New prospect flow: qualify the signal against the knowledge pack and
-  // return schema-shaped data that Trellis can persist and inspect.
-  const qualification = await app.skill("icp-qualification", {
-    context,
-    schema: schema.qualification(),
-  });
-
-  // Research uses the qualification result and mounted research provider to
-  // produce grounded account/person evidence for the copy step.
-  const research = await app.skill("research-brief", {
+  // New prospect path: qualify, research, draft, then queue the CRM update.
+  const qualification = await steps.qualifyLead.run(app, { context });
+  const research = await steps.researchAccount.run(app, {
     context,
     args: { qualification },
-    schema: schema.researchBrief(),
   });
-
-  // Copy creates a draft only. This demo shows approval on CRM update, so
-  // email.send stays commented out below instead of becoming an approval.
-  const draft = await app.skill("sdr-copy", {
+  const draft = await steps.draftOutbound.run(app, {
     context,
     args: { qualification, research },
-    schema: schema.outboundDraft(),
   });
 
-  const approvalRequiredFor = [
-    // "email.send",
-    "crm.update",
-  ];
-
-  // The durable workflow persists state, trace events, draft approvals, and
-  // any queued provider actions while keeping the lead's thread resumable.
-  return app.workflow("prospect").start({ signal, qualification, research, draft, approvalRequiredFor });
+  // The workflow records the run history and waits for human approval before CRM writes.
+  return app.workflow("prospect").start({
+    signal,
+    qualification,
+    research,
+    draft,
+    approvalRequiredFor: approvalGates.prospect,
+  });
 });

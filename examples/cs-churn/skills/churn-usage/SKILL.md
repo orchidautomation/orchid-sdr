@@ -1,4 +1,4 @@
-# Churn Usage Slice
+# Churn Usage Evidence
 
 Pull the product telemetry that predicts churn for a Spring Health customer.
 
@@ -46,7 +46,7 @@ const adminCadence = await tool.usage.query({
 });
 ```
 
-Use an aggregate or sanitized replica. Do not pull member-level PHI into Trellis traces or final briefs.
+Use an aggregate or sanitized replica. Do not pull member-level PHI into Trellis observability events or final briefs.
 
 ## Output
 

@@ -1,4 +1,4 @@
-# Churn Zendesk Slice
+# Churn Zendesk Evidence
 
 Surface support signals that predict churn: rising volume, negative sentiment, repeated unresolved issues, SLA misses, and executive escalations.
 

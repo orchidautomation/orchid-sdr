@@ -16,16 +16,17 @@ customer account signal
   -> churn-risk-score
   -> churn-playbook
   -> approval-gated crm.update
-  -> traceable account health state
+  -> auditable account health state
 ```
 
-The skills can depend on earlier skill outputs, but `src/agent.ts` owns the graph. That gives Trellis trace events with parent/phase metadata instead of hiding orchestration inside markdown.
+The skills can depend on earlier skill outputs, but `src/agent.ts` owns the graph. `src/steps.ts` shows the skills, provider capabilities, output schemas, and observability metadata for each step.
 
 ## Layout
 
 ```text
 src/                  runtime code
-  agent.ts            explicit skill graph and approval gate
+  agent.ts            short runtime story and approval gate
+  steps.ts            step definitions: skill, tools, output schema, observability
   integrations/       Salesforce, Zendesk, and usage data maps
   mcp/                CS-focused MCP surface
   state/              account-health state map
@@ -40,21 +41,24 @@ reference/            demo inputs and walkthrough notes
    Shows how `CLAUDE.md` maps into Trellis as normal knowledge.
 
 2. `src/agent.ts`
-   Shows the actual skill graph: three gather skills in parallel, then risk scoring, then playbook creation, then approval-gated CRM update.
+   Shows the readable runtime story: collect evidence, score risk, recommend a save plan, then gate the CRM update.
 
-3. `skills/churn-risk-score/SKILL.md`
+3. `src/steps.ts`
+   Shows each step's skill, tools/capabilities, output schema, and observability labels.
+
+4. `skills/churn-risk-score/SKILL.md`
    Shows the rule that scoring only reasons over prior skill outputs. It does not fetch data.
 
-4. `knowledge/integration-access.md`
+5. `knowledge/integration-access.md`
    Documents the preferred access paths for Salesforce, Zendesk, and usage data.
 
-5. `src/integrations/*.map.ts`
+6. `src/integrations/*.map.ts`
    Shows where a real team maps its CRM fields, Zendesk search patterns, and warehouse metrics.
 
-6. `src/integrations/composio.toolkit.map.ts`
+7. `src/integrations/composio.toolkit.map.ts`
    Shows how Composio toolkits/MCP can be modeled as a managed access layer without changing Trellis skills.
 
-7. `reference/integration-substitution-guide.md`
+8. `reference/integration-substitution-guide.md`
    Shows exactly how placeholder tool calls become real Salesforce, Zendesk, Composio, Snowflake, Postgres, or direct API calls.
 
 ## Run Locally
@@ -85,7 +89,7 @@ curl -sS "$TRELLIS_CS_CHURN_URL/webhooks/signals" \
 - Usage data: prefer Snowflake managed MCP when on Snowflake, or a read-only Postgres/reference MCP against a sanitized replica.
 - Composio: credible managed-toolkit option for faster SaaS coverage, but it must map back into Trellis provider capabilities and preserve approval gates.
 
-Trellis remains the runtime of record for orchestration, traces, approvals, provider actions, state, and safety.
+Trellis remains the runtime of record for orchestration, observability, approvals, provider actions, state, and safety.
 
 ## Resource Bindings
 

@@ -11,5 +11,5 @@ The demo should focus on the shape of the agent, not a live write into a product
 2. Show `src/agent.ts` and the explicit sub-skill graph.
 3. Show `knowledge/agent-overview.md` as the Trellis replacement for `CLAUDE.md`.
 4. Show `knowledge/integration-access.md` for reputable integration paths.
-5. Run the signal, then inspect trace events for `skill.started` and `skill.completed` with `trace.parent = churn-assessment`.
+5. Run the signal, then inspect the run timeline for `skill.started` and `skill.completed` events under `churn-assessment`.
 6. Approve or reject the queued `crm.update` proposal.

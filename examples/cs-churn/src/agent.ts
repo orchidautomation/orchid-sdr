@@ -1,74 +1,53 @@
 import { trellis } from "@trellis/gtm";
-import { accountArgs, churnBriefDraft, churnSchemas, churnTrace } from "./churn/agent-contract";
 import { salesforceCrm, usageWarehouse, zendeskSupport } from "./integrations/providers";
 import { csMcpSurface } from "./mcp/cs-surface";
 import stateMap from "./state/customer-health.map";
+import { accountFromSignal, approvalGates, churnBriefDraft, steps } from "./steps";
 
 export default trellis.agent("spring-health-cs-churn", {
-  // Providers stay swappable: direct APIs, first-party MCP, or Composio-backed tools.
+  // Runtime capabilities the agent can use while doing CS work.
   crm: salesforceCrm(),
   sources: [zendeskSupport(), usageWarehouse()],
+
+  // Human/operator surface available through MCP clients.
   mcp: csMcpSurface,
+
+  // Runtime shape: model route, mounted knowledge, mounted skills, state, safety.
   model: "cloudflare/openai/gpt-5.5",
   state: stateMap,
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
   safety: trellis.safeOutbound({
     noSends: true,
-    requireApproval: ["crm.update"],
+    requireApproval: approvalGates.churnAssessment,
   }),
 }, async (app) => {
   const signal = await app.signal();
   const context = await app.context(signal);
-  const account = accountArgs(signal);
+  const account = accountFromSignal(signal);
 
-  // The old `/churn-check` command becomes visible runtime orchestration:
-  // gather evidence in parallel, score it, then draft the save plan.
-  const [salesforce, zendesk, usage] = await Promise.all([
-    app.skill("churn-salesforce", {
-      context,
-      args: account,
-      schema: churnSchemas.evidenceSlice,
-      trace: churnTrace.salesforce,
-    }),
-    app.skill("churn-zendesk", {
-      context,
-      args: account,
-      schema: churnSchemas.evidenceSlice,
-      trace: churnTrace.zendesk,
-    }),
-    app.skill("churn-usage", {
-      context,
-      args: account,
-      schema: churnSchemas.evidenceSlice,
-      trace: churnTrace.usage,
-    }),
-  ]);
+  // Step 1: collect evidence from CRM, support, and usage systems.
+  const evidence = await steps.collectAccountEvidence.run(app, { context, account });
 
-  const score = await app.skill("churn-risk-score", {
+  // Step 2: score churn risk using only the evidence from Step 1.
+  const score = await steps.scoreChurnRisk.run(app, {
     context,
-    args: { ...account, salesforce, zendesk, usage },
-    schema: churnSchemas.riskScore,
-    trace: churnTrace.riskScore,
+    args: { ...account, ...evidence },
   });
 
-  const savePlan = await app.skill("churn-playbook", {
+  // Step 3: recommend a concrete save plan for the CSM team.
+  const savePlan = await steps.recommendSavePlan.run(app, {
     context,
     args: { ...account, score },
-    schema: churnSchemas.playbook,
-    trace: churnTrace.playbook,
   });
 
-  // Workflow start persists the run, emits trace events, and queues the CRM update
-  // for human approval instead of writing to Salesforce directly.
+  // Step 4: record the run and wait for approval before any CRM write.
   return app.workflow("churn-assessment").start({
     signal,
-    salesforce,
-    zendesk,
-    usage,
+    ...evidence,
     score,
     playbook: savePlan,
     draft: churnBriefDraft({ accountName: account.accountName, score, savePlan }),
-    approvalRequiredFor: ["crm.update"],
+    approvalRequiredFor: approvalGates.churnAssessment,
   });
 });
