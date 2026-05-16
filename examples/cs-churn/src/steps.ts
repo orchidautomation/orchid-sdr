@@ -8,16 +8,27 @@ type AccountArgs = {
 
 type StepRunInput = {
   context: Record<string, unknown>;
-  args: Record<string, unknown>;
+  args?: Record<string, unknown>;
 };
 
-type StepDefinition = {
+export type SkillStepDefinition = {
+  phase: string;
+  name: string;
   skill: string;
-  agentTools: string[];
-  operatorTools?: string[];
+  agentTools: readonly string[];
+  operatorTools: readonly string[];
   produces: string;
-  schema: z.ZodTypeAny;
+  outputSchema: OutputSchemaName;
   observability?: TrellisSkillTraceContext;
+};
+
+export type ApprovalStepDefinition = {
+  phase: string;
+  name: string;
+  agentTools: readonly string[];
+  operatorTools: readonly string[];
+  produces: string;
+  approvalGate: readonly string[];
 };
 
 const evidence = z.object({
@@ -54,97 +65,30 @@ const playbook = z.object({
   stopDoing: z.array(z.string()).default([]),
 });
 
-function skillStep(definition: StepDefinition) {
-  return {
-    ...definition,
-    run(app: TrellisGtmApp, input: StepRunInput) {
-      return app.skill(definition.skill, {
-        context: input.context,
-        args: input.args,
-        schema: definition.schema,
-        trace: definition.observability,
-      });
-    },
-  };
+export const outputSchemas = {
+  evidence,
+  riskScore,
+  playbook,
+};
+
+export type OutputSchemaName = keyof typeof outputSchemas;
+
+export function defineSkillStep<T extends SkillStepDefinition>(definition: T): T {
+  return definition;
 }
 
-const salesforceEvidence = skillStep({
-  skill: "churn-salesforce",
-  agentTools: ["crm.readAccount", "crm.query", "optional Composio Salesforce toolkit"],
-  operatorTools: [],
-  produces: "CRM evidence about renewal, sponsor, QBR, and health status",
-  schema: evidence,
-  observability: {
-    parent: "churn-assessment",
-    phase: "gather",
-    sequence: 1,
-    label: "Salesforce CRM evidence",
-  },
-});
+export function defineApprovalStep<T extends ApprovalStepDefinition>(definition: T): T {
+  return definition;
+}
 
-const zendeskEvidence = skillStep({
-  skill: "churn-zendesk",
-  agentTools: ["support.ticket.search", "support.ticket.read", "optional Composio Zendesk toolkit"],
-  operatorTools: [],
-  produces: "support evidence about volume, escalations, themes, SLA, and CSAT",
-  schema: evidence,
-  observability: {
-    parent: "churn-assessment",
-    phase: "gather",
-    sequence: 2,
-    label: "Zendesk support evidence",
-  },
-});
-
-const usageEvidence = skillStep({
-  skill: "churn-usage",
-  agentTools: ["usage.query", "Snowflake/Postgres/read-only warehouse"],
-  operatorTools: [],
-  produces: "usage evidence about registration, utilization, admin cadence, and activity",
-  schema: evidence,
-  observability: {
-    parent: "churn-assessment",
-    phase: "gather",
-    sequence: 3,
-    label: "Usage telemetry evidence",
-  },
-});
-
-export const steps = {
-  salesforceEvidence,
-  zendeskEvidence,
-  usageEvidence,
-
-  scoreChurnRisk: skillStep({
-    skill: "churn-risk-score",
-    agentTools: ["Salesforce evidence", "Zendesk evidence", "usage evidence"],
-    operatorTools: ["inspect_churn_score"],
-    produces: "Red/Orange/Yellow/Green churn score",
-    schema: riskScore,
-    observability: {
-      parent: "churn-assessment",
-      phase: "score",
-      sequence: 4,
-      dependsOn: ["churn-salesforce", "churn-zendesk", "churn-usage"],
-      label: "Score churn risk",
-    },
-  }),
-
-  recommendSavePlan: skillStep({
-    skill: "churn-playbook",
-    agentTools: ["risk score", "account context"],
-    operatorTools: ["draft_save_playbook", "list_pending_approvals", "approve_draft"],
-    produces: "CSM save plan with owner, persona, timeframe, and next action",
-    schema: playbook,
-    observability: {
-      parent: "churn-assessment",
-      phase: "recommend",
-      sequence: 5,
-      dependsOn: ["churn-risk-score"],
-      label: "Recommend save plan",
-    },
-  }),
-};
+export function runSkillStep(app: TrellisGtmApp, step: SkillStepDefinition, input: StepRunInput) {
+  return app.skill(step.skill, {
+    context: input.context,
+    args: input.args,
+    schema: outputSchemas[step.outputSchema],
+    trace: step.observability,
+  });
+}
 
 export const approvalGates = {
   churnAssessment: ["crm.update"],

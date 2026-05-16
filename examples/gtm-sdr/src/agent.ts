@@ -5,7 +5,108 @@ import attioMap from "./crm/attio.map";
 import agentmailSequenceMap from "./email/agentmail.sequence.map";
 import { sdrMcpSurface } from "./mcp/sdr-surface";
 import stateMap from "./state/prospect.map";
-import { approvalGates, steps } from "./steps";
+import {
+  approvalGates,
+  defineApprovalStep,
+  defineSkillStep,
+  runSkillStep,
+} from "./steps";
+
+const replyPath = {
+  classifyReply: defineSkillStep({
+    phase: "Reply Phase 1",
+    name: "Classify inbound reply",
+    skill: "reply-policy",
+    agentTools: ["thread.history", "email.reply"],
+    operatorTools: ["list_replies"],
+    produces: "reply classification and recommended next action",
+    outputSchema: "replyPolicy",
+    observability: {
+      parent: "reply",
+      phase: "classify",
+      sequence: 1,
+      label: "Classify inbound reply",
+    },
+  }),
+
+  decideHandoff: defineSkillStep({
+    phase: "Reply Phase 2",
+    name: "Decide if a human should take over",
+    skill: "handoff-policy",
+    agentTools: ["reply classification", "handoff.webhook"],
+    operatorTools: ["list_handoffs"],
+    produces: "human handoff recommendation",
+    outputSchema: "handoffPolicy",
+    observability: {
+      parent: "reply",
+      phase: "handoff",
+      sequence: 2,
+      dependsOn: ["reply-policy"],
+      label: "Decide whether a human should take over",
+    },
+  }),
+};
+
+const prospectPath = {
+  qualifyLead: defineSkillStep({
+    phase: "Prospect Phase 1",
+    name: "Qualify the lead against ICP",
+    skill: "icp-qualification",
+    agentTools: ["knowledge.icp", "crm.readAccount"],
+    operatorTools: ["qualify_lead", "list_leads", "get_lead"],
+    produces: "qualified/disqualified lead verdict",
+    outputSchema: "qualification",
+    observability: {
+      parent: "prospect",
+      phase: "qualify",
+      sequence: 1,
+      label: "Qualify lead",
+    },
+  }),
+
+  researchAccount: defineSkillStep({
+    phase: "Prospect Phase 2",
+    name: "Research the account and buyer",
+    skill: "research-brief",
+    agentTools: ["research.search", "research.scrape", "browser.session.run"],
+    operatorTools: ["research_account"],
+    produces: "account and buyer research brief",
+    outputSchema: "researchBrief",
+    observability: {
+      parent: "prospect",
+      phase: "research",
+      sequence: 2,
+      dependsOn: ["icp-qualification"],
+      label: "Research account",
+    },
+  }),
+
+  draftOutbound: defineSkillStep({
+    phase: "Prospect Phase 3",
+    name: "Draft the outbound email",
+    skill: "sdr-copy",
+    agentTools: ["knowledge.messaging", "qualification output", "research output"],
+    operatorTools: ["draft_email", "list_pending_approvals", "approve_draft"],
+    produces: "approval-gated outbound draft",
+    outputSchema: "outboundDraft",
+    observability: {
+      parent: "prospect",
+      phase: "draft",
+      sequence: 3,
+      dependsOn: ["research-brief"],
+      label: "Draft outbound message",
+    },
+  }),
+
+  queueCrmUpdate: defineApprovalStep({
+    phase: "Prospect Phase 4",
+    name: "Queue the CRM update for approval",
+    agentTools: ["crm.update"],
+    operatorTools: ["list_pending_approvals", "approve_draft", "reject_draft"],
+    produces: "human-reviewable CRM update proposal",
+    approvalGate: approvalGates.prospect,
+  }),
+};
 
 export default trellis.agent("common-room-bdr", {
   // Runtime capabilities the agent can use while doing SDR work.
@@ -24,7 +125,7 @@ export default trellis.agent("common-room-bdr", {
   skills: "skills/**/SKILL.md",
   safety: trellis.safeOutbound({
     noSends: false,
-    requireApproval: approvalGates.prospect,
+    requireApproval: prospectPath.queueCrmUpdate.approvalGate,
   }),
 }, async (app) => {
   // A signal is the incoming work item: webhook, API request, reply, or operator event.
@@ -35,19 +136,8 @@ export default trellis.agent("common-room-bdr", {
 
   // Reply path: classify the response, then decide if a person should take over.
   if (signal.source === "reply.webhook") {
-    // Reply Step 1
-    // Skill: reply-policy
-    // agentTools: thread.history, mail.reply
-    // operatorTools: list_replies
-    // Output schema: replyPolicy in src/steps.ts
-    const reply = await steps.classifyReply.run(app, { context });
-
-    // Reply Step 2
-    // Skill: handoff-policy
-    // agentTools: reply classification, handoff.webhook
-    // operatorTools: list_handoffs
-    // Output schema: handoffPolicy in src/steps.ts
-    const handoff = await steps.decideHandoff.run(app, {
+    const reply = await runSkillStep(app, replyPath.classifyReply, { context });
+    const handoff = await runSkillStep(app, replyPath.decideHandoff, {
       context,
       args: { reply },
     });
@@ -56,41 +146,21 @@ export default trellis.agent("common-room-bdr", {
   }
 
   // New prospect path: qualify, research, draft, then queue the CRM update.
-  // Prospect Step 1
-  // Skill: icp-qualification
-  // agentTools: knowledge.icp, crm.readAccount
-  // operatorTools: qualify_lead, list_leads, get_lead
-  // Output schema: qualification in src/steps.ts
-  const qualification = await steps.qualifyLead.run(app, { context });
-
-  // Prospect Step 2
-  // Skill: research-brief
-  // agentTools: research.search, research.scrape, browser.session.run
-  // operatorTools: research_account
-  // Output schema: researchBrief in src/steps.ts
-  const research = await steps.researchAccount.run(app, {
+  const qualification = await runSkillStep(app, prospectPath.qualifyLead, { context });
+  const research = await runSkillStep(app, prospectPath.researchAccount, {
     context,
     args: { qualification },
   });
-
-  // Prospect Step 3
-  // Skill: sdr-copy
-  // agentTools: knowledge.messaging, qualification output, research output
-  // operatorTools: draft_email, list_pending_approvals, approve_draft
-  // Output schema: outboundDraft in src/steps.ts
-  const draft = await steps.draftOutbound.run(app, {
+  const draft = await runSkillStep(app, prospectPath.draftOutbound, {
     context,
     args: { qualification, research },
   });
 
-  // Prospect Step 4: record the run and wait for human approval before CRM writes.
-  // Approval gate: crm.update
-  // operatorTools: list_pending_approvals, approve_draft, reject_draft
   return app.workflow("prospect").start({
     signal,
     qualification,
     research,
     draft,
-    approvalRequiredFor: approvalGates.prospect,
+    approvalRequiredFor: prospectPath.queueCrmUpdate.approvalGate,
   });
 });

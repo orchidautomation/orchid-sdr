@@ -19,14 +19,14 @@ customer account signal
   -> auditable account health state
 ```
 
-The skills can depend on earlier skill outputs, but `src/agent.ts` owns the graph. `src/steps.ts` shows the skills, provider capabilities, output schemas, and observability metadata for each step.
+The skills can depend on earlier skill outputs, but `src/agent.ts` owns the graph. It shows each phase's skill, provider capabilities, operator tools, output schema, and observability metadata as explicit data instead of comments.
 
 ## Layout
 
 ```text
 src/                  runtime code
-  agent.ts            short runtime story and approval gate
-  steps.ts            step definitions: skill, tools, output schema, observability
+  agent.ts            runtime story plus explicit phase/skill/tool/schema definitions
+  steps.ts            shared step helpers, output schemas, and approval gates
   integrations/       Salesforce, Zendesk, and usage data maps
   mcp/                CS-focused MCP surface
   state/              account-health state map
@@ -41,10 +41,10 @@ reference/            demo inputs and walkthrough notes
    Shows how `CLAUDE.md` maps into Trellis as normal knowledge.
 
 2. `src/agent.ts`
-   Shows the readable runtime story: collect evidence, score risk, recommend a save plan, then gate the CRM update.
+   Shows the readable runtime story and the explicit evidence/scoring/playbook step definitions.
 
 3. `src/steps.ts`
-   Shows each step's skill, tools/capabilities, output schema, and observability labels.
+   Holds the reusable step helper, output schemas, and approval gates.
 
 4. `skills/churn-risk-score/SKILL.md`
    Shows the rule that scoring only reasons over prior skill outputs. It does not fetch data.

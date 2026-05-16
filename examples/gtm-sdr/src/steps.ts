@@ -1,108 +1,56 @@
 import { schema, type TrellisGtmApp, type TrellisSkillTraceContext } from "@trellis/gtm";
-import { z } from "zod";
 
 type StepRunInput = {
   context: Record<string, unknown>;
   args?: Record<string, unknown>;
 };
 
-type StepDefinition = {
+export const outputSchemas = {
+  replyPolicy: schema.replyPolicy(),
+  handoffPolicy: schema.handoffPolicy(),
+  qualification: schema.qualification(),
+  researchBrief: schema.researchBrief(),
+  outboundDraft: schema.outboundDraft(),
+};
+
+export type OutputSchemaName = keyof typeof outputSchemas;
+
+export type SkillStepDefinition = {
+  phase: string;
+  name: string;
   skill: string;
-  agentTools: string[];
-  operatorTools?: string[];
+  agentTools: readonly string[];
+  operatorTools: readonly string[];
   produces: string;
-  schema: z.ZodTypeAny;
+  outputSchema: OutputSchemaName;
   observability?: TrellisSkillTraceContext;
 };
 
-function skillStep(definition: StepDefinition) {
-  return {
-    ...definition,
-    run(app: TrellisGtmApp, input: StepRunInput) {
-      return app.skill(definition.skill, {
-        context: input.context,
-        args: input.args,
-        schema: definition.schema,
-        trace: definition.observability,
-      });
-    },
-  };
+export type ApprovalStepDefinition = {
+  phase: string;
+  name: string;
+  agentTools: readonly string[];
+  operatorTools: readonly string[];
+  produces: string;
+  approvalGate: readonly string[];
+};
+
+export function defineSkillStep<T extends SkillStepDefinition>(definition: T): T {
+  return definition;
 }
 
-export const steps = {
-  classifyReply: skillStep({
-    skill: "reply-policy",
-    agentTools: ["thread.history", "mail.reply"],
-    operatorTools: ["list_replies"],
-    produces: "reply classification and next action",
-    schema: schema.replyPolicy(),
-    observability: {
-      parent: "reply",
-      phase: "classify",
-      sequence: 1,
-      label: "Classify inbound reply",
-    },
-  }),
+export function defineApprovalStep<T extends ApprovalStepDefinition>(definition: T): T {
+  return definition;
+}
 
-  decideHandoff: skillStep({
-    skill: "handoff-policy",
-    agentTools: ["reply classification", "handoff.webhook"],
-    operatorTools: ["list_handoffs"],
-    produces: "human handoff recommendation",
-    schema: schema.handoffPolicy(),
-    observability: {
-      parent: "reply",
-      phase: "handoff",
-      sequence: 2,
-      dependsOn: ["reply-policy"],
-      label: "Decide whether a human should take over",
-    },
-  }),
-
-  qualifyLead: skillStep({
-    skill: "icp-qualification",
-    agentTools: ["knowledge.icp", "crm.readAccount"],
-    operatorTools: ["qualify_lead", "list_leads", "get_lead"],
-    produces: "qualified/disqualified lead verdict",
-    schema: schema.qualification(),
-    observability: {
-      parent: "prospect",
-      phase: "qualify",
-      sequence: 1,
-      label: "Qualify lead",
-    },
-  }),
-
-  researchAccount: skillStep({
-    skill: "research-brief",
-    agentTools: ["research.search", "research.scrape", "browser.session.run"],
-    operatorTools: ["research_account"],
-    produces: "account and buyer research brief",
-    schema: schema.researchBrief(),
-    observability: {
-      parent: "prospect",
-      phase: "research",
-      sequence: 2,
-      dependsOn: ["icp-qualification"],
-      label: "Research account",
-    },
-  }),
-
-  draftOutbound: skillStep({
-    skill: "sdr-copy",
-    agentTools: ["knowledge.messaging", "qualification output", "research output"],
-    operatorTools: ["draft_email", "list_pending_approvals", "approve_draft"],
-    produces: "approval-gated outbound draft",
-    schema: schema.outboundDraft(),
-    observability: {
-      parent: "prospect",
-      phase: "draft",
-      sequence: 3,
-      dependsOn: ["research-brief"],
-      label: "Draft outbound message",
-    },
-  }),
-};
+export function runSkillStep(app: TrellisGtmApp, step: SkillStepDefinition, input: StepRunInput) {
+  return app.skill(step.skill, {
+    context: input.context,
+    args: input.args,
+    schema: outputSchemas[step.outputSchema],
+    trace: step.observability,
+  });
+}
 
 export const approvalGates = {
   prospect: [

@@ -12,8 +12,8 @@ See `reference/outputs/pylon-live-run.md` for the current Trellis-derived demo o
 
 ```text
 src/          runnable Trellis Worker app code
-  agent.ts    short runtime story and approval gate
-  steps.ts    step definitions: skill, tools, output schema, observability
+  agent.ts    runtime story plus explicit phase/skill/tool/schema definitions
+  steps.ts    shared step helpers, output schemas, and approval gates
 knowledge/    mounted company, ICP, and messaging context
 skills/       mounted GTM method playbooks
 scripts/      local demo and maintenance scripts
@@ -73,7 +73,7 @@ npm run docs:add
 
 Your app code stays Trellis-only in `src/agent.ts`. Attio field mapping lives in `src/crm/attio.map.ts`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like `qualification.decision`, `qualification.summary`, or `signal.payload.signal`. Email sequencing lives in `src/email/agentmail.sequence.map.ts`: define the initial send, follow-up reply steps, delays, approval policy, and stop rules while Trellis keeps provider actions approval-gated and auditable. Browser and research profiles live in `src/browser/profiles.map.ts`, so extraction and browser automation share explicit viewport, locale, wait, and resource-loading rules. Durable business state lives in `src/state/prospect.map.ts`: define tables, fields, indexes, and relationships while Trellis keeps runtime migrations private. The generated `src/trellis-runtime.ts` adapter mounts Trellis markdown packs into the virtual sandbox, uses the configured model route, and stores per-thread agent sessions in managed runtime state.
 
-`src/steps.ts` is the drilldown file for new builders. It shows each step's skill, tools/capabilities, output schema, and observability labels without making `agent.ts` hard to scan.
+`src/agent.ts` is the first file to walk through. It shows the runtime providers, the SDR MCP surface, and each prospect/reply phase as explicit data: skill, agentTools, operatorTools, outputSchema, observability labels, and approval gates. `src/steps.ts` is the drilldown file for reusable helpers and output schemas.
 
 Deploy auto-packs the default `knowledge/**/*.md` files, or uses `.trellis/knowledge-pack.json` when you run `trellis docs add <path>`. It also syncs tracked `skills/**/SKILL.md` files into the Trellis pack store. Email is mounted with a sequence map, but `email.send` is intentionally omitted from the current demo approval list; CRM writes still require approval before execution.
 
