@@ -12,7 +12,7 @@ describe("trellis init scaffold", () => {
     const output = runCli(repoRoot, ["help"], repoRoot);
 
     expect(output).toContain("npm run trellis -- init <target-dir> [--name my-app]");
-    expect(output).toContain("Cloudflare is the default deploy target.");
+    expect(output).toContain("Trellis manages the default deploy target.");
     expect(output).toContain("npm run trellis -- verify cloudflare --json");
     expect(output).not.toContain("trellis add");
     expect(output).not.toContain("Convex");
@@ -20,7 +20,7 @@ describe("trellis init scaffold", () => {
     expect(output).not.toContain("Rivet");
   });
 
-  it("emits a Cloudflare GTM scaffold", () => {
+  it("emits the default GTM scaffold", () => {
     const repoRoot = process.cwd();
     const targetDir = mkdtempSync(path.join(tmpdir(), "trellis-init-test."));
     const cliPath = path.join(repoRoot, "packages", "trellis-cli", "src", "cli.ts");
@@ -60,6 +60,7 @@ describe("trellis init scaffold", () => {
       expect(initResult.mode).toBe("cloudflare-gtm");
       expect(initResult.filesWritten).toContain("src/agent.ts");
       expect(initResult.filesWritten).toContain("src/trellis-runtime.ts");
+      expect(initResult.filesWritten).toContain("src/browser/profiles.map.ts");
       expect(initResult.filesWritten).toContain("src/crm/attio.map.ts");
       expect(initResult.filesWritten).toContain("src/state/prospect.map.ts");
       expect(dependencySpecs).not.toContain("workspace:*");
@@ -79,8 +80,12 @@ describe("trellis init scaffold", () => {
 
       expect(agentSource).toContain("trellis.agent(\"sdr\"");
       expect(agentSource).toContain("import attioMap from \"./crm/attio.map\"");
+      expect(agentSource).toContain("import browserProfiles from \"./browser/profiles.map\"");
       expect(agentSource).toContain("import stateMap from \"./state/prospect.map\"");
       expect(agentSource).toContain("crm: attio({ map: attioMap })");
+      expect(agentSource).toContain("mail: mail()");
+      expect(agentSource).toContain("browser: browser({ profiles: browserProfiles })");
+      expect(agentSource).toContain("research: research({ profiles: browserProfiles })");
       expect(agentSource).toContain("state: stateMap");
       expect(agentSource).toContain("model: \"anthropic/claude-sonnet-4.6\"");
       expect(agentSource).toContain("auth: trellis.auth.apiKey()");
@@ -93,17 +98,9 @@ describe("trellis init scaffold", () => {
 
       expect(workerSource).toContain("trellis.cloudflare(agent)");
       expect(workerSource).toContain("withTrellisRuntime(env, request)");
-      expect(runtimeSource).toContain("@flue/sdk/cloudflare");
-      expect(runtimeSource).toContain("getCloudflareAIBindingApiProvider");
-      expect(runtimeSource).toContain("getVirtualSandbox");
-      expect(runtimeSource).toContain("TRELLIS_RUNTIME_CONTEXT_FACTORY");
-      expect(runtimeSource).toContain("TRELLIS_AI_GATEWAY_ID");
-      expect(runtimeSource).toContain("gateway: { id: readAiGatewayId(env) }");
-      expect(runtimeSource).toContain("trellis_agent_sessions");
-      expect(runtimeSource).toContain("readPackFiles(input.packs, \"knowledge\")");
-      expect(runtimeSource).toContain("readPackFiles(input.packs, \"skills\")");
-      expect(runtimeSource.indexOf("const env = (input.env ?? {}) as TrellisEnv;"))
-        .toBeLessThan(runtimeSource.indexOf("registerProvider(\"cloudflare\""));
+      expect(runtimeSource).toContain("withTrellisRuntime");
+      expect(runtimeSource).toContain("@trellis/gtm");
+      expect(runtimeSource).not.toContain("@flue/sdk");
       expect(attioMapSource).toContain("satisfies TrellisAttioMap");
       expect(attioMapSource).toContain("companies:");
       expect(attioMapSource).toContain("people:");
@@ -134,7 +131,7 @@ describe("trellis init scaffold", () => {
       expect(envExample).toContain("PROSPEO_API_KEY=");
       expect(envExample).toContain("TRELLIS_AI_GATEWAY_ID=default");
       expect(envExample).toContain("TRELLIS_FOLLOW_UP_DELAY=3 days");
-      expect(readme).toContain("first deploy is Cloudflare-first");
+      expect(readme).toContain("first deploy does not require");
       expect(readme).toContain("npm run cf:login");
       expect(readme).toContain("Deploy auto-packs the default `knowledge/**/*.md` files");
       expect(readme).toContain("TRELLIS_API_KEY");
@@ -236,7 +233,7 @@ describe("trellis init scaffold", () => {
         files: Array<{ path: string }>;
         target: string;
       };
-      expect(docsResult.target).toBe("R2-backed Trellis knowledge pack");
+      expect(docsResult.target).toBe("Trellis knowledge pack");
       expect(docsResult.files.map((file) => file.path)).toEqual(["knowledge/icp.md"]);
 
       const doctorResult = JSON.parse(runCli(repoRoot, [
@@ -336,8 +333,9 @@ describe("trellis init scaffold", () => {
         "skills/files/handoff-policy/SKILL.md",
       ]));
       expect(deployResult.providers.attio).toMatchObject({ connected: false, status: "not_connected" });
-      expect(deployResult.providers.agentmail).toMatchObject({ connected: false, status: "not_connected" });
-      expect(deployResult.providers.firecrawl).toMatchObject({ connected: false, status: "not_connected" });
+      expect(deployResult.providers.mail).toMatchObject({ connected: false, status: "not_connected" });
+      expect(deployResult.providers.research).toMatchObject({ connected: false, status: "not_connected" });
+      expect(deployResult.providers.browser).toMatchObject({ connected: false, status: "not_connected" });
 
       const verifyResult = JSON.parse(runCli(repoRoot, [
         "verify",
@@ -384,8 +382,7 @@ describe("trellis init scaffold", () => {
 
       const connectedProviders = [
         ["attio", "ATTIO_API_KEY"],
-        ["agentmail", "AGENTMAIL_API_KEY"],
-        ["firecrawl", "FIRECRAWL_API_KEY"],
+        ["mail", "TRELLIS_MAIL_FROM"],
         ["apify", "APIFY_TOKEN"],
         ["prospeo", "PROSPEO_API_KEY"],
       ] as const;
@@ -434,15 +431,10 @@ describe("trellis init scaffold", () => {
         status: "waiting_for_env",
         missingRequiredEnv: ["ATTIO_API_KEY"],
       });
-      expect(connectedDoctorResult.providers.agentmail).toMatchObject({
+      expect(connectedDoctorResult.providers.mail).toMatchObject({
         connected: true,
         status: "waiting_for_env",
-        missingRequiredEnv: ["AGENTMAIL_API_KEY"],
-      });
-      expect(connectedDoctorResult.providers.firecrawl).toMatchObject({
-        connected: true,
-        status: "waiting_for_env",
-        missingRequiredEnv: ["FIRECRAWL_API_KEY"],
+        missingRequiredEnv: ["TRELLIS_MAIL_FROM"],
       });
       expect(connectedDoctorResult.providers.apify).toMatchObject({
         connected: true,
@@ -459,7 +451,7 @@ describe("trellis init scaffold", () => {
     }
   });
 
-  it("verifies live Cloudflare exercise artifacts from the deployed worker", async () => {
+  it("verifies live Trellis exercise artifacts from the deployed worker", async () => {
     const repoRoot = process.cwd();
     const targetDir = mkdtempSync(path.join(tmpdir(), "trellis-live-verify-test."));
     const fakeBinDir = mkdtempSync(path.join(tmpdir(), "trellis-fake-bin."));

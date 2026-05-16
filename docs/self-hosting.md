@@ -1,12 +1,12 @@
 # Self-Hosting Trellis
 
-For current, "self-hosting" means you own the Cloudflare account and Trellis deploys into it. It does not mean assembling a custom Convex/Vercel/Rivet stack.
+For current Trellis, "self-hosting" means you own the deploy account and Trellis deploys into it. It does not mean assembling a custom Convex/Vercel/Rivet stack.
 
 ## Prerequisites
 
 - Node.js 22
 - npm
-- Cloudflare account access
+- deploy account access
 - either `npm run cf:login` in the generated app or `CLOUDFLARE_ACCOUNT_ID` plus `CLOUDFLARE_API_TOKEN`
 
 Business provider keys are optional for first deploy.
@@ -19,14 +19,9 @@ cd ../acme-sdr
 npm install
 ```
 
-## Configure Cloudflare
+## Configure The Deploy Target
 
-The scaffold expects Cloudflare bindings for:
-
-- D1 app state
-- R2 packs and artifacts
-- Queues
-- Durable Objects / Cloudflare Agents
+The scaffold expects bindings for managed app state, packs and artifacts, queues, and durable agent identity.
 - AI Gateway
 
 Use the generated `wrangler.jsonc` as the source of truth, then run:
@@ -62,6 +57,6 @@ npm run trellis -- connect agentmail
 npm run trellis -- connect firecrawl
 ```
 
-Then add provider secrets to Cloudflare.
+Then add provider secrets to the deploy environment.
 
 Keep no-send mode enabled until real customer examples have been reviewed.

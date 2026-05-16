@@ -4,7 +4,7 @@ import { createTrellisTestApp, runTrellisSmoke, schema, trellis } from "./index.
 import { agentmail, attio, firecrawl } from "@trellis/providers";
 
 describe("@trellis/gtm API", () => {
-  it("defines the one-screen GTM agent shape without exposing Flue or Cloudflare", async () => {
+  it("defines the one-screen GTM agent shape without exposing runtime internals", async () => {
     const agent = trellis.agent("sdr", {
       crm: attio(),
       email: agentmail(),
@@ -52,7 +52,7 @@ describe("@trellis/gtm API", () => {
     expect(agent.kind).toBe("trellis.gtm.agent");
     expect(agent.config.safety).toEqual({
       noSends: true,
-      requireApproval: ["email.send", "mail.reply", "crm.update", "handoff.webhook"],
+      requireApproval: ["mail.send", "mail.reply", "crm.update", "handoff.webhook"],
       killSwitch: true,
     });
     expect(agent.config.crm?.id).toBe("attio");
@@ -97,12 +97,12 @@ describe("@trellis/gtm API", () => {
     expect(result.drafts).toEqual([
       expect.objectContaining({
         status: "blocked_pending_approval",
-        approvalRequiredFor: ["email.send", "crm.update"],
+        approvalRequiredFor: ["mail.send", "crm.update"],
         body: expect.stringContaining("Subject: GTM agent workflow"),
       }),
     ]);
     expect(result.approvals).toEqual([
-      expect.objectContaining({ action: "email.send", status: "pending" }),
+      expect.objectContaining({ action: "mail.send", status: "pending" }),
       expect.objectContaining({ action: "crm.update", status: "pending" }),
     ]);
     expect(result.auditEvents.map((event) => event.type)).toEqual([
@@ -199,6 +199,22 @@ describe("@trellis/gtm API", () => {
   });
 
   it("hides the Cloudflare worker shell behind trellis.cloudflare", async () => {
+    const flueContext = {
+      init: vi.fn(async (options: Record<string, unknown>) => ({
+        options,
+        session: vi.fn(async () => ({
+          skill: vi.fn(async () => ({
+            data: {
+              decision: "qualified",
+              summary: "ok",
+              confidence: 0.9,
+              matchedEvidence: [],
+              missingEvidence: [],
+            },
+          })),
+        })),
+      })),
+    };
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
       email: agentmail(),
@@ -426,7 +442,7 @@ describe("@trellis/gtm API", () => {
         expect.objectContaining({ status: "blocked_pending_approval" }),
       ],
       approvals: [
-        expect.objectContaining({ action: "email.send", status: "pending" }),
+        expect.objectContaining({ action: "mail.send", status: "pending" }),
         expect.objectContaining({ action: "crm.update", status: "pending" }),
       ],
       persistence: {
@@ -490,7 +506,7 @@ describe("@trellis/gtm API", () => {
         prospectIds: ["prospect_sig_live"],
         draftIds: ["draft_sig_live"],
         approvalIds: [
-          "approval_draft_sig_live_email_send",
+          "approval_draft_sig_live_mail_send",
           "approval_draft_sig_live_crm_update",
         ],
       }),
@@ -639,7 +655,7 @@ describe("@trellis/gtm API", () => {
       },
     });
     const dashboardHtml = await dashboard.text();
-    expect(dashboardHtml).toContain("Cloudflare GTM runtime");
+    expect(dashboardHtml).toContain("Trellis GTM runtime");
     expect(dashboardHtml).toContain("<dt>Signals</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>Prospects</dt><dd>1</dd>");
     expect(dashboardHtml).toContain("<dt>State Records</dt><dd>1</dd>");
@@ -1338,7 +1354,11 @@ describe("@trellis/gtm API", () => {
       safety: trellis.safeOutbound(),
     }, async (app) => {
       const signal = await app.signal();
-      return app.workflow("prospect").start({ signal });
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+      return app.workflow("prospect").start({ signal, qualification });
     }));
     const get = vi.fn(async (key: string) => {
       if (key === "trellis:snapshot") {
@@ -1675,7 +1695,7 @@ describe("@trellis/gtm API", () => {
     });
   });
 
-  it("exports D1 trace events to optional observability sinks without blocking ingest", async () => {
+  it("exports trace events to optional observability sinks without blocking ingest", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
       email: agentmail(),
@@ -3048,7 +3068,7 @@ describe("@trellis/gtm API", () => {
                 decision: "qualified",
                 summary: "Qualified by Trellis runtime.",
                 confidence: 0.91,
-                matchedEvidence: ["R2 ICP pack"],
+                matchedEvidence: ["ICP pack"],
                 missingEvidence: [],
               },
             };
@@ -3153,7 +3173,7 @@ describe("@trellis/gtm API", () => {
         expect.objectContaining({ name: "research.search", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
         expect.objectContaining({ name: "research.extract", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
         expect.objectContaining({ name: "research.map", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
-        expect.objectContaining({ name: "email.enrich", parameters: expect.objectContaining({ type: "object" }) }),
+        expect.objectContaining({ name: "mail.enrich", parameters: expect.objectContaining({ type: "object" }) }),
       ]),
     }));
     const initOptions = flueContext.init.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -3165,7 +3185,7 @@ describe("@trellis/gtm API", () => {
     const searchTool = tools.find((tool) => tool.name === "research.search");
     const extractTool = tools.find((tool) => tool.name === "research.extract");
     const mapTool = tools.find((tool) => tool.name === "research.map");
-    const enrichTool = tools.find((tool) => tool.name === "email.enrich");
+    const enrichTool = tools.find((tool) => tool.name === "mail.enrich");
     const searchResult = await searchTool?.execute?.({
       query: "Acme news",
       limit: 2,
@@ -3218,7 +3238,7 @@ describe("@trellis/gtm API", () => {
     });
     expect(JSON.parse(String(enrichResult))).toMatchObject({
       provider: "prospeo",
-      operation: "email.enrich",
+      operation: "mail.enrich",
       found: true,
       contact: {
         address: "sam@northstar.example",
@@ -3228,7 +3248,7 @@ describe("@trellis/gtm API", () => {
     });
     expect(JSON.parse(String(enrichNoMatch))).toMatchObject({
       provider: "prospeo",
-      operation: "email.enrich",
+      operation: "mail.enrich",
       found: false,
       contact: null,
       raw: {
@@ -3325,6 +3345,209 @@ describe("@trellis/gtm API", () => {
     });
   });
 
+  it("exposes native mail and browser capabilities through neutral Trellis names", async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) =>
+      new Response(JSON.stringify({
+        ok: true,
+        received: init?.body ? JSON.parse(String(init.body)) : null,
+      }), { headers: { "content-type": "application/json" } })
+    );
+    const flueContext = {
+      init: vi.fn(async (options: Record<string, unknown>) => ({
+        options,
+        session: vi.fn(async () => ({
+          skill: vi.fn(async () => ({
+            data: {
+              decision: "qualified",
+              summary: "ok",
+              confidence: 0.9,
+              matchedEvidence: [],
+              missingEvidence: [],
+            },
+          })),
+        })),
+      })),
+    };
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      mail: {
+        id: "mail",
+        kind: "mail",
+        displayName: "Trellis Mail",
+      },
+      browser: {
+        id: "browser",
+        kind: "browser",
+        displayName: "Trellis Browser",
+        config: {
+          defaultProfile: "qa",
+          profiles: {
+            qa: {
+              viewport: { width: 1280, height: 900 },
+              waitFor: "networkidle",
+            },
+          },
+        },
+      },
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound({ noSends: false }),
+    }, async (app) => {
+      const signal = await app.signal();
+      const qualification = await app.skill("icp-qualification", {
+        context: await app.context(signal),
+        schema: schema.qualification(),
+      });
+      return app.workflow("prospect").start({ signal, qualification });
+    }));
+
+    await runtime.worker.fetch(new Request("https://example.com/webhooks/signals", {
+      method: "POST",
+      body: JSON.stringify({ id: "sig_tools", workspaceId: "wrk_tools", threadId: "thr_tools" }),
+    }), {
+      TRELLIS_FETCH: fetchMock,
+      TRELLIS_BROWSER_RUN_BASE_URL: "https://browser-run.test",
+      TRELLIS_MAIL_ENDPOINT: "https://mail.test/send",
+      TRELLIS_MAIL_FROM: "agent@example.com",
+      TRELLIS_FLUE_CONTEXT: flueContext,
+    });
+    const initOptions = flueContext.init.mock.calls[0]?.[0] as { tools?: Array<{ name: string; execute?: (input: Record<string, unknown>) => Promise<unknown> | unknown }> };
+    const browserRun = initOptions.tools?.find((tool) => tool.name === "browser.session.run");
+    const mailBinding = {
+      forward: vi.fn(async () => ({ id: "forwarded_msg" })),
+      reject: vi.fn(async () => ({ id: "rejected_msg" })),
+    };
+
+    await browserRun?.execute?.({
+      url: "https://example.com",
+      task: "QA the page",
+    });
+    await runtime.worker.fetch(new Request("https://example.com/provider-actions/action_forward/execute", {
+      method: "POST",
+      body: JSON.stringify({
+        input: {
+          messageId: "msg_123",
+          to: "owner@example.com",
+        },
+      }),
+    }), {
+      TRELLIS_DB: createProviderActionFakeD1({
+        id: "action_forward",
+        approvalId: "approval_forward",
+        signalId: "sig_forward",
+        provider: "mail",
+        operation: "mail.forward",
+        status: "queued",
+        traceId: "trace_forward",
+      }),
+      TRELLIS_MAIL: mailBinding,
+    });
+    await runtime.worker.fetch(new Request("https://example.com/provider-actions/action_reject/execute", {
+      method: "POST",
+      body: JSON.stringify({
+        input: {
+          messageId: "msg_456",
+          reason: "Policy rejected.",
+        },
+      }),
+    }), {
+      TRELLIS_DB: createProviderActionFakeD1({
+        id: "action_reject",
+        approvalId: "approval_reject",
+        signalId: "sig_reject",
+        provider: "mail",
+        operation: "mail.reject",
+        status: "queued",
+        traceId: "trace_reject",
+      }),
+      TRELLIS_MAIL: mailBinding,
+    });
+
+    expect(browserRun).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith("https://browser-run.test/session%2Frun", expect.objectContaining({
+      body: expect.stringContaining("\"task\":\"QA the page\""),
+    }));
+    expect(mailBinding.forward).toHaveBeenCalledWith(expect.objectContaining({
+      type: "forward",
+      messageId: "msg_123",
+    }));
+    expect(mailBinding.reject).toHaveBeenCalledWith(expect.objectContaining({
+      type: "reject",
+      messageId: "msg_456",
+    }));
+  });
+
+  it("accepts native mail webhooks as reply signals and lifecycle events", async () => {
+    const fakeD1 = createFakeD1();
+    const runtime = trellis.cloudflare(trellis.agent("sdr", {
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const context = await app.context(signal);
+      const reply = await app.skill("reply-policy", {
+        context,
+        schema: schema.replyPolicy(),
+      });
+      return app.workflow("reply").start({ signal, reply });
+    }));
+
+    const unauthorized = await runtime.worker.fetch(new Request("https://example.com/webhooks/mail", {
+      method: "POST",
+      body: "{}",
+    }), {
+      TRELLIS_MAIL_WEBHOOK_SECRET: "mail-secret",
+    });
+    const inbound = await runtime.worker.fetch(new Request("https://example.com/webhooks/mail", {
+      method: "POST",
+      headers: { "x-trellis-mail-webhook-secret": "mail-secret" },
+      body: JSON.stringify({
+        type: "message.received",
+        message: {
+          id: "mail_msg_1",
+          threadId: "mail_thread_1",
+          from: "buyer@example.com",
+          subject: "Re: GTM",
+          text: "Can you send pricing?",
+        },
+      }),
+    }), {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_MAIL_WEBHOOK_SECRET: "mail-secret",
+    });
+    const bounce = await runtime.worker.fetch(new Request("https://example.com/webhooks/mail", {
+      method: "POST",
+      headers: { "x-trellis-mail-webhook-secret": "mail-secret" },
+      body: JSON.stringify({
+        type: "hard_bounce",
+        messageId: "mail_msg_2",
+        threadId: "mail_thread_2",
+        reason: "Mailbox unavailable.",
+      }),
+    }), {
+      TRELLIS_DB: fakeD1,
+      TRELLIS_MAIL_WEBHOOK_SECRET: "mail-secret",
+    });
+
+    expect(unauthorized.status).toBe(401);
+    await expect(inbound.json()).resolves.toMatchObject({
+      ok: true,
+      accepted: true,
+      signal: {
+        id: "sig_mail_mail_msg_1",
+        provider: "mail",
+        source: "reply.webhook",
+      },
+    });
+    await expect(bounce.json()).resolves.toMatchObject({
+      ok: true,
+      accepted: true,
+      mode: "lifecycle",
+      event: expect.objectContaining({ kind: "bounce" }),
+    });
+    expect(traceEventsFromStatements(fakeD1).some((event) => event.type === "mail.bounce")).toBe(true);
+  });
+
   it("builds hidden runtime context through a factory after Trellis hydrates Cloudflare packs", async () => {
     const runtime = trellis.cloudflare(trellis.agent("sdr", {
       crm: attio(),
@@ -3348,7 +3571,7 @@ describe("@trellis/gtm API", () => {
         decision: "qualified",
         summary: "Qualified by generated Trellis runtime factory.",
         confidence: 0.88,
-        matchedEvidence: ["Generated R2 pack"],
+        matchedEvidence: ["Generated pack"],
         missingEvidence: [],
       },
     }));
@@ -3457,9 +3680,9 @@ describe("@trellis/gtm API", () => {
     const skill = vi.fn(async () => ({
       data: {
         decision: "qualified",
-        summary: "Qualified with a mocked Flue session.",
+        summary: "Qualified with a mocked runtime session.",
         confidence: 0.91,
-        matchedEvidence: ["Mocked Flue log"],
+        matchedEvidence: ["Mocked runtime log"],
         missingEvidence: [],
       },
     }));
@@ -4163,4 +4386,45 @@ function createFakeR2(objects: Record<string, string>) {
       };
     },
   };
+}
+
+function createProviderActionFakeD1(action: {
+  id: string;
+  approvalId: string;
+  signalId: string;
+  provider: string;
+  operation: string;
+  status: string;
+  traceId: string;
+}) {
+  const fakeD1 = createFakeD1();
+  fakeD1.prepare(`
+    INSERT OR REPLACE INTO trellis_provider_actions (
+      id, approval_id, signal_id, draft_id, provider, operation, status, trace_id, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    action.id,
+    action.approvalId,
+    action.signalId,
+    null,
+    action.provider,
+    action.operation,
+    action.status,
+    action.traceId,
+    new Date().toISOString(),
+    new Date().toISOString(),
+  ).run();
+  fakeD1.prepare(`
+    INSERT OR REPLACE INTO trellis_approvals (
+      id, draft_id, signal_id, action, status, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(
+    action.approvalId,
+    null,
+    action.signalId,
+    action.operation,
+    "approved",
+    new Date().toISOString(),
+  ).run();
+  return fakeD1;
 }

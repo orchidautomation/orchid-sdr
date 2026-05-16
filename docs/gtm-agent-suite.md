@@ -83,7 +83,7 @@ Creates a living room for every target account.
 
 The room keeps account research, signals, stakeholders, open questions, recent news, support context, product usage, prior outbound, replies, notes, and recommended plays in one place. Reps can ask "why this account?" or "what changed since last week?" and get an evidence-backed answer.
 
-**Composed from**: account threads, R2 artifacts, knowledge packs, Firecrawl-style research, Slack/CRM/email providers, state maps, dashboard views.
+**Composed from**: account threads, artifacts, knowledge packs, Firecrawl-style research, Slack/CRM/email providers, state maps, dashboard views.
 
 ### 4. Market Pulse Agent
 
@@ -241,7 +241,7 @@ The agent can run wherever the work starts: forms, Slack, email, CRM events, sch
 
 ## Public Example
 
-The public example is packaged as a clean, Cloudflare-first GTM SDR example:
+The public example is packaged as a clean GTM SDR example:
 
 ```text
 examples/gtm-sdr/

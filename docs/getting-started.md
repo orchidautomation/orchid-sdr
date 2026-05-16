@@ -2,7 +2,7 @@
 
 This is the happy path. Trellis is now a curated GTM agent stack, not a toolkit for assembling your own agent framework.
 
-The first boot should require only Node, npm, and Cloudflare auth. Business providers come after the app is alive.
+The first boot should require only Node, npm, and deploy auth. Business providers come after the app is alive.
 
 ## 1. Install
 
@@ -23,7 +23,7 @@ cd ../acme-sdr
 npm install
 ```
 
-`trellis init` writes the Cloudflare GTM app by default:
+`trellis init` writes the GTM app by default:
 
 - `src/agent.ts`
 - `knowledge/**/*.md`
@@ -34,7 +34,7 @@ npm install
 
 No SDR kit, Convex app, Vercel Sandbox, or Rivet runtime is installed by default.
 
-## 3. Authenticate Cloudflare
+## 3. Authenticate The Deploy Runtime
 
 Use Wrangler login or environment auth:
 
@@ -49,13 +49,7 @@ export CLOUDFLARE_ACCOUNT_ID=<account-id>
 export CLOUDFLARE_API_TOKEN=<api-token>
 ```
 
-The generated app expects Cloudflare bindings for:
-
-- D1 app state, with `database_id` resolved during first deploy
-- R2 knowledge and artifact packs
-- Queues, including an events dead-letter queue
-- Durable Objects / Cloudflare Agents
-- AI Gateway routing through `TRELLIS_AI_GATEWAY_ID` (defaults to `default`)
+The generated app expects deploy bindings for managed state, knowledge/artifact packs, background queues, durable agent identity, and model routing. `trellis deploy` creates or verifies those resources for the default target.
 
 The model is configured in `src/agent.ts`, for example `model: "anthropic/claude-sonnet-4.6"`. `TRELLIS_MODEL` can override it per environment without changing code.
 
@@ -67,7 +61,7 @@ Keep product truth in markdown:
 npm run trellis -- docs add ./knowledge
 ```
 
-This step is optional for the generated app. Deploy auto-packs the default `knowledge/**/*.md` files, so first boot does not require a separate docs command. Run `docs add` when you want `.trellis/knowledge-pack.json` with file paths, sizes, and hashes. Deploy uses that manifest when present, plus tracked `skills/**/SKILL.md` files, as the R2-backed pack sync plan.
+This step is optional for the generated app. Deploy auto-packs the default `knowledge/**/*.md` files, so first boot does not require a separate docs command. Run `docs add` when you want `.trellis/knowledge-pack.json` with file paths, sizes, and hashes. Deploy uses that manifest when present, plus tracked `skills/**/SKILL.md` files, as the pack sync plan.
 
 ## 5. Verify Before Providers
 
@@ -77,7 +71,7 @@ npm run trellis -- smoke
 npm run trellis -- verify cloudflare
 ```
 
-`doctor` checks Cloudflare wiring, markdown packs, skill packs, provider readiness, and the no-send safety gate.
+`doctor` checks deploy wiring, markdown packs, skill packs, provider readiness, and the no-send safety gate.
 
 `smoke` runs a safe GTM fixture through the Trellis runtime and proves the core loop works:
 
@@ -91,17 +85,17 @@ signal -> qualification skill -> prospect -> blocked draft -> approvals -> audit
 npm run trellis -- deploy
 ```
 
-Deploy is the magic path. For the generated `wrangler.jsonc`, Trellis resolves or creates the D1 database, writes the `database_id`, creates or verifies the R2 buckets, creates or verifies the events queue and dead-letter queue, syncs markdown and skills into R2, then runs `wrangler deploy`.
+Deploy is the magic path. Trellis resolves or creates the managed database, pack store, events queue, and dead-letter queue, syncs markdown and skills, then deploys the app.
 
-After deploy, verify the live Cloudflare surface:
+After deploy, verify the live Trellis surface:
 
 ```bash
-npm run trellis -- verify cloudflare --live --url https://<your-worker>.workers.dev
+npm run trellis -- verify cloudflare --live --url <app-url>
 ```
 
-When you are ready to spend one safe model call to prove the hidden Flue/Cloudflare harness, add `--exercise-agent`.
+When you are ready to spend one safe model call to prove the live Trellis runtime, add `--exercise-agent`.
 
-That live exercise also checks the production plumbing around the agent turn: D1 persistence, provider-run recording, Queue fanout, Workflow dispatch, R2 pack visibility, operator workflow replay, no-send approval gating, provider-action requeue, and the MCP snapshot after the signal is processed.
+That live exercise also checks the production plumbing around the agent turn: persistence, provider-run recording, queue fanout, workflow dispatch, pack visibility, operator workflow replay, no-send approval gating, provider-action requeue, and the MCP snapshot after the signal is processed.
 
 Use JSON output when another agent or setup tool is orchestrating the flow:
 
@@ -112,7 +106,7 @@ npm run trellis -- verify cloudflare --json
 
 ## 7. Connect Providers
 
-Provider manifests are non-secret. Secrets stay in Cloudflare env or your shell.
+Provider manifests are non-secret. Secrets stay in the deploy environment or your shell.
 
 ```bash
 npm run trellis -- connect attio
@@ -132,4 +126,4 @@ The default GTM provider lanes are:
 
 ## Example
 
-Use [`examples/gtm-sdr`](../examples/gtm-sdr/) as the reference example. It shows the public architecture: Cloudflare-first deploy, form-fill signal, durable thread, markdown knowledge, typed skills, Firecrawl-backed research tools, state map, approval-gated draft, smoke route, and audit-friendly workflow.
+Use [`examples/gtm-sdr`](../examples/gtm-sdr/) as the reference example. It shows the public architecture: deployable GTM agent, form-fill signal, durable thread, markdown knowledge, typed skills, Firecrawl-backed research tools, state map, approval-gated draft, smoke route, and audit-friendly workflow.

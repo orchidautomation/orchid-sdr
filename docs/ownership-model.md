@@ -6,7 +6,7 @@ Trellis owns the reliable GTM agent stack. Builders own the business truth.
 
 ## Trellis Owns
 
-- Cloudflare deployment wiring
+- deployment wiring
 - agent harness integration
 - runtime routes
 - durable state schema

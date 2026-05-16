@@ -87,11 +87,11 @@ Append-only proof of what happened and why.
 
 The user should not need to choose these on day one:
 
-- Flue harness
-- Cloudflare Workers
-- Cloudflare Agents / Durable Objects
-- D1
-- R2
+- Trellis skill runtime
+- deploy target
+- durable agent identity
+- managed SQL state
+- managed pack/artifact store
 - Queues
 - Workflows
 - AI Gateway

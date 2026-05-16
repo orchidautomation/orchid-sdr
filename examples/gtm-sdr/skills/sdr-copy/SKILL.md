@@ -27,7 +27,7 @@ Rules:
 - Position the configured offer using the language and claims in `knowledge/company.md` and `knowledge/messaging.md`.
 - Ask a simple, low-pressure question.
 - Do not claim the email has already been sent.
-- Do not mention internal implementation details, databases, Cloudflare, Trellis, Firecrawl, or the agent runtime.
+- Do not mention internal implementation details, databases, infrastructure providers, Trellis, Firecrawl, or the agent runtime.
 - Do not overpromise autonomous selling or imply humans are unnecessary.
 
 ## Output Contract

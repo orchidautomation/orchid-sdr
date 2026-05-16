@@ -5,7 +5,7 @@ Last reset and seed: 2026-05-15.
 Live Worker:
 
 ```text
-https://trellis-cloud-sdr.brandon-ccf.workers.dev
+$TRELLIS_DEMO_BASE_URL
 ```
 
 Current curated demo run:
@@ -26,7 +26,7 @@ draft status: blocked_pending_approval
 
 ## Database Shape
 
-After cleanup and seed, deployed D1 contains only the curated demo run:
+After cleanup and seed, deployed Trellis state contains only the curated demo run:
 
 | Table | Rows |
 | --- | ---: |
@@ -74,9 +74,9 @@ The live trace has 66 events:
 | `signal.accepted` | 1 |
 | `provider_run.started` | 1 |
 | `skill.started` | 3 |
-| `flue.tool_start` | 21 |
-| `flue.tool_call` | 21 |
-| `flue.turn` | 8 |
+| `runtime.tool_start` | 21 |
+| `runtime.tool_call` | 21 |
+| `runtime.turn` | 8 |
 | `skill.completed` | 3 |
 | `workflow.started` | 1 |
 | `draft.created` | 1 |

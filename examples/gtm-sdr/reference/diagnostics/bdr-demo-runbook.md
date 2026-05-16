@@ -8,12 +8,12 @@ The story:
 Pylon form fill
   -> Trellis signal
   -> durable thread
-  -> R2 knowledge and skills
-  -> GPT-5.5 through Cloudflare AI Gateway
+  -> Trellis knowledge and skills
+  -> GPT-5.5 through the configured model route
   -> qualification
   -> account research
   -> SDR draft
-  -> D1 trace and state
+  -> Trellis trace and state
   -> approval gate for the CRM update
   -> MCP-ready operator surfaces
 ```
@@ -22,15 +22,15 @@ Pylon form fill
 
 | Capability | What to show | Why it matters |
 | --- | --- | --- |
-| Agent runtime | `src/agent.ts` has one clean Trellis BDR flow. | The business logic is readable and not buried in Cloudflare/Flue plumbing. |
+| Agent runtime | `src/agent.ts` has one clean Trellis BDR flow. | The business logic is readable and not buried in runtime plumbing. |
 | Skills | `skills/icp-qualification`, `skills/research-brief`, `skills/sdr-copy`, `skills/reply-policy`, `skills/handoff-policy`. | GTM methodology is versioned as explicit playbooks. |
 | Knowledge | `knowledge/company.md`, `knowledge/icp.md`, `knowledge/messaging.md`. | The agent follows company positioning and ICP rules, not generic model memory. |
-| Cloudflare execution | Worker, D1, R2, Queue, Workflow, Workers AI/Gateway, Browser binding. | The demo is deployed production-style instead of running only on a laptop. |
+| Deployable runtime | HTTP routes, managed state, pack storage, queues, workflows, model routing, and browser binding. | The demo is deployed production-style instead of running only on a laptop. |
 | Observability | `trellis_trace_events` plus `/events`, `/events/stream`, and SDR run views. | Every step can be inspected and replayed. |
 | Cost visibility | `estimate_cost` on the SDR MCP and `GET /traces/:traceId/cost`. | A team can see what the model run cost. |
 | Human gating | CRM actions become approvals and provider actions. | The agent drafts email for review, but the live approval demo is the Attio CRM update. |
 | Email sequencing | `src/email/agentmail.sequence.map.ts` defines AgentMail steps, delays, approvals, and stop rules. | Follow-up motion is explicit code, not buried in prompts or a vendor UI. |
-| Scheduled repair loop | `wrangler.jsonc` declares a 15-minute cron trigger. | D1 follow-up state can be swept for overdue or stopped sequence steps even if a workflow wakeup needs repair. |
+| Scheduled repair loop | `wrangler.jsonc` declares a 15-minute cron trigger. | runtime follow-up state can be swept for overdue or stopped sequence steps even if a workflow wakeup needs repair. |
 | Portability | MCP works in Claude Code and other compatible clients. | The same agent can be operated from role-specific surfaces without changing the runtime. |
 
 ## Demo Environment Contract
@@ -54,13 +54,13 @@ trace: trace_demo_bdr_pylon_<runId>
 thread: lead:pylon:alex-rivera:<runId>
 ```
 
-This avoids Cloudflare Workflow instance-id collisions after a database reset, because Workflow instance history is not stored in D1.
+This avoids workflow instance-id collisions after a database reset, because workflow instance history is separate from Trellis runtime rows.
 
 The signal is intentionally demo-safe. It is a realistic Pylon/Common Room workflow, not a real private lead.
 
 ## Reset The Demo Database
 
-This deletes only Trellis runtime rows from the remote D1 database. It keeps schema and Cloudflare resources intact.
+This deletes only Trellis runtime rows from the remote Trellis database. It keeps schema and deploy resources intact.
 
 ```bash
 TRELLIS_DEMO_RESET_CONFIRM=reset npm run demo:reset-db
@@ -94,7 +94,7 @@ npm run demo:seed-bdr
 The script posts `reference/inputs/demo-form-payload.json` to:
 
 ```text
-https://trellis-cloud-sdr.brandon-ccf.workers.dev/webhooks/signals
+$TRELLIS_DEMO_BASE_URL/webhooks/signals
 ```
 
 Expected result:
@@ -132,11 +132,11 @@ Add `Authorization: Bearer $TRELLIS_API_KEY` if the deployed route is protected.
 ## Talk Track
 
 1. Start in Claude Code and show that `trellis-sdr` is the SDR MCP server and `trellis-operator` is the control-plane MCP server.
-2. Ask `trellis-sdr` to describe the agent. It should identify Cloudflare runtime, D1, R2 knowledge, skills, safety rails, and providers.
+2. Ask `trellis-sdr` to describe the agent. It should identify the Trellis runtime, knowledge, skills, safety rails, and providers.
 3. Ask whether there are leads. It should show the curated Pylon BDR signal, not verifier/test rows.
 4. Ask for the trace. Walk through `signal.accepted -> skill.started/completed -> workflow.started -> draft.created -> approval.waiting -> run.completed`.
 5. Ask for pending approvals. Explain that email sending is commented out for the demo and the CRM write is gated.
-6. Ask for cost. Show that model usage comes from D1 trace events, not a separate vendor dashboard.
+6. Ask for cost. Show that model usage comes from Trellis trace events, not a separate vendor dashboard.
 7. Explain surfaces: `trellis-sdr` is the SDR role surface and `trellis-operator` is the platform surface. The surface is not the runtime; the Trellis agent is.
 
 ## Demo Close
@@ -146,8 +146,8 @@ The point is not that Trellis can draft an email. The point is that a GTM team c
 - business rules in skills
 - company context in knowledge
 - model/tool orchestration in a durable session
-- Cloudflare runtime primitives
-- queryable D1 state
+- deployable runtime primitives
+- queryable Trellis state
 - approval gates before CRM side effects
 - traces, costs, and replayable operator controls
 - one agent usable from MCP, dashboard, or API surfaces

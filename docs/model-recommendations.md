@@ -33,9 +33,9 @@ Trellis should expose:
 
 Trellis should not force every user to understand provider-specific model routing before their first deploy.
 
-## Cloudflare Role
+## Model Routing Role
 
-Cloudflare AI Gateway is the default routing and visibility layer.
+Trellis uses a managed model route as the default routing and visibility layer.
 
 Use it for:
 

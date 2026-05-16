@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${TRELLIS_DEMO_BASE_URL:-https://trellis-cloud-sdr.brandon-ccf.workers.dev}"
+BASE_URL="${TRELLIS_DEMO_BASE_URL:?Set TRELLIS_DEMO_BASE_URL to your deployed Trellis app URL}"
 PAYLOAD="${TRELLIS_DEMO_PAYLOAD:-reference/inputs/demo-form-payload.json}"
 TOKEN="${TRELLIS_API_KEY:-${TRELLIS_MCP_TOKEN:-}}"
 RUN_ID="${TRELLIS_DEMO_RUN_ID:-$(date -u +%Y%m%d%H%M%S)}"

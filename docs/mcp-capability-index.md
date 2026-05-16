@@ -2,9 +2,9 @@
 
 This document records hosted MCP servers and provider capabilities Trellis may map into product-owned tools.
 
-It is not the public architecture. Trellis exposes curated provider setup through `trellis connect <provider>`, then mounts the right tools behind the Trellis/Flue runtime. Users should not have to assemble capability/provider/module graphs.
+It is not the public architecture. Trellis exposes curated provider setup through `trellis connect <provider>`, then mounts the right tools behind the Trellis runtime. Users should not have to assemble capability/provider/module graphs.
 
-Provider packages can still expose more than one internal capability, but that should compile into Trellis-owned manifests, smoke checks, MCP tool catalogs, and Flue tool bindings without becoming the product-facing CLI.
+Provider packages can still expose more than one internal capability, but that should compile into Trellis-owned manifests, smoke checks, MCP tool catalogs, and runtime tool bindings without becoming the product-facing CLI.
 
 ## Parallel
 
@@ -81,5 +81,5 @@ Trellis should compile curated provider connections into:
 - provider readiness checks
 - doctor checks
 - smoke checks
-- hidden Flue MCP/tool bindings
-- Cloudflare secret names
+- hidden runtime MCP/tool bindings
+- runtime secret names

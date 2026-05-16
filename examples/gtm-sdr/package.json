@@ -19,7 +19,6 @@
     "cf:tail": "wrangler tail"
   },
   "dependencies": {
-    "@flue/sdk": "^0.5.3",
     "@trellis/gtm": "file:../../packages/gtm",
     "@trellis/providers": "file:../../packages/providers",
     "zod": "^3.25.76"

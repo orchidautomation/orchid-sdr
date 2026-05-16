@@ -2,16 +2,15 @@
 
 This folder contains human-readable evidence from the deployed Trellis BDR demo.
 
-Use it when recording or presenting the demo so you can show outputs without digging through raw D1 rows during the video.
+Use it when recording or presenting the demo so you can show outputs without digging through raw runtime rows during the video.
 
 Current output file:
 
-- `pylon-live-run.md` - current curated Pylon run pulled from deployed D1 and the trace cost endpoint.
+- `pylon-live-run.md` - current curated Pylon run pulled from deployed Trellis state and the trace cost endpoint.
 
 Source of truth:
 
-- D1 database: `trellis-cloud-sdr-db`
-- Worker: `https://trellis-cloud-sdr.brandon-ccf.workers.dev`
+- Hosted demo: `$TRELLIS_DEMO_BASE_URL`
 - Trace: `trace_demo_bdr_pylon_ready_20260515_1512`
 - Signal: `sig_demo_bdr_pylon_ready_20260515_1512`
 

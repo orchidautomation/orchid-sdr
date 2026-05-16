@@ -1,12 +1,12 @@
 # Pylon Live Demo Output
 
-Pulled from deployed D1 and the live trace cost endpoint on 2026-05-15.
+Pulled from deployed Trellis state and the live trace cost endpoint on 2026-05-15.
 
 ## Run Identity
 
 | Field | Value |
 | --- | --- |
-| Worker | `https://trellis-cloud-sdr.brandon-ccf.workers.dev` |
+| Hosted demo | `$TRELLIS_DEMO_BASE_URL` |
 | Database | `trellis-cloud-sdr-db` |
 | Agent | `common-room-bdr` |
 | Signal | `sig_demo_bdr_pylon_ready_20260515_1512` |
@@ -94,9 +94,9 @@ Uses the strongest first-party signal from Alex's form-fill and ties it to Pylon
 
 | Event type | Count |
 | --- | ---: |
-| `flue.tool_call` | 21 |
-| `flue.tool_start` | 21 |
-| `flue.turn` | 8 |
+| `runtime.tool_call` | 21 |
+| `runtime.tool_start` | 21 |
+| `runtime.turn` | 8 |
 | `skill.completed` | 3 |
 | `skill.started` | 3 |
 | `approval.waiting` | 1 |

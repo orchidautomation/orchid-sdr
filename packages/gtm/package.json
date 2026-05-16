@@ -20,6 +20,7 @@
     "@chat-adapter/slack": "^4.28.1",
     "chat": "^4.28.1",
     "valibot": "^1.4.0",
-    "zod-to-json-schema": "^3.25.2"
+    "zod-to-json-schema": "^3.25.2",
+    "@flue/sdk": "^0.5.3"
   }
 }

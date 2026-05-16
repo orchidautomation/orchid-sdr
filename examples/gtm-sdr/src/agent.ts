@@ -1,5 +1,6 @@
 import { trellis, schema } from "@trellis/gtm";
-import { agentmail, attio, firecrawl } from "@trellis/providers";
+import { attio, browser, mail, research } from "@trellis/providers";
+import browserProfiles from "./browser/profiles.map";
 import attioMap from "./crm/attio.map";
 import agentmailSequenceMap from "./email/agentmail.sequence.map";
 import { sdrMcpSurface } from "./mcp/sdr-surface";
@@ -8,8 +9,9 @@ import stateMap from "./state/prospect.map";
 export default trellis.agent("common-room-bdr", {
   // Providers are mounted once, then used by skills and workflows through Trellis.
   crm: attio({ map: attioMap }),
-  email: agentmail({ sequence: agentmailSequenceMap }),
-  research: firecrawl(),
+  mail: mail({ adapter: "agentmail", sequence: agentmailSequenceMap }),
+  browser: browser({ profiles: browserProfiles }),
+  research: research({ profiles: browserProfiles }),
 
   // The model, knowledge pack, skill pack, state map, and safety gates define
   // the agent runtime. The Worker plumbing stays outside this file.
@@ -18,8 +20,8 @@ export default trellis.agent("common-room-bdr", {
   mcp: sdrMcpSurface,
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
-  // Demo mode keeps AgentMail configured for sequence demos, but the live
-  // walkthrough below omits email.send from the approval list so the current
+  // Demo mode keeps a mail adapter configured for sequence demos, but the live
+  // walkthrough below omits mail.send from the approval list so the current
   // demo can focus on approving one CRM update.
   safety: trellis.safeOutbound({
     noSends: false,
@@ -64,7 +66,7 @@ export default trellis.agent("common-room-bdr", {
   });
 
   // Copy creates a draft only. This demo shows approval on CRM update, so
-  // email.send stays commented out below instead of becoming an approval.
+  // mail.send stays commented out below instead of becoming an approval.
   const draft = await app.skill("sdr-copy", {
     context,
     args: { qualification, research },
@@ -72,7 +74,7 @@ export default trellis.agent("common-room-bdr", {
   });
 
   const approvalRequiredFor = [
-    // "email.send",
+    // "mail.send",
     "crm.update",
   ];
 

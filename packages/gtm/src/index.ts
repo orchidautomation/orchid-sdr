@@ -1,3 +1,4 @@
+export { withTrellisRuntime } from "./hosted-runtime.js";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import * as v from "valibot";
@@ -5,6 +6,8 @@ import * as v from "valibot";
 export type TrellisProviderKind =
   | "source"
   | "crm"
+  | "mail"
+  | "browser"
   | "email"
   | "enrichment"
   | "research"
@@ -31,10 +34,10 @@ export interface TrellisAttioMap {
   people?: TrellisFieldMap;
 }
 
-export type TrellisAgentMailSequenceOperation = "email.send" | "email.reply" | "mail.reply";
-export type TrellisAgentMailSequenceApproval = "required" | "optional" | "none";
-export type TrellisAgentMailSequenceCondition = "always" | "no_reply" | string;
-export type TrellisAgentMailSequenceStopCondition =
+export type TrellisMailSequenceOperation = "mail.send" | "mail.reply" | "email.send" | "email.reply";
+export type TrellisMailSequenceApproval = "required" | "optional" | "none";
+export type TrellisMailSequenceCondition = "always" | "no_reply" | string;
+export type TrellisMailSequenceStopCondition =
   | "reply.received"
   | "unsubscribe"
   | "bounce"
@@ -42,25 +45,54 @@ export type TrellisAgentMailSequenceStopCondition =
   | "kill_switch"
   | string;
 
-export interface TrellisAgentMailSequenceStep {
+export interface TrellisMailSequenceStep {
   id: string;
-  operation: TrellisAgentMailSequenceOperation;
+  operation: TrellisMailSequenceOperation;
   draftSkill?: string;
   delay?: string;
-  condition?: TrellisAgentMailSequenceCondition;
-  approval?: TrellisAgentMailSequenceApproval;
+  condition?: TrellisMailSequenceCondition;
+  approval?: TrellisMailSequenceApproval;
   subject?: string;
   bodyText?: string;
 }
 
-export interface TrellisAgentMailSequenceMap {
-  provider?: "agentmail";
+export interface TrellisMailSequenceMap {
+  provider?: "mail" | "agentmail";
   defaultInboxId?: string;
-  stopOn?: TrellisAgentMailSequenceStopCondition[];
-  steps: TrellisAgentMailSequenceStep[];
+  stopOn?: TrellisMailSequenceStopCondition[];
+  steps: TrellisMailSequenceStep[];
 }
 
+export type TrellisAgentMailSequenceOperation = TrellisMailSequenceOperation;
+export type TrellisAgentMailSequenceApproval = TrellisMailSequenceApproval;
+export type TrellisAgentMailSequenceCondition = TrellisMailSequenceCondition;
+export type TrellisAgentMailSequenceStopCondition = TrellisMailSequenceStopCondition;
+export type TrellisAgentMailSequenceStep = TrellisMailSequenceStep;
+export type TrellisAgentMailSequenceMap = TrellisMailSequenceMap;
+
 export type TrellisStateFieldType = "string" | "number" | "boolean" | "json" | "datetime";
+
+export interface TrellisBrowserProfile {
+  viewport?: {
+    width?: number;
+    height?: number;
+    deviceScaleFactor?: number;
+    isMobile?: boolean;
+  };
+  userAgent?: string;
+  locale?: string;
+  timezoneId?: string;
+  headers?: Record<string, string>;
+  cookies?: Array<Record<string, unknown>>;
+  waitFor?: string;
+  allowedDomains?: string[];
+  blockedResourceTypes?: string[];
+}
+
+export interface TrellisBrowserProfileMap {
+  defaultProfile?: string;
+  profiles: Record<string, TrellisBrowserProfile>;
+}
 
 export type TrellisStateFieldDefinition =
   | string
@@ -152,7 +184,9 @@ const DEFAULT_TRELLIS_MODEL = "anthropic/claude-sonnet-4.6";
 
 export interface TrellisAgentConfig {
   crm?: TrellisProviderDefinition;
+  mail?: TrellisProviderDefinition;
   email?: TrellisProviderDefinition;
+  browser?: TrellisProviderDefinition;
   research?: TrellisProviderDefinition;
   observability?: TrellisProviderDefinition;
   handoff?: TrellisProviderDefinition;
@@ -639,7 +673,7 @@ export const trellis = {
   safeOutbound(input?: Partial<TrellisSafetyPolicy>): TrellisSafetyPolicy {
     return {
       noSends: input?.noSends ?? true,
-      requireApproval: input?.requireApproval ?? ["email.send", "mail.reply", "crm.update", "handoff.webhook"],
+      requireApproval: input?.requireApproval ?? ["mail.send", "mail.reply", "crm.update", "handoff.webhook"],
       killSwitch: input?.killSwitch ?? true,
     };
   },
@@ -1148,7 +1182,7 @@ export async function runTrellisSmoke(input?: {
     smokeCheck(
       "safety.approvals",
       agent.config.safety?.noSends === true
-        && ["email.send", "crm.update"].every((approval) =>
+        && ["mail.send", "crm.update"].every((approval) =>
           agent.config.safety?.requireApproval.includes(approval),
         ),
       "kept no-send mode and approval gates enabled",
@@ -1572,7 +1606,7 @@ function approvalActionsForWorkflow(name: string, workflowInput: TrellisWorkflow
   }
 
   if (name !== "reply") {
-    return ["email.send", "crm.update"];
+    return ["mail.send", "crm.update"];
   }
 
   const reply = isRecord(workflowInput.reply) ? workflowInput.reply : {};
@@ -1723,7 +1757,7 @@ function matchOperatorReplayRoute(pathname: string) {
 
 function inferApprovalAction(approvalId: string) {
   if (approvalId.endsWith("_email_send")) {
-    return "email.send";
+    return "mail.send";
   }
   if (approvalId.endsWith("_mail_reply")) {
     return "mail.reply";
@@ -2061,6 +2095,101 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               verified: verification.enabled,
               type: "agentmail",
               eventType: agentMail.type,
+            },
+            packs: packContext,
+            noSendsMode: agent.config.safety?.noSends ?? true,
+          }, 202);
+        }
+
+        if (url.pathname === "/webhooks/mail" && request.method === "POST") {
+          const rawBody = await request.text();
+          const verification = verifyMailWebhookRequest(request, env);
+          if (!verification.ok) {
+            return jsonResponse({
+              ok: false,
+              error: "unauthorized_mail_webhook",
+              detail: "Mail webhook secret was configured but not provided or did not verify.",
+            }, 401);
+          }
+          const parsed = parseJsonText(rawBody);
+          const record = isRecord(parsed) ? parsed : {};
+          const mailEvent = readMailWebhook(record);
+          if (mailEvent.kind === "bounce" || mailEvent.kind === "rejected") {
+            const eventSink = createTrellisEventSink(env);
+            await emitTrellisTrace(eventSink, {
+              id: `trace_event_mail_${normalizeIdPart(mailEvent.kind)}_${normalizeIdPart(mailEvent.providerMessageId ?? String(Date.now()))}`,
+              traceId: readString(record.traceId) ?? readString(record.trace_id) ?? `trace_mail_${normalizeIdPart(mailEvent.providerMessageId ?? String(Date.now()))}`,
+              span: "mail:lifecycle",
+              type: mailEvent.kind === "bounce" ? "mail.bounce" : "mail.rejected",
+              message: mailEvent.kind === "bounce" ? "Mail bounce recorded." : "Mail rejection recorded.",
+              payload: {
+                providerMessageId: mailEvent.providerMessageId,
+                providerThreadId: mailEvent.providerThreadId,
+                recipient: mailEvent.from,
+                reason: mailEvent.reason,
+                severity: mailEvent.severity,
+              },
+            });
+            return jsonResponse({
+              ok: true,
+              accepted: true,
+              mode: "lifecycle",
+              event: mailEvent,
+              webhook: {
+                verified: verification.enabled,
+                type: "mail",
+              },
+            }, 202);
+          }
+          if (!mailEvent.providerThreadId || !mailEvent.bodyText) {
+            return jsonResponse({
+              ok: true,
+              ignored: true,
+              reason: "threadId or bodyText missing",
+              webhook: {
+                verified: verification.enabled,
+                type: "mail",
+              },
+            });
+          }
+
+          const signal = mailWebhookToSignal(mailEvent, record);
+          const packContext = await readPackContext(env);
+          const eventSink = createTrellisEventSink(env);
+          const harness = await createRuntimeHarness(env, agent.config, {
+            signal,
+            packs: packContext,
+            eventSink,
+          });
+          const run = await runTrellisAgent(agent, {
+            signal,
+            context: {
+              packs: packContext,
+              inboundReply: mailEvent,
+            },
+            harness,
+            eventSink,
+          });
+          const persistence = await persistRuntimeResult(env, run, agent.config);
+          const queue = await enqueueRuntimeEvent(env, run);
+          const workflowDispatch = await dispatchWorkflow(env, run);
+          return jsonResponse({
+            ok: true,
+            accepted: true,
+            mode: "processed",
+            traceId: traceIdForSignal(run.signal),
+            signal: run.signal,
+            prospects: run.prospects,
+            drafts: run.drafts,
+            approvals: run.approvals,
+            auditEvents: run.auditEvents,
+            persistence,
+            queue,
+            workflowDispatch,
+            webhook: {
+              verified: verification.enabled,
+              type: "mail",
+              eventType: mailEvent.type,
             },
             packs: packContext,
             noSendsMode: agent.config.safety?.noSends ?? true,
@@ -2405,10 +2534,13 @@ function createTrellisMcpTools(
   env: Record<string, unknown> | undefined,
   config: TrellisAgentConfig,
 ): TrellisMcpToolDefinition[] {
+  const mailProvider = resolveMailProvider(config);
+  const researchProvider = resolveResearchProvider(config);
+  const browserProvider = resolveBrowserProvider(config);
   const tools: TrellisMcpToolDefinition[] = [
     {
       name: "trellis.health",
-      description: "Inspect the Trellis runtime, configured providers, safety policy, and Cloudflare bindings.",
+      description: "Inspect the Trellis runtime, configured providers, safety policy, and deploy bindings.",
       operation: "trellis.health",
       inputSchema: {
         type: "object",
@@ -2421,8 +2553,9 @@ function createTrellisMcpTools(
           stack: "trellis-cloudflare",
           providers: {
             crm: config.crm?.id ?? null,
-            email: config.email?.id ?? null,
-            research: config.research?.id ?? null,
+            mail: mailProvider?.id ?? null,
+            browser: browserProvider?.id ?? null,
+            research: researchProvider?.id ?? null,
           },
           safety: config.safety ?? trellis.safeOutbound(),
           bindings: summarizeCloudflareBindings(env),
@@ -2445,7 +2578,7 @@ function createTrellisMcpTools(
     },
     {
       name: "trellis.smoke.history",
-      description: "Inspect durable Trellis smoke run history recorded in D1.",
+      description: "Inspect durable Trellis smoke run history recorded in the runtime store.",
       operation: "trellis.smoke.history",
       inputSchema: {
         type: "object",
@@ -2455,7 +2588,7 @@ function createTrellisMcpTools(
     },
     {
       name: "trellis.signal.inspect",
-      description: "Inspect recent accepted GTM signals from the D1 runtime projection.",
+      description: "Inspect recent accepted GTM signals from the runtime projection.",
       operation: "trellis.signal.inspect",
       inputSchema: {
         type: "object",
@@ -2497,7 +2630,7 @@ function createTrellisMcpTools(
     },
     {
       name: "trellis.knowledge.inspect",
-      description: "Inspect the mounted R2-backed knowledge and skill pack metadata available to Trellis skills.",
+      description: "Inspect the mounted knowledge and skill pack metadata available to Trellis skills.",
       operation: "trellis.knowledge.inspect",
       inputSchema: {
         type: "object",
@@ -2616,7 +2749,7 @@ function createTrellisMcpTools(
     },
     {
       name: "trellis.trace.export",
-      description: "Inspect optional trace export sinks. D1 trellis_trace_events remains canonical.",
+      description: "Inspect optional trace export sinks. trellis_trace_events remains canonical.",
       operation: "trellis.trace.export",
       inputSchema: {
         type: "object",
@@ -2720,7 +2853,7 @@ function createTrellisMcpTools(
     },
     {
       name: "trellis.workflow.replay",
-      description: "Replay a stored workflow run through the configured Cloudflare Workflow binding.",
+      description: "Replay a stored workflow run through the configured workflow runner.",
       operation: "trellis.workflow.replay",
       inputSchema: {
         type: "object",
@@ -2749,7 +2882,7 @@ function createTrellisMcpTools(
     },
   ];
 
-  if (config.research?.id === "firecrawl") {
+  if (researchProvider?.id === "firecrawl") {
     tools.push(
       {
         name: "research.search",
@@ -2832,12 +2965,178 @@ function createTrellisMcpTools(
     );
   }
 
+  if (researchProvider?.id === "research") {
+    tools.push(
+      {
+        name: "research.map",
+        description: "Discover URLs from a site for research workflows.",
+        provider: "research",
+        operation: "research.map",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string", format: "uri" },
+            search: { type: "string" },
+            limit: { type: "number", minimum: 1, maximum: 100 },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeBrowserRunQuickAction(env, "research.map", "links", input, researchProvider);
+        },
+      },
+      {
+        name: "research.scrape",
+        description: "Scrape a page into normalized research content.",
+        provider: "research",
+        operation: "research.scrape",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string", format: "uri" },
+            selector: { type: "string" },
+            waitFor: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeBrowserRunQuickAction(env, "research.scrape", "scrape", input, researchProvider);
+        },
+      },
+      {
+        name: "research.extract",
+        description: "Extract markdown or structured facts from a URL for grounded agent context.",
+        provider: "research",
+        operation: "research.extract",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string", format: "uri" },
+            prompt: { type: "string" },
+            schema: { type: "object" },
+            format: { type: "string", enum: ["markdown", "json"] },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeBrowserRunQuickAction(env, "research.extract", readString(input.format) === "json" ? "json" : "markdown", input, researchProvider);
+        },
+      },
+      {
+        name: "research.crawl.start",
+        description: "Start an async site crawl for research collection.",
+        provider: "research",
+        operation: "research.crawl.start",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string", format: "uri" },
+            limit: { type: "number" },
+            maxDepth: { type: "number" },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeBrowserRunQuickAction(env, "research.crawl.start", "crawl", input, researchProvider);
+        },
+      },
+    );
+  }
+
+  if (browserProvider?.id === "browser") {
+    tools.push(
+      {
+        name: "browser.session.run",
+        description: "Run a bounded browser automation task in a stateful session profile.",
+        provider: "browser",
+        operation: "browser.session.run",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string", format: "uri" },
+            profile: { type: "string" },
+            task: { type: "string" },
+            steps: { type: "array", items: { type: "object" } },
+            waitFor: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeBrowserRunQuickAction(env, "browser.session.run", "session/run", input, browserProvider);
+        },
+      },
+      {
+        name: "browser.interact",
+        description: "Interact with a page using a bounded browser profile and action list.",
+        provider: "browser",
+        operation: "browser.interact",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string", format: "uri" },
+            profile: { type: "string" },
+            prompt: { type: "string" },
+            steps: { type: "array", items: { type: "object" } },
+            waitFor: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeBrowserRunQuickAction(env, "browser.interact", "interact", input, browserProvider);
+        },
+      },
+      {
+        name: "browser.screenshot",
+        description: "Capture a screenshot of a web page.",
+        provider: "browser",
+        operation: "browser.screenshot",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string", format: "uri" },
+            fullPage: { type: "boolean" },
+            waitFor: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeBrowserRunQuickAction(env, "browser.screenshot", "screenshot", input, browserProvider);
+        },
+      },
+      {
+        name: "browser.pdf",
+        description: "Render a web page as a PDF.",
+        provider: "browser",
+        operation: "browser.pdf",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string", format: "uri" },
+            waitFor: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeBrowserRunQuickAction(env, "browser.pdf", "pdf", input, browserProvider);
+        },
+      },
+    );
+  }
+
   if (readString(env?.PROSPEO_API_KEY)) {
     tools.push({
-      name: "email.enrich",
+      name: "mail.enrich",
       description: "Enrich a prospect with Prospeo and return a verified email when available.",
       provider: "prospeo",
-      operation: "email.enrich",
+      operation: "mail.enrich",
       inputSchema: {
         type: "object",
         properties: {
@@ -3863,6 +4162,33 @@ async function verifyAgentMailWebhookRequest(
   };
 }
 
+function verifyMailWebhookRequest(request: Request, env: Record<string, unknown> | undefined) {
+  const configuredSecret = readString(env?.TRELLIS_MAIL_WEBHOOK_SECRET)
+    ?? readString(env?.MAIL_WEBHOOK_SECRET)
+    ?? readString(env?.TRELLIS_WEBHOOK_SECRET)
+    ?? readString(env?.SIGNAL_WEBHOOK_SECRET);
+  if (!configuredSecret) {
+    return {
+      enabled: false,
+      ok: true,
+    };
+  }
+
+  const url = new URL(request.url);
+  const authorization = readString(request.headers.get("authorization"));
+  const bearer = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : undefined;
+  const providedSecret = readString(request.headers.get("x-trellis-mail-webhook-secret"))
+    ?? readString(request.headers.get("x-mail-webhook-secret"))
+    ?? readString(request.headers.get("x-trellis-webhook-secret"))
+    ?? readString(request.headers.get("x-webhook-secret"))
+    ?? readString(url.searchParams.get("secret"))
+    ?? bearer;
+  return {
+    enabled: true,
+    ok: providedSecret === configuredSecret,
+  };
+}
+
 function verifyProviderSmokeRequest(request: Request, env: Record<string, unknown> | undefined) {
   const configuredSecret = readString(env?.TRELLIS_PROVIDER_SMOKE_TOKEN)
     ?? readString(env?.TRELLIS_MCP_TOKEN)
@@ -3967,6 +4293,76 @@ function agentMailWebhookToSignal(
       providerMessageId: agentMail.providerMessageId,
       subject: agentMail.subject,
       bodyText: agentMail.bodyText,
+    },
+  };
+}
+
+function readMailWebhook(record: Record<string, unknown>) {
+  const message = isRecord(record.message) ? record.message : {};
+  const payload = isRecord(record.payload) ? record.payload : {};
+  const type = readFirstString(record, payload, ["event_type", "eventType", "type", "kind"]) ?? "message.received";
+  const normalizedType = type.toLowerCase();
+  const providerThreadId = readFirstString(message, payload, ["thread_id", "threadId", "conversationId", "conversation_id"])
+    ?? readFirstString(record, {}, ["thread_id", "threadId", "conversationId", "conversation_id"]);
+  const providerMessageId = readFirstString(message, payload, ["message_id", "messageId", "id"])
+    ?? readFirstString(record, {}, ["message_id", "messageId", "id"]);
+  const subject = readFirstString(message, payload, ["subject"])
+    ?? readString(record.subject);
+  const bodyText = readFirstString(message, payload, ["text", "bodyText", "body_text", "plain", "preview"])
+    ?? readFirstString(record, {}, ["text", "bodyText", "body_text", "body"]);
+  const from = readFirstString(message, payload, ["from", "sender", "fromEmail", "from_email"])
+    ?? readString(record.from);
+  const to = readStringArray(message.to).length > 0
+    ? readStringArray(message.to)
+    : readStringArray(payload.to).length > 0
+      ? readStringArray(payload.to)
+      : readStringArray(record.to);
+  const reason = readFirstString(message, payload, ["reason", "error", "diagnosticCode", "diagnostic_code"])
+    ?? readString(record.reason);
+  const kind = normalizedType.includes("bounce")
+    ? "bounce"
+    : normalizedType.includes("reject")
+      ? "rejected"
+      : "inbound";
+  const severity = normalizedType.includes("hard") ? "hard" : normalizedType.includes("soft") ? "soft" : undefined;
+  return {
+    type,
+    kind,
+    providerThreadId,
+    providerMessageId,
+    subject,
+    bodyText,
+    from,
+    to,
+    reason,
+    severity,
+  };
+}
+
+function mailWebhookToSignal(
+  mailEvent: ReturnType<typeof readMailWebhook>,
+  raw: Record<string, unknown>,
+): Partial<TrellisSignal> {
+  const idPart = mailEvent.providerMessageId ?? mailEvent.providerThreadId ?? String(Date.now());
+  const signalId = `sig_mail_${normalizeIdPart(idPart)}`;
+  return {
+    id: signalId,
+    traceId: readString(raw.traceId) ?? readString(raw.trace_id) ?? `trace_${normalizeIdPart(signalId)}`,
+    threadId: `mail_${normalizeIdPart(mailEvent.providerThreadId ?? idPart)}`,
+    workspaceId: readString(raw.workspaceId) ?? readString(raw.workspace_id) ?? "wrk_default",
+    provider: "mail",
+    source: "reply.webhook",
+    payload: {
+      ...raw,
+      provider: "mail",
+      source: "reply.webhook",
+      eventType: mailEvent.type,
+      providerThreadId: mailEvent.providerThreadId,
+      providerMessageId: mailEvent.providerMessageId,
+      subject: mailEvent.subject,
+      bodyText: mailEvent.bodyText,
+      from: mailEvent.from,
+      to: mailEvent.to,
     },
   };
 }
@@ -5032,7 +5428,7 @@ function readAgentMailSequence(provider: TrellisProviderDefinition | undefined):
   }
 
   return {
-    provider: "agentmail",
+    provider: readString(sequence.provider) === "agentmail" ? "agentmail" : "mail",
     defaultInboxId: readString(sequence.defaultInboxId),
     stopOn: readStringArray(sequence.stopOn),
     steps,
@@ -5041,7 +5437,7 @@ function readAgentMailSequence(provider: TrellisProviderDefinition | undefined):
 
 function readAgentMailSequenceOperation(value: unknown): TrellisAgentMailSequenceOperation | undefined {
   const operation = readString(value);
-  if (operation === "email.send" || operation === "email.reply" || operation === "mail.reply") {
+  if (operation === "email.send" || operation === "email.reply" || operation === "mail.send" || operation === "mail.reply") {
     return operation;
   }
   return undefined;
@@ -5060,16 +5456,16 @@ async function resolveAgentMailSequencePlan(
   context: TrellisProviderExecutionContext,
   config: TrellisAgentConfig,
 ) {
-  if (context.action.provider !== "agentmail" || !isAgentMailOutboundOperation(context.action.operation)) {
+  if (!["agentmail", "mail"].includes(context.action.provider) || !isMailOutboundOperation(context.action.operation)) {
     return {
       enabled: false as const,
-      reason: "not_agentmail_outbound",
+      reason: "not_mail_outbound",
     };
   }
 
-  const sequence = readAgentMailSequence(config.email);
+  const sequence = readAgentMailSequence(resolveMailProvider(config));
   if (!sequence) {
-    if (context.action.operation !== "email.send") {
+    if (context.action.operation !== "email.send" && context.action.operation !== "mail.send") {
       return {
         enabled: false as const,
         reason: "not_initial_outbound_email",
@@ -5077,11 +5473,11 @@ async function resolveAgentMailSequencePlan(
     }
     const defaultCurrentStep: TrellisAgentMailSequenceStep = {
       id: "initial",
-      operation: "email.send",
+      operation: context.action.operation === "mail.send" ? "mail.send" : "email.send",
     };
     const defaultNextStep: TrellisAgentMailSequenceStep = {
       id: "draft_follow_up_if_no_reply",
-      operation: "email.reply",
+      operation: context.action.operation === "mail.send" ? "mail.reply" : "email.reply",
       delay: defaultFollowUpDelay(env),
       condition: "no_reply",
       approval: "required",
@@ -5135,8 +5531,8 @@ async function resolveAgentMailSequencePlan(
   };
 }
 
-function isAgentMailOutboundOperation(operation: string) {
-  return operation === "email.send" || operation === "email.reply" || operation === "mail.reply";
+function isMailOutboundOperation(operation: string) {
+  return operation === "email.send" || operation === "email.reply" || operation === "mail.send" || operation === "mail.reply";
 }
 
 function addDurationToIso(start: Date, duration: string | number) {
@@ -6041,18 +6437,33 @@ function createProviderActionIntent(
 
 function providerForOperation(config: TrellisAgentConfig, operation: string) {
   if (operation.startsWith("email.") || operation.startsWith("mail.")) {
-    return config.email?.id ?? "email";
+    return resolveMailProvider(config)?.id ?? "mail";
   }
   if (operation.startsWith("crm.")) {
     return config.crm?.id ?? "crm";
   }
   if (operation.startsWith("research.")) {
-    return config.research?.id ?? "research";
+    return resolveResearchProvider(config)?.id ?? "research";
+  }
+  if (operation.startsWith("browser.")) {
+    return resolveBrowserProvider(config)?.id ?? "browser";
   }
   if (operation.startsWith("handoff.")) {
     return config.handoff?.id ?? "handoff";
   }
   return "provider";
+}
+
+function resolveMailProvider(config: TrellisAgentConfig) {
+  return config.mail ?? config.email;
+}
+
+function resolveResearchProvider(config: TrellisAgentConfig) {
+  return config.research;
+}
+
+function resolveBrowserProvider(config: TrellisAgentConfig) {
+  return config.browser;
 }
 
 async function persistApprovalDecision(
@@ -6504,7 +6915,7 @@ async function markProviderActionQueuedForQueueRetry(
     status: "queued",
   }, {
     actor: retry.actor,
-    reason: retry.reason ?? "Prepared provider action for Cloudflare queue retry.",
+    reason: retry.reason ?? "Prepared provider action for queue retry.",
   });
 }
 
@@ -6797,7 +7208,10 @@ async function dispatchProviderAction(
     return boundExecutor;
   }
 
-  if (context.action.provider === "agentmail" && context.action.operation === "email.send") {
+  if (
+    context.action.provider === "agentmail"
+    && (context.action.operation === "email.send" || context.action.operation === "mail.send")
+  ) {
     return executeAgentMailSend(env, context, config);
   }
 
@@ -6806,6 +7220,25 @@ async function dispatchProviderAction(
     && (context.action.operation === "email.reply" || context.action.operation === "mail.reply")
   ) {
     return executeAgentMailReply(env, context, config);
+  }
+
+  if (context.action.provider === "mail" && (context.action.operation === "mail.send" || context.action.operation === "email.send")) {
+    return executeNativeMailSend(env, context);
+  }
+
+  if (
+    context.action.provider === "mail"
+    && (context.action.operation === "mail.reply" || context.action.operation === "email.reply")
+  ) {
+    return executeNativeMailReply(env, context);
+  }
+
+  if (context.action.provider === "mail" && context.action.operation === "mail.forward") {
+    return executeNativeMailForward(env, context);
+  }
+
+  if (context.action.provider === "mail" && context.action.operation === "mail.reject") {
+    return executeNativeMailReject(env, context);
   }
 
   if (
@@ -6917,7 +7350,7 @@ function resolveAgentMailDefaultInboxId(
   env: Record<string, unknown> | undefined,
   config: TrellisAgentConfig,
 ) {
-  const sequence = readAgentMailSequence(config.email);
+  const sequence = readAgentMailSequence(resolveMailProvider(config));
   const configured = sequence?.defaultInboxId ?? readString(env?.AGENTMAIL_INBOX_ID);
   if (!configured) {
     return undefined;
@@ -6926,6 +7359,215 @@ function resolveAgentMailDefaultInboxId(
     return readString(env?.[configured.slice("env:".length)]);
   }
   return configured;
+}
+
+type TrellisNativeMailBinding = {
+  send?(message: Record<string, unknown>): Promise<unknown> | unknown;
+  reply?(message: Record<string, unknown>): Promise<unknown> | unknown;
+  forward?(message: Record<string, unknown>): Promise<unknown> | unknown;
+  reject?(message: Record<string, unknown>): Promise<unknown> | unknown;
+};
+
+async function executeNativeMailSend(
+  env: Record<string, unknown> | undefined,
+  context: TrellisProviderExecutionContext,
+): Promise<TrellisProviderActionExecutionResult> {
+  const signalPayload = context.signal?.payload ?? {};
+  const input = context.input;
+  const to = readFirstString(input, signalPayload, ["to", "recipient", "recipientEmail", "email"]);
+  const from = readFirstString(input, signalPayload, ["from", "sender"]) ?? readString(env?.TRELLIS_MAIL_FROM);
+  const replyTo = readFirstString(input, signalPayload, ["replyTo", "reply_to"]) ?? readString(env?.TRELLIS_MAIL_REPLY_TO);
+  const subject = readFirstString(input, signalPayload, ["subject"]) ?? "Trellis outreach";
+  const bodyText = readFirstString(input, signalPayload, ["bodyText", "text", "body"]) ?? context.draft?.body;
+  const bodyHtml = readFirstString(input, signalPayload, ["bodyHtml", "html"]);
+
+  if (!to) {
+    throw new Error("mail.send requires a recipient email.");
+  }
+  if (!from) {
+    throw new Error("mail.send requires TRELLIS_MAIL_FROM or input.from.");
+  }
+  if (!bodyText && !bodyHtml) {
+    throw new Error("mail.send requires bodyText, bodyHtml, or a draft body.");
+  }
+
+  const raw = await sendNativeMail(env, {
+    type: "send",
+    from,
+    to: [to],
+    replyTo,
+    subject,
+    text: bodyText,
+    html: bodyHtml,
+    headers: trellisProviderHeaders(context),
+  });
+  const record = isRecord(raw) ? raw : {};
+  return {
+    ok: true,
+    provider: "mail",
+    operation: context.action.operation,
+    actionId: context.action.id,
+    externalId: readString(record.id) ?? readString(record.messageId) ?? readString(record.message_id) ?? null,
+    externalThreadId: readString(record.threadId) ?? readString(record.thread_id) ?? null,
+    raw,
+  };
+}
+
+async function executeNativeMailReply(
+  env: Record<string, unknown> | undefined,
+  context: TrellisProviderExecutionContext,
+): Promise<TrellisProviderActionExecutionResult> {
+  const signalPayload = context.signal?.payload ?? {};
+  const input = context.input;
+  const messageId = readFirstString(input, signalPayload, [
+    "messageId",
+    "providerMessageId",
+    "inboundMessageId",
+    "replyToMessageId",
+    "replyToProviderMessageId",
+  ]);
+  const from = readFirstString(input, signalPayload, ["from", "sender"]) ?? readString(env?.TRELLIS_MAIL_FROM);
+  const to = readFirstString(input, signalPayload, ["to", "recipient", "recipientEmail", "email"]);
+  const subject = readFirstString(input, signalPayload, ["subject"]);
+  const bodyText = readFirstString(input, signalPayload, ["bodyText", "text", "body"]) ?? context.draft?.body;
+  const bodyHtml = readFirstString(input, signalPayload, ["bodyHtml", "html"]);
+
+  if (!messageId) {
+    throw new Error("mail.reply requires messageId or providerMessageId.");
+  }
+  if (!from) {
+    throw new Error("mail.reply requires TRELLIS_MAIL_FROM or input.from.");
+  }
+  if (!bodyText && !bodyHtml) {
+    throw new Error("mail.reply requires bodyText, bodyHtml, or a draft body.");
+  }
+
+  const raw = await sendNativeMail(env, {
+    type: "reply",
+    from,
+    to: to ? [to] : undefined,
+    subject,
+    text: bodyText,
+    html: bodyHtml,
+    inReplyTo: messageId,
+    references: messageId,
+    headers: trellisProviderHeaders(context),
+  });
+  const record = isRecord(raw) ? raw : {};
+  return {
+    ok: true,
+    provider: "mail",
+    operation: context.action.operation,
+    actionId: context.action.id,
+    externalId: readString(record.id) ?? readString(record.messageId) ?? readString(record.message_id) ?? null,
+    externalThreadId: readString(record.threadId) ?? readString(record.thread_id) ?? readString(record.threadId) ?? null,
+    raw,
+  };
+}
+
+async function executeNativeMailForward(
+  env: Record<string, unknown> | undefined,
+  context: TrellisProviderExecutionContext,
+): Promise<TrellisProviderActionExecutionResult> {
+  const signalPayload = context.signal?.payload ?? {};
+  const input = context.input;
+  const messageId = readFirstString(input, signalPayload, ["messageId", "providerMessageId", "inboundMessageId"]);
+  const to = readFirstString(input, signalPayload, ["to", "recipient", "recipientEmail", "email"]);
+  const from = readFirstString(input, signalPayload, ["from", "sender"]) ?? readString(env?.TRELLIS_MAIL_FROM);
+  const bodyText = readFirstString(input, signalPayload, ["bodyText", "text", "body"]);
+
+  if (!messageId) {
+    throw new Error("mail.forward requires messageId or providerMessageId.");
+  }
+  if (!to) {
+    throw new Error("mail.forward requires a recipient email.");
+  }
+
+  const raw = await sendNativeMail(env, {
+    type: "forward",
+    from,
+    to: [to],
+    messageId,
+    text: bodyText,
+    headers: trellisProviderHeaders(context),
+  });
+  const record = isRecord(raw) ? raw : {};
+  return {
+    ok: true,
+    provider: "mail",
+    operation: context.action.operation,
+    actionId: context.action.id,
+    externalId: readString(record.id) ?? readString(record.messageId) ?? readString(record.message_id) ?? null,
+    externalThreadId: readString(record.threadId) ?? readString(record.thread_id) ?? null,
+    raw,
+  };
+}
+
+async function executeNativeMailReject(
+  env: Record<string, unknown> | undefined,
+  context: TrellisProviderExecutionContext,
+): Promise<TrellisProviderActionExecutionResult> {
+  const signalPayload = context.signal?.payload ?? {};
+  const input = context.input;
+  const messageId = readFirstString(input, signalPayload, ["messageId", "providerMessageId", "inboundMessageId"]);
+  const reason = readFirstString(input, signalPayload, ["reason", "message"]) ?? "Rejected by Trellis policy.";
+
+  if (!messageId) {
+    throw new Error("mail.reject requires messageId or providerMessageId.");
+  }
+
+  const raw = await sendNativeMail(env, {
+    type: "reject",
+    messageId,
+    reason,
+    headers: trellisProviderHeaders(context),
+  });
+  const record = isRecord(raw) ? raw : {};
+  return {
+    ok: true,
+    provider: "mail",
+    operation: context.action.operation,
+    actionId: context.action.id,
+    externalId: readString(record.id) ?? readString(record.messageId) ?? readString(record.message_id) ?? messageId,
+    externalThreadId: readString(record.threadId) ?? readString(record.thread_id) ?? null,
+    raw,
+  };
+}
+
+async function sendNativeMail(env: Record<string, unknown> | undefined, message: Record<string, unknown>) {
+  const binding = (env?.TRELLIS_MAIL ?? env?.MAIL) as TrellisNativeMailBinding | undefined;
+  if (binding?.forward && message.type === "forward") {
+    return await binding.forward(message);
+  }
+  if (binding?.reject && message.type === "reject") {
+    return await binding.reject(message);
+  }
+  if (binding?.send && message.type !== "reply") {
+    return await binding.send(message);
+  }
+  if (binding?.reply && message.type === "reply") {
+    return await binding.reply(message);
+  }
+  if (binding?.send && message.type === "reply") {
+    return await binding.send(message);
+  }
+  const endpoint = readString(env?.TRELLIS_MAIL_ENDPOINT);
+  const token = readString(env?.TRELLIS_MAIL_TOKEN);
+  if (!endpoint) {
+    throw new Error("Native mail requires TRELLIS_MAIL binding, MAIL binding, or TRELLIS_MAIL_ENDPOINT.");
+  }
+  const response = await runtimeFetch(env, endpoint, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(message),
+  });
+  if (!response.ok) {
+    throw new Error(`mail provider failed with ${response.status}: ${await response.text()}`);
+  }
+  return await response.json().catch(() => ({}));
 }
 
 async function executeAgentMailSend(
@@ -6982,7 +7624,7 @@ async function executeAgentMailSend(
   return {
     ok: true,
     provider: "agentmail",
-    operation: "email.send",
+    operation: context.action.operation,
     actionId: context.action.id,
     externalId: readString(record.id) ?? readString(record.message_id) ?? null,
     externalThreadId: readString(record.thread_id) ?? readString(record.threadId) ?? null,
@@ -7948,7 +8590,7 @@ async function executeProspeoEmailEnrich(
     if (response.status === 400 && readString(json.error_code) === "NO_MATCH") {
       return {
         provider: "prospeo",
-        operation: "email.enrich",
+        operation: "mail.enrich",
         found: false,
         contact: null,
         raw: json,
@@ -7965,7 +8607,7 @@ async function executeProspeoEmailEnrich(
   const found = Boolean(resultEmail && (!status || status === "VERIFIED") && revealed !== false);
   return {
     provider: "prospeo",
-    operation: "email.enrich",
+    operation: "mail.enrich",
     found,
     contact: found
       ? {
@@ -7976,6 +8618,57 @@ async function executeProspeoEmailEnrich(
       : null,
     raw: json,
   };
+}
+
+async function executeBrowserRunQuickAction(
+  env: Record<string, unknown> | undefined,
+  operation: string,
+  action: string,
+  input: Record<string, unknown>,
+  provider?: TrellisProviderDefinition,
+) {
+  const url = readFirstString(input, {}, ["url"]);
+  if (!url) {
+    throw new Error(`${operation} requires a URL.`);
+  }
+
+  const baseUrl = (readString(env?.TRELLIS_BROWSER_RUN_BASE_URL) ?? readString(env?.BROWSER_RUN_BASE_URL) ?? "https://browser.run").replace(/\/+$/, "");
+  const response = await runtimeFetch(env, `${baseUrl}/${encodeURIComponent(action)}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(readString(env?.TRELLIS_BROWSER_RUN_TOKEN)
+        ? { authorization: `Bearer ${readString(env?.TRELLIS_BROWSER_RUN_TOKEN)}` }
+        : {}),
+    },
+    body: JSON.stringify({
+      ...input,
+      profile: resolveBrowserRunProfile(provider, input),
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`${operation} failed with ${response.status}: ${await response.text()}`);
+  }
+  const contentType = response.headers.get("content-type") ?? "";
+  const raw = contentType.includes("application/json") ? await response.json() : await response.text();
+  return {
+    provider: operation.startsWith("browser.") ? "browser" : "research",
+    operation,
+    url,
+    action,
+    result: raw,
+  };
+}
+
+function resolveBrowserRunProfile(provider: TrellisProviderDefinition | undefined, input: Record<string, unknown>) {
+  const profiles = provider?.config?.profiles;
+  if (!isRecord(profiles)) {
+    return undefined;
+  }
+  const allProfiles = isRecord(profiles.profiles) ? profiles.profiles : {};
+  const profileName = readString(input.profile) ?? readString(profiles.defaultProfile);
+  const profile = profileName ? allProfiles[profileName] : undefined;
+  return isRecord(profile) ? profile : undefined;
 }
 
 function readFirecrawlSources(value: unknown): Array<"web" | "images" | "news"> {
@@ -9245,7 +9938,7 @@ function renderDashboard(
   <body>
     <main>
       <h1>Trellis ${agent.name}</h1>
-      <p>Cloudflare GTM runtime</p>
+      <p>Trellis GTM runtime</p>
       <p>No-send mode: ${agent.config.safety?.noSends ?? true}</p>
       <dl>
         <dt>Signals</dt><dd>${counts.signals}</dd>

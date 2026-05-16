@@ -47,7 +47,7 @@ trellis connect firecrawl
 
 The proof point is that a user can see one signal become a qualified prospect, a blocked outbound draft, two pending approvals, audit events, and a workflow start without touching Convex, Rivet, Vercel Sandbox, or custom orchestration code.
 
-The default smoke path stays safe: `GET /smoke` and `trellis smoke` never write to providers. Once Attio is connected, `POST /smoke/attio` or `trellis verify cloudflare --live --url <worker-url> --attio-smoke --provider-smoke-token <token>` performs the explicit CRM integration smoke: it writes a deterministic smoke company/person through `src/crm/attio.map.ts` and returns HTTP 200 only if Attio accepts the mapped write.
+The default smoke path stays safe: `GET /smoke` and `trellis smoke` never write to providers. Once Attio is connected, `POST /smoke/attio` or `trellis verify cloudflare --live --url <app-url> --attio-smoke --provider-smoke-token <token>` performs the explicit CRM integration smoke: it writes a deterministic smoke company/person through `src/crm/attio.map.ts` and returns HTTP 200 only if Attio accepts the mapped write.
 
 ## The 20-ish Line Pitch
 
@@ -106,7 +106,7 @@ export default trellis.agent("gtm-sdr", {
 });
 ```
 
-That snippet is the public story. The generated Cloudflare wrapper mounts health checks, signal webhooks, MCP, dashboard, persistence, queues, and smoke routes around it.
+That snippet is the public story. The generated Trellis wrapper mounts health checks, signal webhooks, MCP, dashboard, persistence, queues, and smoke routes around it.
 
 ## Model, Database, And Schema
 
@@ -124,7 +124,7 @@ There are really three schemas:
 
 - **Skill output schema**: `schema.qualification()` validates what the agent extracts before workflows or provider writes happen.
 - **CRM field map**: `src/crm/attio.map.ts` maps extracted Trellis values to Attio attributes.
-- **Business state schema**: `src/state/prospect.map.ts` defines business tables, fields, indexes, and relationships, while Trellis keeps the low-level D1 tables and migrations private and reliable.
+- **Business state schema**: `src/state/prospect.map.ts` defines business tables, fields, indexes, and relationships, while Trellis keeps the low-level runtime tables and migrations private and reliable.
 
 The state schema should feel like a small product model, not a raw migration:
 
@@ -154,7 +154,7 @@ export default trellis.state({
 });
 ```
 
-That gives a user one obvious place to say “what tables should Trellis remember, how are they shaped, and how do they relate?” without exposing D1 migrations or storage details in the happy path.
+That gives a user one obvious place to say “what tables should Trellis remember, how are they shaped, and how do they relate?” without exposing migrations or storage details in the happy path.
 
 ## Safety Defaults
 
@@ -179,4 +179,4 @@ The default GTM stack ships with a small business-level provider surface:
 - `trellis connect firecrawl`
 - `trellis connect langfuse`
 
-Cloudflare is not a provider choice in the happy path. It is the runtime Trellis uses.
+The deploy runtime is not a provider choice in the happy path. Trellis owns it.

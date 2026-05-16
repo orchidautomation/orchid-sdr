@@ -1,4 +1,4 @@
-import { trellis, type TrellisAgentMailSequenceMap, type TrellisAttioMap, type TrellisProviderDefinition } from "@trellis/gtm";
+import { trellis, type TrellisBrowserProfileMap, type TrellisMailSequenceMap, type TrellisAttioMap, type TrellisProviderDefinition } from "@trellis/gtm";
 
 export function attio(options: { map?: TrellisAttioMap } = {}): TrellisProviderDefinition {
   return trellis.provider({
@@ -16,12 +16,43 @@ export function attio(options: { map?: TrellisAttioMap } = {}): TrellisProviderD
   });
 }
 
-export function agentmail(options: { sequence?: TrellisAgentMailSequenceMap } = {}): TrellisProviderDefinition {
+export function mail(options: { sequence?: TrellisMailSequenceMap; adapter?: "native" | "agentmail" } = {}): TrellisProviderDefinition {
+  return trellis.provider({
+    id: options.adapter === "agentmail" ? "agentmail" : "mail",
+    kind: "mail",
+    displayName: options.adapter === "agentmail" ? "AgentMail" : "Trellis Mail",
+    config: {
+      adapter: options.adapter ?? "native",
+      sequence: options.sequence,
+    },
+    env: [
+      { name: "TRELLIS_MAIL_FROM", description: "Default sender address for Trellis mail sends and replies." },
+      { name: "TRELLIS_MAIL_REPLY_TO", description: "Optional reply-to address for Trellis mail." },
+      { name: "AGENTMAIL_API_KEY", description: "Optional AgentMail API key when adapter is agentmail." },
+      { name: "AGENTMAIL_INBOX_ID", description: "Optional AgentMail inbox id when adapter is agentmail." },
+      { name: "AGENTMAIL_WEBHOOK_SECRET", description: "Optional AgentMail webhook secret when adapter is agentmail." },
+    ],
+    capabilities: [
+      "mail.send",
+      "mail.reply",
+      "mail.forward",
+      "mail.reject",
+      "mail.preview",
+      "mail.inbound",
+      "mail.bounce",
+      "mail.suppression.check",
+      "mail.sequence.schedule",
+    ],
+  });
+}
+
+export function agentmail(options: { sequence?: TrellisMailSequenceMap } = {}): TrellisProviderDefinition {
   return trellis.provider({
     id: "agentmail",
-    kind: "email",
+    kind: "mail",
     displayName: "AgentMail",
     config: {
+      adapter: "agentmail",
       sequence: options.sequence,
     },
     env: [
@@ -29,7 +60,53 @@ export function agentmail(options: { sequence?: TrellisAgentMailSequenceMap } = 
       { name: "AGENTMAIL_INBOX_ID", description: "Default AgentMail inbox id for sequence sends and replies." },
       { name: "AGENTMAIL_WEBHOOK_SECRET", description: "Svix webhook secret for inbound events." },
     ],
-    capabilities: ["mail.send", "mail.reply", "mail.preview", "reply.webhook"],
+    capabilities: ["mail.send", "mail.reply", "mail.preview", "mail.inbound", "reply.webhook"],
+  });
+}
+
+export function research(options: { adapter?: "browser-run" | "firecrawl"; profiles?: TrellisBrowserProfileMap } = {}): TrellisProviderDefinition {
+  return trellis.provider({
+    id: options.adapter === "firecrawl" ? "firecrawl" : "research",
+    kind: "research",
+    displayName: options.adapter === "firecrawl" ? "Firecrawl" : "Trellis Research",
+    config: {
+      adapter: options.adapter ?? "browser-run",
+      profiles: options.profiles,
+    },
+    env: [
+      { name: "TRELLIS_BROWSER_RUN_BASE_URL", description: "Optional Browser Run quick action base URL." },
+      { name: "FIRECRAWL_API_KEY", description: "Optional Firecrawl API key when adapter is firecrawl." },
+    ],
+    capabilities: [
+      "research.search",
+      "research.map",
+      "research.scrape",
+      "research.extract",
+      "research.crawl.start",
+      "research.crawl.status",
+    ],
+  });
+}
+
+export function browser(options: { profiles?: TrellisBrowserProfileMap } = {}): TrellisProviderDefinition {
+  return trellis.provider({
+    id: "browser",
+    kind: "browser",
+    displayName: "Trellis Browser",
+    config: {
+      profiles: options.profiles,
+    },
+    env: [
+      { name: "TRELLIS_BROWSER_RUN_BASE_URL", description: "Optional Browser Run quick action base URL." },
+    ],
+    capabilities: [
+      "browser.session.create",
+      "browser.session.run",
+      "browser.session.close",
+      "browser.screenshot",
+      "browser.pdf",
+      "browser.interact",
+    ],
   });
 }
 
@@ -68,7 +145,7 @@ export function prospeo(): TrellisProviderDefinition {
       { name: "PROSPEO_API_KEY", description: "Prospeo API key used for contact and email enrichment." },
       { name: "PROSPEO_BASE_URL", description: "Optional Prospeo API base URL. Default is https://api.prospeo.io." },
     ],
-    capabilities: ["email.enrich", "research.enrich"],
+    capabilities: ["mail.enrich", "research.enrich"],
   });
 }
 

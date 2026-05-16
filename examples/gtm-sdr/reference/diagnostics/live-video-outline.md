@@ -10,7 +10,7 @@ The point is not that an LLM can draft an email. The point is that a team can de
 
 - skills as reusable methodology
 - knowledge as company-specific context
-- D1 state and traces as the audit trail
+- Trellis state and traces as the audit trail
 - approval gates before external side effects
 - MCP surfaces for humans and other agents to inspect and operate the workflow
 
@@ -47,10 +47,10 @@ Show these in order:
 
 5. `src/state/prospect.map.ts`
    - show how business state is defined
-   - explain that Trellis owns D1 runtime schema, while the app defines queryable business projections
+   - explain that Trellis owns runtime schema, while the app defines queryable business projections
 
 6. `reference/outputs/pylon-live-run.md`
-   - show the real D1-derived result: lead, state, draft, approvals, trace counts, and cost
+   - show the real Trellis-derived result: lead, state, draft, approvals, trace counts, and cost
 
 ## Claude Code Prompts
 
@@ -101,7 +101,7 @@ npm run trellis -- mcp claude-code --remote --write --json --url "$APP_URL/mcp/t
 - The skill files are generic process.
 - The knowledge files make the agent specific to a company or motion.
 - The sample payload is just one way to start a run.
-- D1 gives queryable state, traces, drafts, approvals, and costs.
+- Trellis gives queryable state, traces, drafts, approvals, and costs.
 - MCP makes the same agent available in Claude Code, Cursor, Codex, and other clients.
 - Operator surfaces sit over the same runtime; they are not separate agent brains.
 

@@ -1,4 +1,4 @@
-import type { TrellisAgentMailSequenceMap } from "@trellis/gtm";
+import type { TrellisMailSequenceMap } from "@trellis/gtm";
 
 const agentmailSequenceMap = {
   provider: "agentmail",
@@ -7,13 +7,13 @@ const agentmailSequenceMap = {
   steps: [
     {
       id: "initial",
-      operation: "email.send",
+      operation: "mail.send",
       draftSkill: "sdr-copy",
       approval: "required",
     },
     {
       id: "follow_up_1",
-      operation: "email.reply",
+      operation: "mail.reply",
       draftSkill: "sdr-copy",
       delay: "3 days",
       condition: "no_reply",
@@ -21,13 +21,13 @@ const agentmailSequenceMap = {
     },
     {
       id: "follow_up_2",
-      operation: "email.reply",
+      operation: "mail.reply",
       draftSkill: "sdr-copy",
       delay: "5 days",
       condition: "no_reply",
       approval: "required",
     },
   ],
-} satisfies TrellisAgentMailSequenceMap;
+} satisfies TrellisMailSequenceMap;
 
 export default agentmailSequenceMap;
