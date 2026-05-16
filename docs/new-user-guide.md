@@ -88,7 +88,7 @@ export default trellis.agent("gtm-sdr", {
   // Start safe: drafts, CRM updates, and sends wait for human approval.
   safety: trellis.safeOutbound({
     noSends: true,
-    requireApproval: ["mail.send", "crm.update"],
+    requireApproval: ["email.send", "crm.update"],
   }),
 }, async (app) => {
   // Accept one buying signal from a webhook, enrichment job, inbox, or form.

@@ -107,15 +107,15 @@ const CLOUDFLARE_CONNECTIONS = {
     displayName: "AgentMail",
     requiredEnv: ["AGENTMAIL_API_KEY"],
     optionalEnv: ["AGENTMAIL_WEBHOOK_SECRET"],
-    capabilities: ["mail.preview", "mail.send", "mail.reply", "reply.webhook"],
+    capabilities: ["email.preview", "email.send", "email.reply", "reply.webhook"],
   },
   mail: {
     id: "mail",
     kind: "mail",
-    displayName: "Trellis Mail",
+    displayName: "Trellis Email",
     requiredEnv: ["TRELLIS_MAIL_FROM"],
     optionalEnv: ["TRELLIS_MAIL_REPLY_TO", "TRELLIS_MAIL_ENDPOINT", "TRELLIS_MAIL_TOKEN"],
-    capabilities: ["mail.preview", "mail.send", "mail.reply", "mail.inbound", "mail.bounce", "mail.suppression.check"],
+    capabilities: ["email.preview", "email.send", "email.reply", "email.inbound", "email.bounce", "email.suppression.check"],
   },
   research: {
     id: "research",
@@ -155,7 +155,7 @@ const CLOUDFLARE_CONNECTIONS = {
     displayName: "Prospeo",
     requiredEnv: ["PROSPEO_API_KEY"],
     optionalEnv: ["PROSPEO_BASE_URL"],
-    capabilities: ["enrich.mail"],
+    capabilities: ["enrich.email"],
   },
   langfuse: {
     id: "langfuse",
@@ -863,7 +863,7 @@ async function verifyRemoteCloudflareRoutes(input: {
     }));
   }
 
-  const approval = readVerifyApproval(webhookBody, "mail.send");
+  const approval = readVerifyApproval(webhookBody, "email.send");
   if (webhook.status === 202 && webhookBody?.noSendsMode === true && approval) {
     const approvalResponse = await fetchVerifyJson(verifyRouteUrl(input.endpoint, `/approvals/${encodeURIComponent(approval.id)}/approve`), {
       method: "POST",
@@ -908,7 +908,7 @@ async function verifyRemoteCloudflareRoutes(input: {
       checks.push(verifyCheck("remote.operator.providerActionReplay", "fail", "provider-action replay requires an approval-created provider action id", summarizeRemoteEvidence(approvalResponse)));
     }
   } else {
-    checks.push(verifyCheck("remote.operator.approvalGate", "fail", "approval gate replay check requires no-send mode and a mail.send approval", {
+    checks.push(verifyCheck("remote.operator.approvalGate", "fail", "approval gate replay check requires no-send mode and an email.send approval", {
       noSendsMode: webhookBody?.noSendsMode,
       approval,
     }));

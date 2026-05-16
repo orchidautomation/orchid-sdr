@@ -62,7 +62,7 @@ export function agentMailModule(): AiSdrModuleDefinition {
     ],
     smokeChecks: [
       {
-        id: "mail.preview",
+        id: "email.preview",
         description: "Generate one approved preview before enabling real sends.",
       },
       {
@@ -360,7 +360,7 @@ export function prospeoModule(): AiSdrModuleDefinition {
     providers: [prospeoProvider()],
     smokeChecks: [
       {
-        id: "enrich.mail",
+        id: "enrich.email",
         description: "Enrich one prospect with a verified work email.",
       },
     ],

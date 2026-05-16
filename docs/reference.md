@@ -22,7 +22,8 @@ The generated Trellis app should expose:
 - `GET /healthz`
 - `GET /smoke`
 - `POST /webhooks/signals`
-- `POST /webhooks/mail`
+- `POST /webhooks/email`
+- `POST /webhooks/mail` (legacy alias)
 - `POST /webhooks/apify`
 - `POST /webhooks/agentmail`
 - `POST /approvals/:id/approve`
@@ -64,9 +65,9 @@ Approval decisions update Trellis state, append an audit event, and enqueue a ru
 
 After a webhook run is persisted and enqueued, Trellis starts the configured `PROSPECT_WORKFLOW` binding with a stable instance id and params containing the signal, workflow name, prospect ids, draft ids, approval ids, and audit event ids. Dispatch and workflow checkpoints are recorded in `trellis_workflow_runs`; dispatch errors are returned as `workflowDispatch.ok: false` but do not make webhook ingestion fail.
 
-Queued provider actions can be executed through `POST /provider-actions/:id/execute`. The executor refuses to run while no-send mode is enabled, refuses actions that are not `queued`, dispatches through a bound `TRELLIS_PROVIDER_EXECUTOR` when present, and includes built-in `mail.send` / `mail.reply`, AgentMail adapter, Attio `crm.update`, and `handoff.webhook` executors. Execution success or failure updates Trellis state, appends audit, and emits queue events.
+Queued provider actions can be executed through `POST /provider-actions/:id/execute`. The executor refuses to run while no-send mode is enabled, refuses actions that are not `queued`, dispatches through a bound `TRELLIS_PROVIDER_EXECUTOR` when present, and includes built-in `email.send` / `email.reply`, AgentMail adapter, Attio `crm.update`, and `handoff.webhook` executors. Execution success or failure updates Trellis state, appends audit, and emits queue events.
 
-Completed `mail.send` actions automatically schedule a `follow_up` run on `PROSPECT_WORKFLOW`. The schedule uses `TRELLIS_FOLLOW_UP_DELAY` when set, defaults to `3 days`, carries the provider message/thread ids into the workflow params, and records `scheduled`, `follow_up_scheduled`, and `follow_up_due` checkpoints in `trellis_workflow_runs`.
+Completed `email.send` actions automatically schedule a `follow_up` run on `PROSPECT_WORKFLOW`. The schedule uses `TRELLIS_FOLLOW_UP_DELAY` when set, defaults to `3 days`, carries the provider message/thread ids into the workflow params, and records `scheduled`, `follow_up_scheduled`, and `follow_up_due` checkpoints in `trellis_workflow_runs`.
 
 Operator controls live in `trellis_operator_controls`. The global kill switch and campaign/thread pause records are exposed through `/operator/*` routes, the dashboard, and the MCP snapshot. Active controls block workflow dispatch before workflows start and block queued provider-action execution before side effects run. Each control change writes audit, trace, and queue events.
 
@@ -80,7 +81,7 @@ The generated Worker also exposes a queue consumer through the same hidden runti
 
 `GET /smoke` remains safe to run before provider credentials are connected. When persistent state is bound, it writes a row to `trellis_smoke_runs`, appends a `smoke.pass` or `smoke.fail` trace event, and surfaces the count through MCP and the dashboard.
 
-The Trellis skill runtime receives a Trellis-generated tool catalog by default. The catalog starts with `trellis.health`; when `research()` is configured it exposes `research.map`, `research.scrape`, `research.extract`, and crawl tools, and when `browser()` is configured it exposes browser automation tools such as `browser.screenshot` and `browser.pdf`. Vendor adapters such as Firecrawl can still back the same research capability names. When `PROSPEO_API_KEY` is configured, the catalog also exposes executable `enrich.mail` for verified contact enrichment. `TRELLIS_MCP_TOOLS` can still override that catalog for advanced hosts.
+The Trellis skill runtime receives a Trellis-generated tool catalog by default. The catalog starts with `trellis.health`; when `research()` is configured it exposes `research.map`, `research.scrape`, `research.extract`, and crawl tools, and when `browser()` is configured it exposes browser automation tools such as `browser.screenshot` and `browser.pdf`. Vendor adapters such as Firecrawl can still back the same research capability names. When `PROSPEO_API_KEY` is configured, the catalog also exposes executable `enrich.email` for verified contact enrichment. `TRELLIS_MCP_TOOLS` can still override that catalog for advanced hosts.
 
 Signal webhooks support optional shared-secret verification through `TRELLIS_WEBHOOK_SECRET` or `SIGNAL_WEBHOOK_SECRET`. If a secret is configured, callers must send either `Authorization: Bearer <secret>`, `x-trellis-webhook-secret`, or `x-webhook-secret`.
 

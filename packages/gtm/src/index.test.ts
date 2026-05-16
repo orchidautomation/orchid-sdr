@@ -52,7 +52,7 @@ describe("@trellis/gtm API", () => {
     expect(agent.kind).toBe("trellis.gtm.agent");
     expect(agent.config.safety).toEqual({
       noSends: true,
-      requireApproval: ["mail.send", "mail.reply", "crm.update", "handoff.webhook"],
+      requireApproval: ["email.send", "email.reply", "crm.update", "handoff.webhook"],
       killSwitch: true,
     });
     expect(agent.config.crm?.id).toBe("attio");
@@ -97,12 +97,12 @@ describe("@trellis/gtm API", () => {
     expect(result.drafts).toEqual([
       expect.objectContaining({
         status: "blocked_pending_approval",
-        approvalRequiredFor: ["mail.send", "crm.update"],
+        approvalRequiredFor: ["email.send", "crm.update"],
         body: expect.stringContaining("Subject: GTM agent workflow"),
       }),
     ]);
     expect(result.approvals).toEqual([
-      expect.objectContaining({ action: "mail.send", status: "pending" }),
+      expect.objectContaining({ action: "email.send", status: "pending" }),
       expect.objectContaining({ action: "crm.update", status: "pending" }),
     ]);
     expect(result.auditEvents.map((event) => event.type)).toEqual([
@@ -192,7 +192,7 @@ describe("@trellis/gtm API", () => {
     expect(app.drafts).toEqual([
       expect.objectContaining({
         channel: "reply",
-        approvalRequiredFor: ["mail.reply", "handoff.webhook"],
+        approvalRequiredFor: ["email.reply", "handoff.webhook"],
         body: expect.stringContaining("Positive buyer reply should notify sales."),
       }),
     ]);
@@ -442,7 +442,7 @@ describe("@trellis/gtm API", () => {
         expect.objectContaining({ status: "blocked_pending_approval" }),
       ],
       approvals: [
-        expect.objectContaining({ action: "mail.send", status: "pending" }),
+        expect.objectContaining({ action: "email.send", status: "pending" }),
         expect.objectContaining({ action: "crm.update", status: "pending" }),
       ],
       persistence: {
@@ -506,7 +506,7 @@ describe("@trellis/gtm API", () => {
         prospectIds: ["prospect_sig_live"],
         draftIds: ["draft_sig_live"],
         approvalIds: [
-          "approval_draft_sig_live_mail_send",
+          "approval_draft_sig_live_email_send",
           "approval_draft_sig_live_crm_update",
         ],
       }),
@@ -2409,7 +2409,7 @@ describe("@trellis/gtm API", () => {
         method: "POST",
         body: JSON.stringify({
           signalId: "sig_reply",
-          action: "mail.reply",
+          action: "email.reply",
           actor: "operator@example.com",
         }),
       }), env);
@@ -2431,7 +2431,7 @@ describe("@trellis/gtm API", () => {
         providerAction: {
           id: "provider_action_approval_reply_sig_reply_mail_reply",
           provider: "agentmail",
-          operation: "mail.reply",
+          operation: "email.reply",
           status: "queued",
         },
       });
@@ -2445,7 +2445,7 @@ describe("@trellis/gtm API", () => {
         execution: {
           ok: true,
           provider: "agentmail",
-          operation: "mail.reply",
+          operation: "email.reply",
           externalId: "msg_agentmail_reply_123",
           externalThreadId: "thread_agentmail_reply_123",
         },
@@ -3173,7 +3173,7 @@ describe("@trellis/gtm API", () => {
         expect.objectContaining({ name: "research.search", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
         expect.objectContaining({ name: "research.extract", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
         expect.objectContaining({ name: "research.map", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
-        expect.objectContaining({ name: "enrich.mail", parameters: expect.objectContaining({ type: "object" }) }),
+        expect.objectContaining({ name: "enrich.email", parameters: expect.objectContaining({ type: "object" }) }),
       ]),
     }));
     const initOptions = flueContext.init.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -3185,7 +3185,7 @@ describe("@trellis/gtm API", () => {
     const searchTool = tools.find((tool) => tool.name === "research.search");
     const extractTool = tools.find((tool) => tool.name === "research.extract");
     const mapTool = tools.find((tool) => tool.name === "research.map");
-    const enrichTool = tools.find((tool) => tool.name === "enrich.mail");
+    const enrichTool = tools.find((tool) => tool.name === "enrich.email");
     const searchResult = await searchTool?.execute?.({
       query: "Acme news",
       limit: 2,
@@ -3238,7 +3238,7 @@ describe("@trellis/gtm API", () => {
     });
     expect(JSON.parse(String(enrichResult))).toMatchObject({
       provider: "prospeo",
-      operation: "enrich.mail",
+      operation: "enrich.email",
       found: true,
       contact: {
         address: "sam@northstar.example",
@@ -3248,7 +3248,7 @@ describe("@trellis/gtm API", () => {
     });
     expect(JSON.parse(String(enrichNoMatch))).toMatchObject({
       provider: "prospeo",
-      operation: "enrich.mail",
+      operation: "enrich.email",
       found: false,
       contact: null,
       raw: {
@@ -3372,7 +3372,7 @@ describe("@trellis/gtm API", () => {
       mail: {
         id: "mail",
         kind: "mail",
-        displayName: "Trellis Mail",
+        displayName: "Trellis Email",
       },
       browser: {
         id: "browser",
@@ -3435,7 +3435,7 @@ describe("@trellis/gtm API", () => {
         approvalId: "approval_forward",
         signalId: "sig_forward",
         provider: "mail",
-        operation: "mail.forward",
+        operation: "email.forward",
         status: "queued",
         traceId: "trace_forward",
       }),
@@ -3455,7 +3455,7 @@ describe("@trellis/gtm API", () => {
         approvalId: "approval_reject",
         signalId: "sig_reject",
         provider: "mail",
-        operation: "mail.reject",
+        operation: "email.reject",
         status: "queued",
         traceId: "trace_reject",
       }),
@@ -3492,13 +3492,13 @@ describe("@trellis/gtm API", () => {
       return app.workflow("reply").start({ signal, reply });
     }));
 
-    const unauthorized = await runtime.worker.fetch(new Request("https://example.com/webhooks/mail", {
+    const unauthorized = await runtime.worker.fetch(new Request("https://example.com/webhooks/email", {
       method: "POST",
       body: "{}",
     }), {
       TRELLIS_MAIL_WEBHOOK_SECRET: "mail-secret",
     });
-    const inbound = await runtime.worker.fetch(new Request("https://example.com/webhooks/mail", {
+    const inbound = await runtime.worker.fetch(new Request("https://example.com/webhooks/email", {
       method: "POST",
       headers: { "x-trellis-mail-webhook-secret": "mail-secret" },
       body: JSON.stringify({
@@ -3515,7 +3515,7 @@ describe("@trellis/gtm API", () => {
       TRELLIS_DB: fakeD1,
       TRELLIS_MAIL_WEBHOOK_SECRET: "mail-secret",
     });
-    const bounce = await runtime.worker.fetch(new Request("https://example.com/webhooks/mail", {
+    const bounce = await runtime.worker.fetch(new Request("https://example.com/webhooks/email", {
       method: "POST",
       headers: { "x-trellis-mail-webhook-secret": "mail-secret" },
       body: JSON.stringify({
@@ -3545,7 +3545,7 @@ describe("@trellis/gtm API", () => {
       mode: "lifecycle",
       event: expect.objectContaining({ kind: "bounce" }),
     });
-    expect(traceEventsFromStatements(fakeD1).some((event) => event.type === "mail.bounce")).toBe(true);
+    expect(traceEventsFromStatements(fakeD1).some((event) => event.type === "email.bounce")).toBe(true);
   });
 
   it("builds hidden runtime context through a factory after Trellis hydrates Cloudflare packs", async () => {

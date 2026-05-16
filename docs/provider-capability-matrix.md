@@ -26,14 +26,14 @@ research({ adapter: "firecrawl" })
 
 | Capability | Default Trellis provider | AgentMail adapter | Firecrawl adapter |
 | --- | --- | --- | --- |
-| `mail.send` | Supported through the native mail adapter | Supported | Not applicable |
-| `mail.reply` | Supported through the native mail adapter | Supported | Not applicable |
-| `mail.forward` | Supported through the native mail adapter | Adapter-dependent | Not applicable |
-| `mail.reject` | Supported through the native mail adapter | Adapter-dependent | Not applicable |
-| `mail.preview` | Supported as a Trellis draft before execution | Supported as a Trellis draft before execution | Not applicable |
-| `mail.inbound` | Supported through `/webhooks/mail` | Supported through AgentMail webhooks | Not applicable |
-| `mail.bounce` | Supported through `/webhooks/mail` lifecycle events | Adapter-dependent | Not applicable |
-| `mail.suppression.check` | Contracted for suppression checks | Adapter-dependent | Not applicable |
+| `email.send` | Supported through the native email adapter | Supported | Not applicable |
+| `email.reply` | Supported through the native email adapter | Supported | Not applicable |
+| `email.forward` | Supported through the native email adapter | Adapter-dependent | Not applicable |
+| `email.reject` | Supported through the native email adapter | Adapter-dependent | Not applicable |
+| `email.preview` | Supported as a Trellis draft before execution | Supported as a Trellis draft before execution | Not applicable |
+| `email.inbound` | Supported through `/webhooks/email` and legacy `/webhooks/mail` | Supported through AgentMail webhooks | Not applicable |
+| `email.bounce` | Supported through `/webhooks/email` and legacy `/webhooks/mail` lifecycle events | Adapter-dependent | Not applicable |
+| `email.suppression.check` | Contracted for suppression checks | Adapter-dependent | Not applicable |
 | `research.search` | Contracted for research adapters | Not applicable | Supported |
 | `research.map` | Supported through Browser Run quick actions | Not applicable | Supported |
 | `research.scrape` | Supported through Browser Run quick actions | Not applicable | Supported |
@@ -53,7 +53,7 @@ Research is not browser automation.
 
 `browser.*` tools control a page or session: screenshots, PDFs, authenticated pages, dynamic waits, clicks, forms, visual QA, and other stateful automation.
 
-`mail.*` tools are the public email contract. Native mail is the default path; AgentMail is an adapter that maps onto the same Trellis mail capabilities.
+`email.*` tools are the public email contract. Native email is the default path; AgentMail is an adapter that maps onto the same Trellis email capabilities.
 
 ## Browser Profiles
 
@@ -83,4 +83,4 @@ export default {
 
 ## Native Mail Webhooks
 
-Native inbound mail posts to `POST /webhooks/mail`. Trellis accepts inbound message events as resumable reply signals and records bounce/reject events as mail lifecycle trace events. Use `TRELLIS_MAIL_WEBHOOK_SECRET` when the route should verify a shared secret.
+Native inbound email posts to `POST /webhooks/email`; `POST /webhooks/mail` remains a legacy alias. Trellis accepts inbound message events as resumable reply signals and records bounce/reject events as email lifecycle trace events. Use `TRELLIS_MAIL_WEBHOOK_SECRET` when the route should verify a shared secret.

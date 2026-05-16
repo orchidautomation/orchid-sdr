@@ -27,7 +27,7 @@ export function agentMailProvider(): AiSdrProviderDefinition {
       { name: "AGENTMAIL_DEFAULT_SENDER_NAME", description: "Default sender display name." },
       { name: "AGENTMAIL_DEFAULT_INBOX_DOMAIN", description: "Default AgentMail inbox domain." },
     ],
-    capabilities: ["mail.send", "mail.reply", "mail.preview", "reply.webhook"],
+    capabilities: ["email.send", "email.reply", "email.preview", "reply.webhook"],
   });
 }
 
@@ -124,7 +124,7 @@ export function prospeoProvider(): AiSdrProviderDefinition {
       { name: "PROSPEO_BASE_URL", description: "Optional Prospeo API base URL. Default is https://api.prospeo.io." },
     ],
     capabilities: [
-      "enrich.mail",
+      "enrich.email",
     ],
   });
 }

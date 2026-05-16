@@ -20,28 +20,28 @@ export function mail(options: { sequence?: TrellisMailSequenceMap; adapter?: "na
   return trellis.provider({
     id: options.adapter === "agentmail" ? "agentmail" : "mail",
     kind: "mail",
-    displayName: options.adapter === "agentmail" ? "AgentMail" : "Trellis Mail",
+    displayName: options.adapter === "agentmail" ? "AgentMail" : "Trellis Email",
     config: {
       adapter: options.adapter ?? "native",
       sequence: options.sequence,
     },
     env: [
-      { name: "TRELLIS_MAIL_FROM", description: "Default sender address for Trellis mail sends and replies." },
-      { name: "TRELLIS_MAIL_REPLY_TO", description: "Optional reply-to address for Trellis mail." },
+      { name: "TRELLIS_MAIL_FROM", description: "Default sender address for Trellis email sends and replies." },
+      { name: "TRELLIS_MAIL_REPLY_TO", description: "Optional reply-to address for Trellis email." },
       { name: "AGENTMAIL_API_KEY", description: "Optional AgentMail API key when adapter is agentmail." },
       { name: "AGENTMAIL_INBOX_ID", description: "Optional AgentMail inbox id when adapter is agentmail." },
       { name: "AGENTMAIL_WEBHOOK_SECRET", description: "Optional AgentMail webhook secret when adapter is agentmail." },
     ],
     capabilities: [
-      "mail.send",
-      "mail.reply",
-      "mail.forward",
-      "mail.reject",
-      "mail.preview",
-      "mail.inbound",
-      "mail.bounce",
-      "mail.suppression.check",
-      "mail.sequence.schedule",
+      "email.send",
+      "email.reply",
+      "email.forward",
+      "email.reject",
+      "email.preview",
+      "email.inbound",
+      "email.bounce",
+      "email.suppression.check",
+      "email.sequence.schedule",
     ],
   });
 }
@@ -60,7 +60,7 @@ export function agentmail(options: { sequence?: TrellisMailSequenceMap } = {}): 
       { name: "AGENTMAIL_INBOX_ID", description: "Default AgentMail inbox id for sequence sends and replies." },
       { name: "AGENTMAIL_WEBHOOK_SECRET", description: "Svix webhook secret for inbound events." },
     ],
-    capabilities: ["mail.send", "mail.reply", "mail.preview", "mail.inbound", "reply.webhook"],
+    capabilities: ["email.send", "email.reply", "email.preview", "email.inbound", "reply.webhook"],
   });
 }
 
@@ -145,7 +145,7 @@ export function prospeo(): TrellisProviderDefinition {
       { name: "PROSPEO_API_KEY", description: "Prospeo API key used for contact and email enrichment." },
       { name: "PROSPEO_BASE_URL", description: "Optional Prospeo API base URL. Default is https://api.prospeo.io." },
     ],
-    capabilities: ["enrich.mail"],
+    capabilities: ["enrich.email"],
   });
 }
 

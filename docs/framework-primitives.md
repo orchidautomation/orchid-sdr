@@ -61,7 +61,7 @@ The proposed outbound or CRM mutation. Drafts are blocked by default when they w
 
 The explicit gate for unsafe actions such as:
 
-- `mail.send`
+- `email.send`
 - `crm.update`
 - `calendar.book`
 - `workflow.escalate`

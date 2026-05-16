@@ -75,7 +75,7 @@ export const defaultSdrMcpToolCatalog: DefaultSdrMcpToolDefinition[] = [
     },
   },
   {
-    name: "enrich.mail",
+    name: "enrich.email",
     group: "email",
     description: "Find and save the best work email for the prospect.",
     inputSchema: {
@@ -223,8 +223,8 @@ export const defaultSdrMcpToolCatalog: DefaultSdrMcpToolDefinition[] = [
     },
   },
   {
-    name: "mail.send",
-    group: "mail",
+    name: "email.send",
+    group: "email",
     description: "Send the first outbound or a follow-up after deterministic policy checks.",
     inputSchema: {
       threadId: z.string(),
@@ -234,8 +234,8 @@ export const defaultSdrMcpToolCatalog: DefaultSdrMcpToolDefinition[] = [
     },
   },
   {
-    name: "mail.preview",
-    group: "mail",
+    name: "email.preview",
+    group: "email",
     description: "Generate the next outbound or reply draft using the sandbox, without sending anything.",
     inputSchema: {
       threadId: z.string(),
@@ -243,8 +243,8 @@ export const defaultSdrMcpToolCatalog: DefaultSdrMcpToolDefinition[] = [
     },
   },
   {
-    name: "mail.reply",
-    group: "mail",
+    name: "email.reply",
+    group: "email",
     description: "Reply on an existing thread after deterministic policy checks.",
     inputSchema: {
       threadId: z.string(),
@@ -253,8 +253,8 @@ export const defaultSdrMcpToolCatalog: DefaultSdrMcpToolDefinition[] = [
     },
   },
   {
-    name: "mail.pause",
-    group: "mail",
+    name: "email.pause",
+    group: "email",
     description: "Pause a thread and prevent further automated sends.",
     inputSchema: {
       threadId: z.string(),

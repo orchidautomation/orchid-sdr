@@ -34,7 +34,7 @@ export interface TrellisAttioMap {
   people?: TrellisFieldMap;
 }
 
-export type TrellisMailSequenceOperation = "mail.send" | "mail.reply" | "email.send" | "email.reply";
+export type TrellisMailSequenceOperation = "email.send" | "email.reply" | "mail.send" | "mail.reply";
 export type TrellisMailSequenceApproval = "required" | "optional" | "none";
 export type TrellisMailSequenceCondition = "always" | "no_reply" | string;
 export type TrellisMailSequenceStopCondition =
@@ -673,7 +673,7 @@ export const trellis = {
   safeOutbound(input?: Partial<TrellisSafetyPolicy>): TrellisSafetyPolicy {
     return {
       noSends: input?.noSends ?? true,
-      requireApproval: input?.requireApproval ?? ["mail.send", "mail.reply", "crm.update", "handoff.webhook"],
+      requireApproval: input?.requireApproval ?? ["email.send", "email.reply", "crm.update", "handoff.webhook"],
       killSwitch: input?.killSwitch ?? true,
     };
   },
@@ -1182,7 +1182,7 @@ export async function runTrellisSmoke(input?: {
     smokeCheck(
       "safety.approvals",
       agent.config.safety?.noSends === true
-        && ["mail.send", "crm.update"].every((approval) =>
+        && ["email.send", "crm.update"].every((approval) =>
           agent.config.safety?.requireApproval.includes(approval),
         ),
       "kept no-send mode and approval gates enabled",
@@ -1606,7 +1606,7 @@ function approvalActionsForWorkflow(name: string, workflowInput: TrellisWorkflow
   }
 
   if (name !== "reply") {
-    return ["mail.send", "crm.update"];
+    return ["email.send", "crm.update"];
   }
 
   const reply = isRecord(workflowInput.reply) ? workflowInput.reply : {};
@@ -1615,7 +1615,7 @@ function approvalActionsForWorkflow(name: string, workflowInput: TrellisWorkflow
   const shouldHandoff = readBoolean(handoff.shouldHandoff) ?? replyAction === "handoff";
   const actions = [];
   if (replyAction === "reply") {
-    actions.push("mail.reply");
+    actions.push("email.reply");
   }
   if (shouldHandoff) {
     actions.push("handoff.webhook");
@@ -1757,10 +1757,10 @@ function matchOperatorReplayRoute(pathname: string) {
 
 function inferApprovalAction(approvalId: string) {
   if (approvalId.endsWith("_email_send")) {
-    return "mail.send";
+    return "email.send";
   }
-  if (approvalId.endsWith("_mail_reply")) {
-    return "mail.reply";
+  if (approvalId.endsWith("_email_reply") || approvalId.endsWith("_mail_reply")) {
+    return "email.reply";
   }
   if (approvalId.endsWith("_crm_update")) {
     return "crm.update";
@@ -2101,7 +2101,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           }, 202);
         }
 
-        if (url.pathname === "/webhooks/mail" && request.method === "POST") {
+        if ((url.pathname === "/webhooks/email" || url.pathname === "/webhooks/mail") && request.method === "POST") {
           const rawBody = await request.text();
           const verification = verifyMailWebhookRequest(request, env);
           if (!verification.ok) {
@@ -2120,7 +2120,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
               id: `trace_event_mail_${normalizeIdPart(mailEvent.kind)}_${normalizeIdPart(mailEvent.providerMessageId ?? String(Date.now()))}`,
               traceId: readString(record.traceId) ?? readString(record.trace_id) ?? `trace_mail_${normalizeIdPart(mailEvent.providerMessageId ?? String(Date.now()))}`,
               span: "mail:lifecycle",
-              type: mailEvent.kind === "bounce" ? "mail.bounce" : "mail.rejected",
+              type: mailEvent.kind === "bounce" ? "email.bounce" : "email.rejected",
               message: mailEvent.kind === "bounce" ? "Mail bounce recorded." : "Mail rejection recorded.",
               payload: {
                 providerMessageId: mailEvent.providerMessageId,
@@ -3133,10 +3133,10 @@ function createTrellisMcpTools(
 
   if (readString(env?.PROSPEO_API_KEY)) {
     tools.push({
-      name: "enrich.mail",
+      name: "enrich.email",
       description: "Enrich a prospect with Prospeo and return a verified email when available.",
       provider: "prospeo",
-      operation: "enrich.mail",
+      operation: "enrich.email",
       inputSchema: {
         type: "object",
         properties: {
@@ -5465,7 +5465,7 @@ async function resolveAgentMailSequencePlan(
 
   const sequence = readAgentMailSequence(resolveMailProvider(config));
   if (!sequence) {
-    if (context.action.operation !== "email.send" && context.action.operation !== "mail.send") {
+    if (!isEmailSendOperation(context.action.operation)) {
       return {
         enabled: false as const,
         reason: "not_initial_outbound_email",
@@ -5473,11 +5473,11 @@ async function resolveAgentMailSequencePlan(
     }
     const defaultCurrentStep: TrellisAgentMailSequenceStep = {
       id: "initial",
-      operation: context.action.operation === "mail.send" ? "mail.send" : "email.send",
+      operation: "email.send",
     };
     const defaultNextStep: TrellisAgentMailSequenceStep = {
       id: "draft_follow_up_if_no_reply",
-      operation: context.action.operation === "mail.send" ? "mail.reply" : "email.reply",
+      operation: "email.reply",
       delay: defaultFollowUpDelay(env),
       condition: "no_reply",
       approval: "required",
@@ -5532,7 +5532,15 @@ async function resolveAgentMailSequencePlan(
 }
 
 function isMailOutboundOperation(operation: string) {
-  return operation === "email.send" || operation === "email.reply" || operation === "mail.send" || operation === "mail.reply";
+  return isEmailSendOperation(operation) || isEmailReplyOperation(operation);
+}
+
+function isEmailSendOperation(operation: string) {
+  return operation === "email.send" || operation === "mail.send";
+}
+
+function isEmailReplyOperation(operation: string) {
+  return operation === "email.reply" || operation === "mail.reply";
 }
 
 function addDurationToIso(start: Date, duration: string | number) {
@@ -7210,34 +7218,34 @@ async function dispatchProviderAction(
 
   if (
     context.action.provider === "agentmail"
-    && (context.action.operation === "email.send" || context.action.operation === "mail.send")
+    && isEmailSendOperation(context.action.operation)
   ) {
     return executeAgentMailSend(env, context, config);
   }
 
   if (
     context.action.provider === "agentmail"
-    && (context.action.operation === "email.reply" || context.action.operation === "mail.reply")
+    && isEmailReplyOperation(context.action.operation)
   ) {
     return executeAgentMailReply(env, context, config);
   }
 
-  if (context.action.provider === "mail" && (context.action.operation === "mail.send" || context.action.operation === "email.send")) {
+  if (context.action.provider === "mail" && isEmailSendOperation(context.action.operation)) {
     return executeNativeMailSend(env, context);
   }
 
   if (
     context.action.provider === "mail"
-    && (context.action.operation === "mail.reply" || context.action.operation === "email.reply")
+    && isEmailReplyOperation(context.action.operation)
   ) {
     return executeNativeMailReply(env, context);
   }
 
-  if (context.action.provider === "mail" && context.action.operation === "mail.forward") {
+  if (context.action.provider === "mail" && (context.action.operation === "email.forward" || context.action.operation === "mail.forward")) {
     return executeNativeMailForward(env, context);
   }
 
-  if (context.action.provider === "mail" && context.action.operation === "mail.reject") {
+  if (context.action.provider === "mail" && (context.action.operation === "email.reject" || context.action.operation === "mail.reject")) {
     return executeNativeMailReject(env, context);
   }
 
@@ -7329,8 +7337,7 @@ function trellisProviderMetadata(context: TrellisProviderExecutionContext) {
 
 function workflowForProviderAction(context: TrellisProviderExecutionContext) {
   if (
-    context.action.operation === "mail.reply"
-    || context.action.operation === "email.reply"
+    isEmailReplyOperation(context.action.operation)
     || context.action.approvalId.includes("_reply_")
     || context.action.draftId?.startsWith("reply_")
   ) {
@@ -7382,13 +7389,13 @@ async function executeNativeMailSend(
   const bodyHtml = readFirstString(input, signalPayload, ["bodyHtml", "html"]);
 
   if (!to) {
-    throw new Error("mail.send requires a recipient email.");
+    throw new Error("email.send requires a recipient email.");
   }
   if (!from) {
-    throw new Error("mail.send requires TRELLIS_MAIL_FROM or input.from.");
+    throw new Error("email.send requires TRELLIS_MAIL_FROM or input.from.");
   }
   if (!bodyText && !bodyHtml) {
-    throw new Error("mail.send requires bodyText, bodyHtml, or a draft body.");
+    throw new Error("email.send requires bodyText, bodyHtml, or a draft body.");
   }
 
   const raw = await sendNativeMail(env, {
@@ -7433,13 +7440,13 @@ async function executeNativeMailReply(
   const bodyHtml = readFirstString(input, signalPayload, ["bodyHtml", "html"]);
 
   if (!messageId) {
-    throw new Error("mail.reply requires messageId or providerMessageId.");
+    throw new Error("email.reply requires messageId or providerMessageId.");
   }
   if (!from) {
-    throw new Error("mail.reply requires TRELLIS_MAIL_FROM or input.from.");
+    throw new Error("email.reply requires TRELLIS_MAIL_FROM or input.from.");
   }
   if (!bodyText && !bodyHtml) {
-    throw new Error("mail.reply requires bodyText, bodyHtml, or a draft body.");
+    throw new Error("email.reply requires bodyText, bodyHtml, or a draft body.");
   }
 
   const raw = await sendNativeMail(env, {
@@ -7477,10 +7484,10 @@ async function executeNativeMailForward(
   const bodyText = readFirstString(input, signalPayload, ["bodyText", "text", "body"]);
 
   if (!messageId) {
-    throw new Error("mail.forward requires messageId or providerMessageId.");
+    throw new Error("email.forward requires messageId or providerMessageId.");
   }
   if (!to) {
-    throw new Error("mail.forward requires a recipient email.");
+    throw new Error("email.forward requires a recipient email.");
   }
 
   const raw = await sendNativeMail(env, {
@@ -7513,7 +7520,7 @@ async function executeNativeMailReject(
   const reason = readFirstString(input, signalPayload, ["reason", "message"]) ?? "Rejected by Trellis policy.";
 
   if (!messageId) {
-    throw new Error("mail.reject requires messageId or providerMessageId.");
+    throw new Error("email.reject requires messageId or providerMessageId.");
   }
 
   const raw = await sendNativeMail(env, {
@@ -8590,7 +8597,7 @@ async function executeProspeoEmailEnrich(
     if (response.status === 400 && readString(json.error_code) === "NO_MATCH") {
       return {
         provider: "prospeo",
-        operation: "enrich.mail",
+        operation: "enrich.email",
         found: false,
         contact: null,
         raw: json,
@@ -8607,7 +8614,7 @@ async function executeProspeoEmailEnrich(
   const found = Boolean(resultEmail && (!status || status === "VERIFIED") && revealed !== false);
   return {
     provider: "prospeo",
-    operation: "enrich.mail",
+    operation: "enrich.email",
     found,
     contact: found
       ? {

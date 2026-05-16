@@ -21,7 +21,7 @@ export default trellis.agent("common-room-bdr", {
   knowledge: "knowledge/**/*.md",
   skills: "skills/**/SKILL.md",
   // Demo mode keeps a mail adapter configured for sequence demos, but the live
-  // walkthrough below omits mail.send from the approval list so the current
+  // walkthrough below omits email.send from the approval list so the current
   // demo can focus on approving one CRM update.
   safety: trellis.safeOutbound({
     noSends: false,
@@ -66,7 +66,7 @@ export default trellis.agent("common-room-bdr", {
   });
 
   // Copy creates a draft only. This demo shows approval on CRM update, so
-  // mail.send stays commented out below instead of becoming an approval.
+  // email.send stays commented out below instead of becoming an approval.
   const draft = await app.skill("sdr-copy", {
     context,
     args: { qualification, research },
@@ -74,7 +74,7 @@ export default trellis.agent("common-room-bdr", {
   });
 
   const approvalRequiredFor = [
-    // "mail.send",
+    // "email.send",
     "crm.update",
   ];
 
