@@ -155,7 +155,7 @@ const CLOUDFLARE_CONNECTIONS = {
     displayName: "Prospeo",
     requiredEnv: ["PROSPEO_API_KEY"],
     optionalEnv: ["PROSPEO_BASE_URL"],
-    capabilities: ["enrich.mail", "research.enrich"],
+    capabilities: ["enrich.mail"],
   },
   langfuse: {
     id: "langfuse",
@@ -863,7 +863,7 @@ async function verifyRemoteCloudflareRoutes(input: {
     }));
   }
 
-  const approval = readVerifyApproval(webhookBody, "email.send");
+  const approval = readVerifyApproval(webhookBody, "mail.send");
   if (webhook.status === 202 && webhookBody?.noSendsMode === true && approval) {
     const approvalResponse = await fetchVerifyJson(verifyRouteUrl(input.endpoint, `/approvals/${encodeURIComponent(approval.id)}/approve`), {
       method: "POST",
@@ -908,7 +908,7 @@ async function verifyRemoteCloudflareRoutes(input: {
       checks.push(verifyCheck("remote.operator.providerActionReplay", "fail", "provider-action replay requires an approval-created provider action id", summarizeRemoteEvidence(approvalResponse)));
     }
   } else {
-    checks.push(verifyCheck("remote.operator.approvalGate", "fail", "approval gate replay check requires no-send mode and an email.send approval", {
+    checks.push(verifyCheck("remote.operator.approvalGate", "fail", "approval gate replay check requires no-send mode and a mail.send approval", {
       noSendsMode: webhookBody?.noSendsMode,
       approval,
     }));

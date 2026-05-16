@@ -103,7 +103,7 @@ export function parallelProvider(): AiSdrProviderDefinition {
       "research.search",
       "research.extract",
       "research.deepResearch",
-      "research.enrich",
+      "enrich.research",
       "research.monitor",
       "signal.discovery",
       "sandbox.mcp.search",
@@ -124,7 +124,6 @@ export function prospeoProvider(): AiSdrProviderDefinition {
       { name: "PROSPEO_BASE_URL", description: "Optional Prospeo API base URL. Default is https://api.prospeo.io." },
     ],
     capabilities: [
-      "research.enrich",
       "enrich.mail",
     ],
   });

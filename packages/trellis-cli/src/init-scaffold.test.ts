@@ -510,10 +510,10 @@ describe("trellis init scaffold", () => {
           ],
           approvals: [
             {
-              id: "approval_draft_sig_verify_email_send",
+              id: "approval_draft_sig_verify_mail_send",
               signalId: body.id ?? "sig_verify",
               draftId: "draft_sig_verify",
-              action: "email.send",
+              action: "mail.send",
               status: "pending",
             },
           ],
@@ -555,25 +555,25 @@ describe("trellis init scaffold", () => {
         });
         return;
       }
-      if (url.pathname === "/approvals/approval_draft_sig_verify_email_send/approve" && request.method === "POST") {
+      if (url.pathname === "/approvals/approval_draft_sig_verify_mail_send/approve" && request.method === "POST") {
         writeJson(response, {
           ok: true,
           approval: {
-            id: "approval_draft_sig_verify_email_send",
+            id: "approval_draft_sig_verify_mail_send",
             status: "approved",
           },
           providerAction: {
-            id: "provider_action_approval_draft_sig_verify_email_send",
+            id: "provider_action_approval_draft_sig_verify_mail_send",
             status: "blocked_no_send",
           },
         });
         return;
       }
-      if (url.pathname === "/operator/provider-actions/provider_action_approval_draft_sig_verify_email_send/replay" && request.method === "POST") {
+      if (url.pathname === "/operator/provider-actions/provider_action_approval_draft_sig_verify_mail_send/replay" && request.method === "POST") {
         writeJson(response, {
           ok: true,
           providerAction: {
-            id: "provider_action_approval_draft_sig_verify_email_send",
+            id: "provider_action_approval_draft_sig_verify_mail_send",
             status: "queued",
           },
           queue: {
