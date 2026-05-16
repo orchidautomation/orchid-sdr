@@ -15,7 +15,7 @@ Use:
 - `knowledge/company.md`
 - `knowledge/icp.md`
 - `knowledge/messaging.md`
-- Firecrawl-backed Trellis research tools when the signal contains a company, domain, person, URL, post, or form message
+- Cloudflare-backed Trellis research tools when the signal contains a company, domain, person, URL, post, or form message
 
 ## Method
 

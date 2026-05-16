@@ -9,7 +9,6 @@ const sdrTools = [
   "list_pending_approvals",
   "approve_draft",
   "reject_draft",
-  "edit_and_approve_draft",
   "list_handoffs",
   "list_replies",
   "research_account",
@@ -18,6 +17,12 @@ const sdrTools = [
 ];
 
 const boundedSkillTools = [
+  {
+    name: "research_account",
+    skill: "research-brief",
+    description: "Run the research brief skill without starting the full workflow.",
+    schema: schema.researchBrief(),
+  },
   {
     name: "qualify_lead",
     skill: "icp-qualification",

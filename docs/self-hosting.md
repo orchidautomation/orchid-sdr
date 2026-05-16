@@ -53,8 +53,8 @@ After the app is live:
 
 ```bash
 npm run trellis -- connect attio
-npm run trellis -- connect agentmail
-npm run trellis -- connect firecrawl
+npm run trellis -- connect mail
+npm run trellis -- connect research
 ```
 
 Then add provider secrets to the deploy environment.

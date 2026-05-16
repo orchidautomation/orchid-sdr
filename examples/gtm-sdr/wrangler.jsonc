@@ -25,6 +25,11 @@
   "browser": {
     "binding": "BROWSER"
   },
+  "send_email": [
+    {
+      "name": "EMAIL"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {

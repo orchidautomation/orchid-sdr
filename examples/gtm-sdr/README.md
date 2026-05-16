@@ -60,7 +60,7 @@ npm run smoke
 npm run verify
 ```
 
-The first deploy does not require provider credentials. Add provider secrets when you want live research or explicit CRM smoke writes:
+The first deploy does not require provider credentials. Add provider setup when you want live Cloudflare email, research/browser actions, or explicit CRM smoke writes:
 
 ```bash
 npx wrangler secret put TRELLIS_API_KEY
@@ -71,7 +71,7 @@ npm run trellis -- connect browser
 npm run docs:add
 ```
 
-Your app code stays Trellis-only in `src/agent.ts`. Attio field mapping lives in `src/crm/attio.map.ts`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like `qualification.decision`, `qualification.summary`, or `signal.payload.signal`. Email sequencing lives in `src/email/agentmail.sequence.map.ts`: define the initial send, follow-up reply steps, delays, approval policy, and stop rules while Trellis keeps provider actions approval-gated and auditable. Browser and research profiles live in `src/browser/profiles.map.ts`, so extraction and browser automation share explicit viewport, locale, wait, and resource-loading rules. Durable business state lives in `src/state/prospect.map.ts`: define tables, fields, indexes, and relationships while Trellis keeps runtime migrations private. The generated `src/trellis-runtime.ts` adapter mounts Trellis markdown packs into the virtual sandbox, uses the configured model route, and stores per-thread agent sessions in managed runtime state.
+Your app code stays Trellis-only in `src/agent.ts`. Attio field mapping lives in `src/crm/attio.map.ts`: rename the keys to your Attio attribute API slugs, then point each value at extracted Trellis context like `qualification.decision`, `qualification.summary`, or `signal.payload.signal`. Email sequencing lives in `src/email/mail.sequence.map.ts`: define the initial send, follow-up reply steps, delays, approval policy, and stop rules while Trellis keeps provider actions approval-gated and auditable. The Worker uses Cloudflare Email Service through the `EMAIL` binding and `email()` handler. Browser and research profiles live in `src/browser/profiles.map.ts`, so Cloudflare-backed extraction and browser automation share explicit viewport, locale, wait, and resource-loading rules. Durable business state lives in `src/state/prospect.map.ts`: define tables, fields, indexes, and relationships while Trellis keeps runtime migrations private. The generated `src/trellis-runtime.ts` adapter mounts Trellis markdown packs into the virtual sandbox, uses the configured model route, and stores per-thread agent sessions in managed runtime state.
 
 `src/agent.ts` is the first file to walk through. It shows the runtime providers, the SDR MCP surface, and each prospect/reply phase as explicit data: skill, agentTools, operatorTools, outputSchema, observability labels, and approval gates. `src/steps.ts` is the drilldown file for reusable helpers and output schemas.
 
@@ -82,12 +82,12 @@ Deploy auto-packs the default `knowledge/**/*.md` files, or uses `.trellis/knowl
 The sequence map is the email-motion equivalent of the Attio and state maps:
 
 ```text
-src/email/agentmail.sequence.map.ts
+src/email/mail.sequence.map.ts
 ```
 
 It declares:
 
-- `defaultInboxId`: usually `env:AGENTMAIL_INBOX_ID`
+- `provider`: `mail`, which means the default Cloudflare Email Service/native mail path
 - `stopOn`: reply, unsubscribe, bounce, manual pause, and kill switch conditions
 - `steps`: initial send and follow-up reply steps with delays and approval policy
 
@@ -146,7 +146,6 @@ estimate_cost
 list_pending_approvals
 approve_draft
 reject_draft
-edit_and_approve_draft
 list_handoffs
 list_replies
 research_account
@@ -165,7 +164,6 @@ mcp: {
   },
   tools: {
     include: ["list_leads", "get_lead", "approve_draft", "qualify_lead"],
-    exclude: ["edit_and_approve_draft"],
     skillTools: [
       {
         name: "qualify_lead",
@@ -177,7 +175,7 @@ mcp: {
 }
 ```
 
-`trellis-operator` points at `/mcp/operator` and keeps the full runtime control plane separate from the SDR pipeline tools.
+`trellis-operator` points at `/mcp/operator` and keeps the runtime control plane separate from the SDR pipeline tools. The SDR surface uses friendly tool names; the operator surface uses the lower-level Trellis runtime tool names.
 
 Good prompts:
 

@@ -26,24 +26,24 @@ research({ adapter: "firecrawl" })
 
 | Capability | Default Trellis provider | AgentMail adapter | Firecrawl adapter |
 | --- | --- | --- | --- |
-| `email.send` | Supported through the native email adapter | Supported | Not applicable |
-| `email.reply` | Supported through the native email adapter | Supported | Not applicable |
+| `email.send` | Supported through the Cloudflare Email Service `EMAIL` binding or native mail endpoint | Supported | Not applicable |
+| `email.reply` | Supported through the Cloudflare Email Service `EMAIL` binding or native mail endpoint | Supported | Not applicable |
 | `email.forward` | Supported through the native email adapter | Adapter-dependent | Not applicable |
 | `email.reject` | Supported through the native email adapter | Adapter-dependent | Not applicable |
 | `email.preview` | Supported as a Trellis draft before execution | Supported as a Trellis draft before execution | Not applicable |
-| `email.inbound` | Supported through `/webhooks/email` and legacy `/webhooks/mail` | Supported through AgentMail webhooks | Not applicable |
+| `email.inbound` | Supported through the Cloudflare Worker `email()` handler, `/webhooks/email`, and legacy `/webhooks/mail` | Supported through AgentMail webhooks | Not applicable |
 | `email.bounce` | Supported through `/webhooks/email` and legacy `/webhooks/mail` lifecycle events | Adapter-dependent | Not applicable |
 | `email.suppression.check` | Contracted for suppression checks | Adapter-dependent | Not applicable |
 | `research.search` | Contracted for research adapters | Not applicable | Supported |
-| `research.map` | Supported through Browser Run quick actions | Not applicable | Supported |
-| `research.scrape` | Supported through Browser Run quick actions | Not applicable | Supported |
-| `research.extract` | Supported through Browser Run quick actions | Not applicable | Supported |
-| `research.crawl.start` | Supported through Browser Run quick actions | Not applicable | Supported |
+| `research.map` | Supported through Cloudflare Browser Run links | Not applicable | Supported |
+| `research.scrape` | Supported through Cloudflare Browser Run markdown/scrape | Not applicable | Supported |
+| `research.extract` | Supported through Cloudflare Browser Run markdown | Not applicable | Supported |
+| `research.crawl.start` | Supported through Cloudflare Browser Run crawl | Not applicable | Supported |
 | `research.crawl.status` | Contracted for async crawl providers | Not applicable | Supported |
-| `browser.screenshot` | Supported through Browser Run quick actions | Not applicable | Adapter-dependent |
-| `browser.pdf` | Supported through Browser Run quick actions | Not applicable | Adapter-dependent |
-| `browser.session.run` | Supported through Browser Run session actions | Not applicable | Adapter-dependent |
-| `browser.interact` | Supported through Browser Run session actions | Not applicable | Adapter-dependent |
+| `browser.screenshot` | Supported through Cloudflare Browser Run screenshot | Not applicable | Adapter-dependent |
+| `browser.pdf` | Supported through Cloudflare Browser Run PDF | Not applicable | Adapter-dependent |
+| `browser.session.run` | Supported through Cloudflare Browser Run snapshot | Not applicable | Adapter-dependent |
+| `browser.interact` | Supported through Cloudflare Browser Run snapshot | Not applicable | Adapter-dependent |
 
 ## Design Rule
 
@@ -83,4 +83,4 @@ export default {
 
 ## Native Mail Webhooks
 
-Native inbound email posts to `POST /webhooks/email`; `POST /webhooks/mail` remains a legacy alias. Trellis accepts inbound message events as resumable reply signals and records bounce/reject events as email lifecycle trace events. Use `TRELLIS_MAIL_WEBHOOK_SECRET` when the route should verify a shared secret.
+Cloudflare-native inbound email enters through the Worker `email()` handler. Native inbound email can also post to `POST /webhooks/email`; `POST /webhooks/mail` remains a legacy alias. Trellis accepts inbound message events as resumable reply signals and records bounce/reject events as email lifecycle trace events. Use `TRELLIS_MAIL_WEBHOOK_SECRET` when the HTTP route should verify a shared secret.

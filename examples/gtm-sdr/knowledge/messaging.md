@@ -8,7 +8,7 @@
 - Tie the signal to buyer intelligence, prioritization, routing, or action.
 - Keep the ask low-friction: compare notes, show a relevant workflow, or ask if the problem is active.
 - Never imply an email was sent automatically.
-- Never mention internal tooling, databases, infrastructure providers, Trellis, Firecrawl, or implementation details in outbound copy.
+- Never mention internal tooling, databases, infrastructure providers, Trellis, or implementation details in outbound copy.
 
 ## Strong opener patterns
 

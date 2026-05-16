@@ -122,7 +122,7 @@ const CLOUDFLARE_CONNECTIONS = {
     kind: "research",
     displayName: "Trellis Research",
     requiredEnv: [],
-    optionalEnv: ["TRELLIS_BROWSER_RUN_BASE_URL", "TRELLIS_BROWSER_RUN_TOKEN"],
+    optionalEnv: ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "TRELLIS_BROWSER_RUN_BASE_URL", "TRELLIS_BROWSER_RUN_TOKEN"],
     capabilities: ["research.search", "research.map", "research.scrape", "research.extract", "research.crawl.start", "research.crawl.status"],
   },
   browser: {
@@ -130,7 +130,7 @@ const CLOUDFLARE_CONNECTIONS = {
     kind: "browser",
     displayName: "Trellis Browser",
     requiredEnv: [],
-    optionalEnv: ["TRELLIS_BROWSER_RUN_BASE_URL", "TRELLIS_BROWSER_RUN_TOKEN"],
+    optionalEnv: ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "TRELLIS_BROWSER_RUN_BASE_URL", "TRELLIS_BROWSER_RUN_TOKEN"],
     capabilities: ["browser.session.run", "browser.screenshot", "browser.pdf", "browser.interact"],
   },
   firecrawl: {
@@ -2401,6 +2401,11 @@ function renderCloudflareWranglerConfig(workerName: string) {
   "browser": {
     "binding": "BROWSER"
   },
+  "send_email": [
+    {
+      "name": "EMAIL"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {
@@ -2471,6 +2476,7 @@ TRELLIS_ATTIO_SMOKE_EMAIL=
 TRELLIS_MAIL_FROM=
 TRELLIS_MAIL_REPLY_TO=
 TRELLIS_MAIL_WEBHOOK_SECRET=
+CLOUDFLARE_BROWSER_RENDERING_API_TOKEN=
 TRELLIS_BROWSER_RUN_BASE_URL=
 TRELLIS_BROWSER_RUN_TOKEN=
 AGENTMAIL_API_KEY=
@@ -2689,6 +2695,9 @@ export default {
   },
   queue(batch: MessageBatch<unknown>, env: Record<string, unknown>) {
     return runtime.worker.queue?.(batch as never, withTrellisRuntime(env));
+  },
+  email(message: ForwardableEmailMessage, env: Record<string, unknown>, ctx: ExecutionContext) {
+    ctx.waitUntil(Promise.resolve(runtime.worker.email?.(message, withTrellisRuntime(env), ctx)));
   },
 };
 `;

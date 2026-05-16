@@ -29,7 +29,7 @@ Pylon form fill
 | Observability | `trellis_trace_events` plus `/events`, `/events/stream`, and SDR run views. | Every step can be inspected and replayed. |
 | Cost visibility | `estimate_cost` on the SDR MCP and `GET /traces/:traceId/cost`. | A team can see what the model run cost. |
 | Human gating | CRM actions become approvals and provider actions. | The agent drafts email for review, but the live approval demo is the Attio CRM update. |
-| Email sequencing | `src/email/agentmail.sequence.map.ts` defines AgentMail steps, delays, approvals, and stop rules. | Follow-up motion is explicit code, not buried in prompts or a vendor UI. |
+| Email sequencing | `src/email/mail.sequence.map.ts` defines native mail steps, delays, approvals, and stop rules. | Follow-up motion is explicit code, not buried in prompts or a vendor UI. |
 | Scheduled repair loop | `wrangler.jsonc` declares a 15-minute cron trigger. | runtime follow-up state can be swept for overdue or stopped sequence steps even if a workflow wakeup needs repair. |
 | Portability | MCP works in Claude Code and other compatible clients. | The same agent can be operated from role-specific surfaces without changing the runtime. |
 

@@ -2,7 +2,7 @@ import { trellis } from "@trellis/gtm";
 import { attio, browser, mail, research as researchProvider } from "@trellis/providers";
 import browserProfiles from "./browser/profiles.map";
 import attioMap from "./crm/attio.map";
-import agentmailSequenceMap from "./email/agentmail.sequence.map";
+import mailSequenceMap from "./email/mail.sequence.map";
 import { sdrMcpSurface } from "./mcp/sdr-surface";
 import stateMap from "./state/prospect.map";
 import {
@@ -111,7 +111,7 @@ const prospectPath = {
 export default trellis.agent("common-room-bdr", {
   // Runtime capabilities the agent can use while doing SDR work.
   crm: attio({ map: attioMap }),
-  mail: mail({ adapter: "agentmail", sequence: agentmailSequenceMap }),
+  mail: mail({ sequence: mailSequenceMap }),
   browser: browser({ profiles: browserProfiles }),
   research: researchProvider({ profiles: browserProfiles }),
 

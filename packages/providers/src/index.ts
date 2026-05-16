@@ -28,6 +28,7 @@ export function mail(options: { sequence?: TrellisMailSequenceMap; adapter?: "na
     env: [
       { name: "TRELLIS_MAIL_FROM", description: "Default sender address for Trellis email sends and replies." },
       { name: "TRELLIS_MAIL_REPLY_TO", description: "Optional reply-to address for Trellis email." },
+      { name: "EMAIL", description: "Cloudflare Email Service binding used by the default native mail adapter." },
       { name: "AGENTMAIL_API_KEY", description: "Optional AgentMail API key when adapter is agentmail." },
       { name: "AGENTMAIL_INBOX_ID", description: "Optional AgentMail inbox id when adapter is agentmail." },
       { name: "AGENTMAIL_WEBHOOK_SECRET", description: "Optional AgentMail webhook secret when adapter is agentmail." },
@@ -64,17 +65,20 @@ export function agentmail(options: { sequence?: TrellisMailSequenceMap } = {}): 
   });
 }
 
-export function research(options: { adapter?: "browser-run" | "firecrawl"; profiles?: TrellisBrowserProfileMap } = {}): TrellisProviderDefinition {
+export function research(options: { adapter?: "cloudflare" | "browser-run" | "firecrawl"; profiles?: TrellisBrowserProfileMap } = {}): TrellisProviderDefinition {
   return trellis.provider({
     id: options.adapter === "firecrawl" ? "firecrawl" : "research",
     kind: "research",
     displayName: options.adapter === "firecrawl" ? "Firecrawl" : "Trellis Research",
     config: {
-      adapter: options.adapter ?? "browser-run",
+      adapter: options.adapter ?? "cloudflare",
       profiles: options.profiles,
     },
     env: [
-      { name: "TRELLIS_BROWSER_RUN_BASE_URL", description: "Optional Browser Run quick action base URL." },
+      { name: "CLOUDFLARE_ACCOUNT_ID", description: "Cloudflare account id for Browser Run quick actions." },
+      { name: "CLOUDFLARE_API_TOKEN", description: "Cloudflare API token with Browser Run permissions when using REST quick actions." },
+      { name: "CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", description: "Optional narrower Cloudflare token for Browser Run quick actions." },
+      { name: "TRELLIS_BROWSER_RUN_BASE_URL", description: "Optional alternate browser quick-action base URL." },
       { name: "FIRECRAWL_API_KEY", description: "Optional Firecrawl API key when adapter is firecrawl." },
     ],
     capabilities: [
@@ -97,7 +101,10 @@ export function browser(options: { profiles?: TrellisBrowserProfileMap } = {}): 
       profiles: options.profiles,
     },
     env: [
-      { name: "TRELLIS_BROWSER_RUN_BASE_URL", description: "Optional Browser Run quick action base URL." },
+      { name: "CLOUDFLARE_ACCOUNT_ID", description: "Cloudflare account id for Browser Run quick actions." },
+      { name: "CLOUDFLARE_API_TOKEN", description: "Cloudflare API token with Browser Run permissions when using REST quick actions." },
+      { name: "CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", description: "Optional narrower Cloudflare token for Browser Run quick actions." },
+      { name: "TRELLIS_BROWSER_RUN_BASE_URL", description: "Optional alternate browser quick-action base URL." },
     ],
     capabilities: [
       "browser.session.create",

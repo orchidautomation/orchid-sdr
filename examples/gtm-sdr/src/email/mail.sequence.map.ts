@@ -1,8 +1,7 @@
 import type { TrellisMailSequenceMap } from "@trellis/gtm";
 
-const agentmailSequenceMap = {
-  provider: "agentmail",
-  defaultInboxId: "env:AGENTMAIL_INBOX_ID",
+const mailSequenceMap = {
+  provider: "mail",
   stopOn: ["reply.received", "unsubscribe", "bounce", "manual.pause", "kill_switch"],
   steps: [
     {
@@ -30,4 +29,4 @@ const agentmailSequenceMap = {
   ],
 } satisfies TrellisMailSequenceMap;
 
-export default agentmailSequenceMap;
+export default mailSequenceMap;
