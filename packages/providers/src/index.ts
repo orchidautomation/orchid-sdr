@@ -145,7 +145,7 @@ export function prospeo(): TrellisProviderDefinition {
       { name: "PROSPEO_API_KEY", description: "Prospeo API key used for contact and email enrichment." },
       { name: "PROSPEO_BASE_URL", description: "Optional Prospeo API base URL. Default is https://api.prospeo.io." },
     ],
-    capabilities: ["mail.enrich", "research.enrich"],
+    capabilities: ["enrich.mail", "research.enrich"],
   });
 }
 

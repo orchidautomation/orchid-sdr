@@ -360,7 +360,7 @@ export function prospeoModule(): AiSdrModuleDefinition {
     providers: [prospeoProvider()],
     smokeChecks: [
       {
-        id: "mail.enrich",
+        id: "enrich.mail",
         description: "Enrich one prospect with a verified work email.",
       },
     ],

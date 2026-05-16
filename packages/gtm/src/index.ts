@@ -3133,10 +3133,10 @@ function createTrellisMcpTools(
 
   if (readString(env?.PROSPEO_API_KEY)) {
     tools.push({
-      name: "mail.enrich",
+      name: "enrich.mail",
       description: "Enrich a prospect with Prospeo and return a verified email when available.",
       provider: "prospeo",
-      operation: "mail.enrich",
+      operation: "enrich.mail",
       inputSchema: {
         type: "object",
         properties: {
@@ -8590,7 +8590,7 @@ async function executeProspeoEmailEnrich(
     if (response.status === 400 && readString(json.error_code) === "NO_MATCH") {
       return {
         provider: "prospeo",
-        operation: "mail.enrich",
+        operation: "enrich.mail",
         found: false,
         contact: null,
         raw: json,
@@ -8607,7 +8607,7 @@ async function executeProspeoEmailEnrich(
   const found = Boolean(resultEmail && (!status || status === "VERIFIED") && revealed !== false);
   return {
     provider: "prospeo",
-    operation: "mail.enrich",
+    operation: "enrich.mail",
     found,
     contact: found
       ? {

@@ -3173,7 +3173,7 @@ describe("@trellis/gtm API", () => {
         expect.objectContaining({ name: "research.search", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
         expect.objectContaining({ name: "research.extract", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
         expect.objectContaining({ name: "research.map", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
-        expect.objectContaining({ name: "mail.enrich", parameters: expect.objectContaining({ type: "object" }) }),
+        expect.objectContaining({ name: "enrich.mail", parameters: expect.objectContaining({ type: "object" }) }),
       ]),
     }));
     const initOptions = flueContext.init.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -3185,7 +3185,7 @@ describe("@trellis/gtm API", () => {
     const searchTool = tools.find((tool) => tool.name === "research.search");
     const extractTool = tools.find((tool) => tool.name === "research.extract");
     const mapTool = tools.find((tool) => tool.name === "research.map");
-    const enrichTool = tools.find((tool) => tool.name === "mail.enrich");
+    const enrichTool = tools.find((tool) => tool.name === "enrich.mail");
     const searchResult = await searchTool?.execute?.({
       query: "Acme news",
       limit: 2,
@@ -3238,7 +3238,7 @@ describe("@trellis/gtm API", () => {
     });
     expect(JSON.parse(String(enrichResult))).toMatchObject({
       provider: "prospeo",
-      operation: "mail.enrich",
+      operation: "enrich.mail",
       found: true,
       contact: {
         address: "sam@northstar.example",
@@ -3248,7 +3248,7 @@ describe("@trellis/gtm API", () => {
     });
     expect(JSON.parse(String(enrichNoMatch))).toMatchObject({
       provider: "prospeo",
-      operation: "mail.enrich",
+      operation: "enrich.mail",
       found: false,
       contact: null,
       raw: {

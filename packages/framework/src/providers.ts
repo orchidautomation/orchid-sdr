@@ -125,7 +125,7 @@ export function prospeoProvider(): AiSdrProviderDefinition {
     ],
     capabilities: [
       "research.enrich",
-      "mail.enrich",
+      "enrich.mail",
     ],
   });
 }

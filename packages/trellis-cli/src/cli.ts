@@ -155,7 +155,7 @@ const CLOUDFLARE_CONNECTIONS = {
     displayName: "Prospeo",
     requiredEnv: ["PROSPEO_API_KEY"],
     optionalEnv: ["PROSPEO_BASE_URL"],
-    capabilities: ["mail.enrich", "research.enrich"],
+    capabilities: ["enrich.mail", "research.enrich"],
   },
   langfuse: {
     id: "langfuse",

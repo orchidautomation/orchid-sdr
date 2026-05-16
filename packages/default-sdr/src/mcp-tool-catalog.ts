@@ -75,7 +75,7 @@ export const defaultSdrMcpToolCatalog: DefaultSdrMcpToolDefinition[] = [
     },
   },
   {
-    name: "mail.enrich",
+    name: "enrich.mail",
     group: "email",
     description: "Find and save the best work email for the prospect.",
     inputSchema: {
