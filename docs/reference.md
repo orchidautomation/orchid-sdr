@@ -22,6 +22,7 @@ The generated Trellis app should expose:
 - `GET /healthz`
 - `GET /smoke`
 - `POST /webhooks/signals`
+- Cloudflare Worker `email()` handler for Email Service routing
 - `POST /webhooks/email`
 - `POST /webhooks/mail` (legacy alias)
 - `POST /webhooks/apify`
@@ -41,6 +42,7 @@ The generated Trellis app should expose:
 - `POST /operator/workflows/:id/replay`
 - `POST /operator/provider-actions/:id/replay`
 - `POST /mcp/trellis`
+- `POST /mcp/operator`
 - `GET /dashboard`
 - `POST /agents/*` for durable agent dispatch
 

@@ -110,20 +110,20 @@ Provider manifests are non-secret. Secrets stay in the deploy environment or you
 
 ```bash
 npm run trellis -- connect attio
-npm run trellis -- connect agentmail
-npm run trellis -- connect firecrawl
+npm run trellis -- connect mail
+npm run trellis -- connect research
 npm run trellis -- connect langfuse
 ```
 
 The default GTM provider lanes are:
 
 - Attio for CRM
-- AgentMail for email preview/send/replies
-- Firecrawl for research
+- Trellis native mail on Cloudflare Email Service for email preview/send/replies
+- Trellis research on Cloudflare Browser Run primitives
 - Apify for optional discovery webhooks
 - Prospeo for optional email enrichment
 - Langfuse as optional trace/eval export
 
 ## Example
 
-Use [`examples/gtm-sdr`](../examples/gtm-sdr/) as the reference example. It shows the public architecture: deployable GTM agent, form-fill signal, durable thread, markdown knowledge, typed skills, Firecrawl-backed research tools, state map, approval-gated draft, smoke route, and audit-friendly workflow.
+Use [`examples/gtm-sdr`](../examples/gtm-sdr/) as the reference example. It shows the public architecture: deployable GTM agent, form-fill signal, durable thread, markdown knowledge, typed skills, Cloudflare-backed email/research/browser tools, state map, approval-gated draft, smoke route, and audit-friendly workflow.

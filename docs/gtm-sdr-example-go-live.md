@@ -16,7 +16,7 @@ The example shows one realistic SDR loop:
 - a website or LinkedIn form submits a signal
 - Trellis preserves the lead's durable `threadId`
 - markdown knowledge and skills are mounted for qualification, research, copy, reply policy, and handoff policy
-- Firecrawl-backed Trellis research tools provide fresh public evidence
+- Cloudflare-backed Trellis email, research, and browser tools provide mail handling plus fresh public evidence
 - typed skill outputs write database-shaped state
 - outbound stays blocked behind approval gates
 - the workflow can resume the same thread when a reply arrives later
@@ -25,8 +25,8 @@ Provider credentials are optional at first boot. Add them only when you want liv
 
 ```bash
 npx wrangler secret put TRELLIS_API_KEY
-npm run trellis -- connect firecrawl
-npm run trellis -- connect agentmail
+npm run trellis -- connect research
+npm run trellis -- connect mail
 npm run trellis -- connect attio
 ```
 

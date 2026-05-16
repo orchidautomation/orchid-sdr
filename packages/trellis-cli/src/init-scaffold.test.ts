@@ -98,6 +98,7 @@ describe("trellis init scaffold", () => {
 
       expect(workerSource).toContain("trellis.cloudflare(agent)");
       expect(workerSource).toContain("withTrellisRuntime(env, request)");
+      expect(workerSource).toContain("runtime.worker.email");
       expect(runtimeSource).toContain("withTrellisRuntime");
       expect(runtimeSource).toContain("@trellis/gtm");
       expect(runtimeSource).not.toContain("@flue/sdk");
@@ -113,6 +114,7 @@ describe("trellis init scaffold", () => {
 
       expect(wranglerConfig).toContain("\"ai\"");
       expect(wranglerConfig).toContain("\"browser\"");
+      expect(wranglerConfig).toContain("\"send_email\"");
       expect(wranglerConfig).toContain("\"durable_objects\"");
       expect(wranglerConfig).toContain("\"d1_databases\"");
       expect(wranglerConfig).toContain("\"r2_buckets\"");

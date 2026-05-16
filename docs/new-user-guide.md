@@ -41,8 +41,8 @@ trellis doctor
 trellis smoke
 trellis deploy
 trellis connect attio
-trellis connect agentmail
-trellis connect firecrawl
+trellis connect mail
+trellis connect research
 ```
 
 The proof point is that a user can see one signal become a qualified prospect, a blocked outbound draft, two pending approvals, audit events, and a workflow start without touching Convex, Rivet, Vercel Sandbox, or custom orchestration code.
@@ -53,7 +53,7 @@ The default smoke path stays safe: `GET /smoke` and `trellis smoke` never write 
 
 ```ts
 import { trellis, schema } from "@trellis/gtm";
-import { attio, agentmail, firecrawl } from "@trellis/providers";
+import { attio, browser, mail, research } from "@trellis/providers";
 
 // Map agent outputs to your CRM fields.
 // Example: qualification.decision -> Attio `icp_status`.
@@ -67,8 +67,9 @@ export default trellis.agent("gtm-sdr", {
   // Bring your GTM stack: CRM, email, and research.
   // Trellis handles the webhooks, retries, queues, logs, and approvals around them.
   crm: attio({ map: attioMap }),
-  email: agentmail(),
-  research: firecrawl(),
+  mail: mail(),
+  browser: browser(),
+  research: research(),
 
   // Pick the LLM once. You can override this per environment with TRELLIS_MODEL.
   model: "anthropic/claude-sonnet-4.6",
@@ -175,8 +176,8 @@ Do not make users choose every primitive.
 The default GTM stack ships with a small business-level provider surface:
 
 - `trellis connect attio`
-- `trellis connect agentmail`
-- `trellis connect firecrawl`
+- `trellis connect mail`
+- `trellis connect research`
 - `trellis connect langfuse`
 
 The deploy runtime is not a provider choice in the happy path. Trellis owns it.

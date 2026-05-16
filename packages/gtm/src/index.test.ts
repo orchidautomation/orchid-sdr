@@ -218,6 +218,43 @@ describe("@trellis/gtm API", () => {
     });
   });
 
+  it("applies configured MCP surface tools separately from the operator surface", async () => {
+    const runtime = trellis.cloudflare(trellis.agent("common-room-bdr", {
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      mcp: {
+        name: "trellis-sdr",
+        surface: "sdr",
+        operator: {
+          name: "trellis-operator",
+        },
+        tools: {
+          include: ["describe_agent", "list_leads", "qualify_lead"],
+          skillTools: [
+            {
+              name: "qualify_lead",
+              skill: "icp-qualification",
+              schema: schema.qualification(),
+            },
+          ],
+        },
+      },
+    }, async () => ({ ok: true })));
+
+    const sdrResponse = await runtime.worker.fetch(new Request("https://example.com/mcp/trellis"), {});
+    const operatorResponse = await runtime.worker.fetch(new Request("https://example.com/mcp/operator"), {});
+    const sdr = await sdrResponse.json() as { tools: string[]; mcp: { name: string; surface: string }; toolCatalog: Array<{ name: string; operation?: string }> };
+    const operator = await operatorResponse.json() as { tools: string[]; mcp: { name: string; surface: string } };
+
+    expect(sdr.mcp).toMatchObject({ name: "trellis-sdr", surface: "sdr" });
+    expect(sdr.tools).toEqual(["describe_agent", "list_leads", "qualify_lead"]);
+    expect(sdr.toolCatalog).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "qualify_lead", operation: "skill.icp-qualification" }),
+    ]));
+    expect(operator.mcp).toMatchObject({ name: "trellis-operator", surface: "operator" });
+    expect(operator.tools).toEqual(expect.arrayContaining(["trellis.health", "trellis.operator.controls"]));
+  });
+
   it("turns reply workflow decisions into approval-gated reply and handoff actions", async () => {
     const agent = trellis.agent("sdr", {
       crm: attio(),
@@ -3253,6 +3290,7 @@ describe("@trellis/gtm API", () => {
       tools: expect.arrayContaining([
         expect.objectContaining({ name: "trellis.health", parameters: expect.objectContaining({ type: "object" }) }),
         expect.objectContaining({ name: "research.search", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
+        expect.objectContaining({ name: "research.scrape", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
         expect.objectContaining({ name: "research.extract", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
         expect.objectContaining({ name: "research.map", provider: "firecrawl", parameters: expect.objectContaining({ type: "object" }) }),
         expect.objectContaining({ name: "enrich.email", parameters: expect.objectContaining({ type: "object" }) }),
@@ -3498,6 +3536,9 @@ describe("@trellis/gtm API", () => {
       forward: vi.fn(async () => ({ id: "forwarded_msg" })),
       reject: vi.fn(async () => ({ id: "rejected_msg" })),
     };
+    const cloudflareEmailBinding = {
+      send: vi.fn(async () => ({ messageId: "cf_email_msg" })),
+    };
 
     await browserRun?.execute?.({
       url: "https://example.com",
@@ -3543,6 +3584,28 @@ describe("@trellis/gtm API", () => {
       }),
       TRELLIS_MAIL: mailBinding,
     });
+    await runtime.worker.fetch(new Request("https://example.com/provider-actions/action_send/execute", {
+      method: "POST",
+      body: JSON.stringify({
+        input: {
+          to: "buyer@example.com",
+          subject: "Hello from Trellis",
+          bodyText: "Useful context for the buyer.",
+        },
+      }),
+    }), {
+      TRELLIS_DB: createProviderActionFakeD1({
+        id: "action_send",
+        approvalId: "approval_send",
+        signalId: "sig_send",
+        provider: "mail",
+        operation: "email.send",
+        status: "queued",
+        traceId: "trace_send",
+      }),
+      EMAIL: cloudflareEmailBinding,
+      TRELLIS_MAIL_FROM: "agent@example.com",
+    });
 
     expect(browserRun).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith("https://browser-run.test/session%2Frun", expect.objectContaining({
@@ -3555,6 +3618,12 @@ describe("@trellis/gtm API", () => {
     expect(mailBinding.reject).toHaveBeenCalledWith(expect.objectContaining({
       type: "reject",
       messageId: "msg_456",
+    }));
+    expect(cloudflareEmailBinding.send).toHaveBeenCalledWith(expect.objectContaining({
+      to: "buyer@example.com",
+      from: "agent@example.com",
+      subject: "Hello from Trellis",
+      text: "Useful context for the buyer.",
     }));
   });
 
@@ -3610,6 +3679,24 @@ describe("@trellis/gtm API", () => {
       TRELLIS_DB: fakeD1,
       TRELLIS_MAIL_WEBHOOK_SECRET: "mail-secret",
     });
+    const rawEmail = new TextEncoder().encode("Subject: Re: GTM\r\nMessage-ID: <cf-mail-1@example.com>\r\n\r\nCan you send pricing?");
+    const cloudflareEmail = await runtime.worker.email?.({
+      from: "buyer@example.com",
+      to: "agent@example.com",
+      headers: new Headers({
+        subject: "Re: GTM",
+        "message-id": "<cf-mail-1@example.com>",
+      }),
+      raw: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(rawEmail);
+          controller.close();
+        },
+      }),
+      rawSize: rawEmail.byteLength,
+    }, {
+      TRELLIS_DB: fakeD1,
+    });
 
     expect(unauthorized.status).toBe(401);
     await expect(inbound.json()).resolves.toMatchObject({
@@ -3626,6 +3713,18 @@ describe("@trellis/gtm API", () => {
       accepted: true,
       mode: "lifecycle",
       event: expect.objectContaining({ kind: "bounce" }),
+    });
+    expect(cloudflareEmail).toMatchObject({
+      ok: true,
+      accepted: true,
+      signal: {
+        id: "sig_mail_cf-mail-1_example_com",
+        provider: "mail",
+        source: "reply.webhook",
+      },
+      webhook: {
+        type: "cloudflare-email",
+      },
     });
     expect(traceEventsFromStatements(fakeD1).some((event) => event.type === "email.bounce")).toBe(true);
   });

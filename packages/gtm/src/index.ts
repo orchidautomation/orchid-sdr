@@ -361,6 +361,17 @@ export interface TrellisSmokeHistory {
   status?: "pass" | "fail";
 }
 
+export interface TrellisCloudflareEmailMessage {
+  readonly from?: string;
+  readonly to?: string;
+  readonly headers?: Headers;
+  readonly raw?: ReadableStream<Uint8Array>;
+  readonly rawSize?: number;
+  setReject?(reason: string): void;
+  forward?(recipient: string, headers?: Headers): Promise<unknown>;
+  reply?(message: unknown): Promise<unknown>;
+}
+
 export interface TrellisCloudflareRuntime {
   TrellisAgent: new (state?: unknown, env?: unknown) => {
     fetch(request: Request): Promise<Response>;
@@ -373,6 +384,7 @@ export interface TrellisCloudflareRuntime {
   };
   worker: {
     fetch(request: Request, env?: Record<string, unknown>): Promise<Response>;
+    email?(message: TrellisCloudflareEmailMessage, env?: Record<string, unknown>, ctx?: unknown): Promise<unknown>;
     queue?(batch: TrellisQueueBatch, env?: Record<string, unknown>): Promise<unknown>;
     scheduled?(controller: unknown, env?: Record<string, unknown>, ctx?: unknown): Promise<unknown>;
   };
@@ -2415,15 +2427,19 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
           return jsonResponse(replay.body, replay.status);
         }
 
-        if (url.pathname === "/mcp/trellis") {
-          const toolCatalog = describeTrellisMcpTools(env, agent.config);
-          const mcpServerName = resolveTrellisMcpServerName(agent);
+        if (url.pathname === "/mcp/trellis" || url.pathname === "/mcp/operator") {
+          const mcpSurface = resolveTrellisMcpSurface(
+            agent,
+            url.pathname === "/mcp/operator" ? "operator" : "primary",
+          );
+          const toolCatalog = describeTrellisMcpTools(env, agent.config, mcpSurface.tools);
           return jsonResponse({
             ok: true,
-            server: mcpServerName,
+            server: mcpSurface.name,
             mcp: {
-              name: mcpServerName,
+              name: mcpSurface.name,
               agent: agent.name,
+              surface: mcpSurface.surface,
             },
             agent: agent.name,
             snapshot: await readRuntimeSnapshot(env),
@@ -2457,6 +2473,8 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             "/webhooks/signals",
             "/webhooks/apify",
             "/webhooks/agentmail",
+            "/webhooks/email",
+            "/webhooks/mail",
             "/approvals/:id/approve",
             "/approvals/:id/reject",
             "/provider-actions",
@@ -2472,10 +2490,20 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
             "/operator/workflows/:id/replay",
             "/operator/provider-actions/:id/replay",
             "/mcp/trellis",
+            "/mcp/operator",
             "/dashboard",
             "/webhooks/slack",
           ],
         });
+      },
+      async email(message: TrellisCloudflareEmailMessage, env?: Record<string, unknown>) {
+        const record = await cloudflareEmailMessageToMailRecord(message);
+        const mailEvent = readMailWebhook(record);
+        const result = await processMailRuntimeEvent(agent, env, mailEvent, record, {
+          verified: false,
+          type: "cloudflare-email",
+        });
+        return result.body;
       },
       async queue(batch: TrellisQueueBatch, env?: Record<string, unknown>) {
         return drainTrellisQueue(batch, env, agent.config);
@@ -2613,12 +2641,37 @@ function summarizeSlackOperator(env?: Record<string, unknown>) {
   };
 }
 
+type TrellisMcpEndpoint = "primary" | "operator";
+
 function resolveTrellisMcpServerName(agent: TrellisAgentDefinition<TrellisGtmApp>) {
   return agent.config.mcp?.name?.trim() || "trellis";
 }
 
-function describeTrellisMcpTools(env: Record<string, unknown> | undefined, config: TrellisAgentConfig) {
-  return createTrellisMcpTools(env, config).map((tool) => ({
+function resolveTrellisMcpSurface(
+  agent: TrellisAgentDefinition<TrellisGtmApp>,
+  endpoint: TrellisMcpEndpoint,
+) {
+  const primaryName = resolveTrellisMcpServerName(agent);
+  if (endpoint === "operator") {
+    return {
+      name: agent.config.mcp?.operator?.name?.trim() || `${primaryName}-operator`,
+      surface: "operator" as TrellisMcpSurface,
+      tools: agent.config.mcp?.operator?.tools,
+    };
+  }
+  return {
+    name: primaryName,
+    surface: agent.config.mcp?.surface ?? "operator" as TrellisMcpSurface,
+    tools: agent.config.mcp?.tools,
+  };
+}
+
+function describeTrellisMcpTools(
+  env: Record<string, unknown> | undefined,
+  config: TrellisAgentConfig,
+  toolsConfig?: TrellisMcpToolsConfig,
+) {
+  return createTrellisMcpSurfaceTools(env, config, toolsConfig).map((tool) => ({
     name: tool.name,
     description: tool.description,
     provider: tool.provider,
@@ -2626,6 +2679,358 @@ function describeTrellisMcpTools(env: Record<string, unknown> | undefined, confi
     inputSchema: tool.inputSchema,
     executable: typeof tool.execute === "function",
   }));
+}
+
+function createTrellisMcpSurfaceTools(
+  env: Record<string, unknown> | undefined,
+  config: TrellisAgentConfig,
+  toolsConfig?: TrellisMcpToolsConfig,
+): TrellisMcpToolDefinition[] {
+  const baseTools = createTrellisMcpTools(env, config);
+  const surfaceTools = [
+    ...baseTools,
+    ...createTrellisSdrSurfaceTools(env),
+    ...createConfiguredSkillSurfaceTools(toolsConfig),
+  ];
+  const aliases = toolsConfig?.aliases ?? {};
+  const include = readStringArray(toolsConfig?.include);
+  const exclude = new Set(readStringArray(toolsConfig?.exclude));
+
+  const selected = include.length > 0
+    ? include.flatMap((name) => resolveMcpSurfaceTool(name, surfaceTools, aliases))
+    : surfaceTools;
+
+  return dedupeMcpTools(selected)
+    .filter((tool) => !exclude.has(tool.name) && !exclude.has(tool.operation ?? ""));
+}
+
+function createConfiguredSkillSurfaceTools(toolsConfig: TrellisMcpToolsConfig | undefined): TrellisMcpToolDefinition[] {
+  return (toolsConfig?.skillTools ?? []).map((tool) => ({
+    name: tool.name,
+    description: tool.description ?? `Run the ${tool.skill} skill through the configured Trellis runtime.`,
+    provider: "trellis",
+    operation: `skill.${tool.skill}`,
+    inputSchema: tool.inputSchema ?? {
+      type: "object",
+      properties: {},
+      additionalProperties: true,
+    },
+  }));
+}
+
+function createTrellisSdrSurfaceTools(env: Record<string, unknown> | undefined): TrellisMcpToolDefinition[] {
+  return [
+    {
+      name: "describe_agent",
+      description: "Describe the Trellis agent, provider wiring, safety policy, packs, and runtime health.",
+      provider: "trellis",
+      operation: "trellis.health",
+      inputSchema: emptyObjectSchema(),
+      async execute() {
+        const snapshot = await readRuntimeSnapshot(env);
+        return {
+          ok: true,
+          snapshot,
+        };
+      },
+    },
+    {
+      name: "list_leads",
+      description: "List recent leads from Trellis prospect and signal state.",
+      provider: "trellis",
+      operation: "trellis.signal.inspect",
+      inputSchema: {
+        type: "object",
+        properties: {
+          limit: { type: "number", minimum: 1, maximum: 20 },
+        },
+        additionalProperties: false,
+      },
+      async execute() {
+        const snapshot = await readRuntimeSnapshot(env);
+        return {
+          ok: true,
+          prospects: snapshot.recent?.prospects ?? [],
+          signals: snapshot.recent?.signals ?? [],
+        };
+      },
+    },
+    {
+      name: "get_lead",
+      description: "Get a recent lead by prospect id, signal id, or thread id.",
+      provider: "trellis",
+      operation: "trellis.signal.inspect",
+      inputSchema: {
+        type: "object",
+        properties: {
+          leadId: { type: "string" },
+          prospectId: { type: "string" },
+          signalId: { type: "string" },
+          threadId: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+      async execute(input) {
+        const snapshot = await readRuntimeSnapshot(env);
+        const id = readFirstString(input, {}, ["leadId", "prospectId", "signalId", "threadId"]);
+        return {
+          ok: true,
+          lead: findRecentLead(snapshot.recent, id),
+        };
+      },
+    },
+    {
+      name: "pipeline_stats",
+      description: "Summarize Trellis pipeline counts and recent workflow status.",
+      provider: "trellis",
+      operation: "trellis.workflow.inspect",
+      inputSchema: emptyObjectSchema(),
+      async execute() {
+        const snapshot = await readRuntimeSnapshot(env);
+        return {
+          ok: true,
+          counts: snapshot.counts,
+          workflowRuns: snapshot.recent?.workflowRuns ?? [],
+        };
+      },
+    },
+    {
+      name: "estimate_cost",
+      description: "Estimate trace usage from recorded runtime turn events when token usage is present.",
+      provider: "trellis",
+      operation: "trellis.trace.usage",
+      inputSchema: {
+        type: "object",
+        properties: {
+          traceId: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+      async execute(input) {
+        const snapshot = await readRuntimeSnapshot(env);
+        return estimateTraceUsage(snapshot.recent?.traceEvents ?? [], readString(input.traceId));
+      },
+    },
+    {
+      name: "list_pending_approvals",
+      description: "List pending draft, CRM, email, and provider approvals.",
+      provider: "trellis",
+      operation: "trellis.approval.inspect",
+      inputSchema: emptyObjectSchema(),
+      async execute() {
+        const snapshot = await readRuntimeSnapshot(env);
+        return {
+          ok: true,
+          approvals: (snapshot.recent?.approvals ?? []).filter((approval) => readString(approval.status) === "pending"),
+        };
+      },
+    },
+    {
+      name: "approve_draft",
+      description: "Approve a pending draft or provider side-effect approval.",
+      provider: "trellis",
+      operation: "trellis.approval.approve",
+      inputSchema: approvalDecisionSchema(),
+    },
+    {
+      name: "reject_draft",
+      description: "Reject a pending draft or provider side-effect approval.",
+      provider: "trellis",
+      operation: "trellis.approval.reject",
+      inputSchema: approvalDecisionSchema(),
+    },
+    {
+      name: "list_handoffs",
+      description: "List recent handoff-related signals, approvals, and provider actions.",
+      provider: "trellis",
+      operation: "trellis.handoff.inspect",
+      inputSchema: emptyObjectSchema(),
+      async execute() {
+        const snapshot = await readRuntimeSnapshot(env);
+        return {
+          ok: true,
+          signals: filterRuntimeRows(snapshot.recent?.signals, "handoff"),
+          approvals: filterRuntimeRows(snapshot.recent?.approvals, "handoff"),
+          providerActions: filterRuntimeRows(snapshot.recent?.providerActions, "handoff"),
+        };
+      },
+    },
+    {
+      name: "list_replies",
+      description: "List recent reply-related signals and workflow rows.",
+      provider: "trellis",
+      operation: "trellis.reply.inspect",
+      inputSchema: emptyObjectSchema(),
+      async execute() {
+        const snapshot = await readRuntimeSnapshot(env);
+        return {
+          ok: true,
+          signals: filterRuntimeRows(snapshot.recent?.signals, "reply"),
+          workflowRuns: filterRuntimeRows(snapshot.recent?.workflowRuns, "reply"),
+        };
+      },
+    },
+  ];
+}
+
+function resolveMcpSurfaceTool(
+  name: string,
+  tools: TrellisMcpToolDefinition[],
+  aliases: Record<string, string>,
+): TrellisMcpToolDefinition[] {
+  const direct = tools.find((tool) => tool.name === name);
+  if (direct) {
+    return [direct];
+  }
+  const aliasTarget = readString(aliases[name]);
+  if (!aliasTarget) {
+    return [];
+  }
+  const target = tools.find((tool) => tool.name === aliasTarget || tool.operation === aliasTarget);
+  return target
+    ? [{
+        ...target,
+        name,
+      }]
+    : [];
+}
+
+function dedupeMcpTools(tools: TrellisMcpToolDefinition[]) {
+  const seen = new Set<string>();
+  return tools.filter((tool) => {
+    if (seen.has(tool.name)) {
+      return false;
+    }
+    seen.add(tool.name);
+    return true;
+  });
+}
+
+function emptyObjectSchema() {
+  return {
+    type: "object",
+    properties: {},
+    additionalProperties: false,
+  };
+}
+
+function approvalDecisionSchema() {
+  return {
+    type: "object",
+    required: ["approvalId"],
+    properties: {
+      approvalId: { type: "string" },
+      actor: { type: "string" },
+      reason: { type: "string" },
+      action: { type: "string" },
+      traceId: { type: "string" },
+    },
+    additionalProperties: false,
+  };
+}
+
+function findRecentLead(recent: Record<string, unknown> | null | undefined, id: string | undefined) {
+  const prospects = Array.isArray(recent?.prospects) ? recent.prospects : [];
+  const signals = Array.isArray(recent?.signals) ? recent.signals : [];
+  const stateRecords = Array.isArray(recent?.stateRecords) ? recent.stateRecords : [];
+  const drafts = Array.isArray(recent?.drafts) ? recent.drafts : [];
+  if (!id) {
+    return {
+      prospects,
+      signals,
+      stateRecords,
+      drafts,
+    };
+  }
+  return {
+    prospect: prospects.find((row) => runtimeRowMatches(row, id)) ?? null,
+    signal: signals.find((row) => runtimeRowMatches(row, id)) ?? null,
+    stateRecords: stateRecords.filter((row) => runtimeRowMatches(row, id)),
+    drafts: drafts.filter((row) => runtimeRowMatches(row, id)),
+  };
+}
+
+function filterRuntimeRows(rows: unknown, needle: string) {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+  return rows.filter((row) => JSON.stringify(row).toLowerCase().includes(needle));
+}
+
+function runtimeRowMatches(row: unknown, id: string) {
+  if (!isRecord(row)) {
+    return false;
+  }
+  return [
+    "id",
+    "signalId",
+    "threadId",
+    "recordId",
+    "draftId",
+  ].some((key) => readString(row[key]) === id);
+}
+
+function estimateTraceUsage(traceEvents: unknown[], traceId: string | undefined) {
+  const matchingEvents = traceEvents.filter((event) => {
+    if (!isRecord(event)) {
+      return false;
+    }
+    if (traceId && readString(event.traceId) !== traceId) {
+      return false;
+    }
+    const type = readString(event.type) ?? "";
+    return type.includes("turn");
+  });
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let totalTokens = 0;
+  let model: string | null = null;
+
+  for (const event of matchingEvents) {
+    if (!isRecord(event)) {
+      continue;
+    }
+    const payload = isRecord(event.payload) ? event.payload : {};
+    model ??= readString(payload.model) ?? null;
+    const usage = isRecord(payload.usage) ? payload.usage : {};
+    const input = readNumber(usage.inputTokens)
+      ?? readNumber(usage.input_tokens)
+      ?? readNumber(usage.promptTokens)
+      ?? readNumber(usage.prompt_tokens)
+      ?? 0;
+    const output = readNumber(usage.outputTokens)
+      ?? readNumber(usage.output_tokens)
+      ?? readNumber(usage.completionTokens)
+      ?? readNumber(usage.completion_tokens)
+      ?? 0;
+    const cacheRead = readNumber(usage.cacheReadTokens)
+      ?? readNumber(usage.cache_read_tokens)
+      ?? readNumber(usage.cachedTokens)
+      ?? readNumber(usage.cached_tokens)
+      ?? 0;
+    const total = readNumber(usage.totalTokens)
+      ?? readNumber(usage.total_tokens)
+      ?? input + output + cacheRead;
+
+    inputTokens += input;
+    outputTokens += output;
+    cacheReadTokens += cacheRead;
+    totalTokens += total;
+  }
+
+  return {
+    ok: true,
+    traceId: traceId ?? null,
+    model,
+    turns: matchingEvents.length,
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    totalTokens,
+    estimatedCost: null,
+    note: "Trellis can summarize recorded token usage here; pricing-table cost calculation is not configured in this runtime.",
+  };
 }
 
 function createTrellisMcpTools(
@@ -3017,6 +3422,30 @@ function createTrellisMcpTools(
         },
         execute(input) {
           return executeFirecrawlSearch(env, input);
+        },
+      },
+      {
+        name: "research.scrape",
+        description: "Scrape a page with Firecrawl and return normalized markdown for research workflows.",
+        provider: "firecrawl",
+        operation: "research.scrape",
+        inputSchema: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string", format: "uri" },
+            formats: {
+              type: "array",
+              items: { type: "string" },
+            },
+            onlyMainContent: { type: "boolean" },
+            waitFor: { type: "number" },
+            timeout: { type: "number" },
+          },
+          additionalProperties: false,
+        },
+        execute(input) {
+          return executeFirecrawlScrape(env, input);
         },
       },
       {
@@ -4125,6 +4554,7 @@ function summarizeRouteAuth(env: Record<string, unknown> | undefined, config: Tr
       protectedRoutes: [
         "/webhooks/signals",
         "/mcp/trellis",
+        "/mcp/operator",
         "/dashboard",
         "/approvals/*",
         "/operator/*",
@@ -4181,6 +4611,7 @@ function resolveApiKeyAuth(config: TrellisAgentConfig): TrellisApiKeyAuthConfig 
 function isTrellisApiKeyProtectedRoute(pathname: string) {
   return pathname === "/webhooks/signals"
     || pathname === "/mcp/trellis"
+    || pathname === "/mcp/operator"
     || pathname === "/dashboard"
     || pathname === "/provider-actions"
     || pathname === "/events"
@@ -4462,6 +4893,184 @@ function mailWebhookToSignal(
       bodyText: mailEvent.bodyText,
       from: mailEvent.from,
       to: mailEvent.to,
+    },
+  };
+}
+
+async function cloudflareEmailMessageToMailRecord(message: TrellisCloudflareEmailMessage): Promise<Record<string, unknown>> {
+  const headers = message.headers instanceof Headers ? message.headers : new Headers();
+  const messageId = readString(headers.get("message-id"))
+    ?? readString(headers.get("x-message-id"))
+    ?? `cloudflare_email_${normalizeIdPart(String(Date.now()))}`;
+  const threadId = readString(headers.get("references"))
+    ?? readString(headers.get("in-reply-to"))
+    ?? messageId;
+  const rawText = await readCloudflareEmailRawText(message.raw);
+  const bodyText = extractEmailBodyText(rawText);
+  const subject = readString(headers.get("subject")) ?? "Inbound email";
+  return {
+    type: "message.received",
+    provider: "cloudflare-email",
+    rawSize: message.rawSize,
+    message: {
+      id: messageId,
+      threadId,
+      from: message.from,
+      to: message.to ? [message.to] : [],
+      subject,
+      text: bodyText,
+    },
+  };
+}
+
+async function readCloudflareEmailRawText(stream: ReadableStream<Uint8Array> | undefined) {
+  if (!stream?.getReader) {
+    return undefined;
+  }
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const maxBytes = 256 * 1024;
+  try {
+    while (size < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (!value) {
+        continue;
+      }
+      const slice = value.byteLength + size > maxBytes
+        ? value.slice(0, maxBytes - size)
+        : value;
+      chunks.push(slice);
+      size += slice.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+function extractEmailBodyText(raw: string | undefined) {
+  if (!raw) {
+    return undefined;
+  }
+  const textPart = raw.match(/content-type:\s*text\/plain[^\r\n]*(?:\r?\n[^\r\n:][^\r\n]*)*\r?\n\r?\n([\s\S]*?)(?:\r?\n--[^\r\n]+|$)/i)?.[1];
+  const headerSeparator = raw.includes("\r\n\r\n") ? "\r\n\r\n" : "\n\n";
+  const fallback = raw.includes(headerSeparator) ? raw.slice(raw.indexOf(headerSeparator) + headerSeparator.length) : raw;
+  const body = textPart ?? fallback;
+  const cleaned = body
+    .split(/\r?\n/)
+    .filter((line) => !line.startsWith("--") && !/^(content-type|content-transfer-encoding|content-disposition):/i.test(line))
+    .join("\n")
+    .replace(/=\r?\n/g, "")
+    .replace(/=([0-9a-f]{2})/gi, (_, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)))
+    .trim();
+  return cleaned || undefined;
+}
+
+async function processMailRuntimeEvent(
+  agent: TrellisAgentDefinition<TrellisGtmApp>,
+  env: Record<string, unknown> | undefined,
+  mailEvent: ReturnType<typeof readMailWebhook>,
+  record: Record<string, unknown>,
+  webhook: { verified: boolean; type: string },
+): Promise<{ body: Record<string, unknown>; status: number }> {
+  if (mailEvent.kind === "bounce" || mailEvent.kind === "rejected") {
+    const eventSink = createTrellisEventSink(env);
+    await emitTrellisTrace(eventSink, {
+      id: `trace_event_mail_${normalizeIdPart(mailEvent.kind)}_${normalizeIdPart(mailEvent.providerMessageId ?? String(Date.now()))}`,
+      traceId: readString(record.traceId) ?? readString(record.trace_id) ?? `trace_mail_${normalizeIdPart(mailEvent.providerMessageId ?? String(Date.now()))}`,
+      span: "mail:lifecycle",
+      type: mailEvent.kind === "bounce" ? "email.bounce" : "email.rejected",
+      message: mailEvent.kind === "bounce" ? "Mail bounce recorded." : "Mail rejection recorded.",
+      payload: {
+        providerMessageId: mailEvent.providerMessageId,
+        providerThreadId: mailEvent.providerThreadId,
+        recipient: mailEvent.from,
+        reason: mailEvent.reason,
+        severity: mailEvent.severity,
+      },
+    });
+    return {
+      status: 202,
+      body: {
+        ok: true,
+        accepted: true,
+        mode: "lifecycle",
+        event: mailEvent,
+        webhook: {
+          verified: webhook.verified,
+          type: webhook.type,
+        },
+      },
+    };
+  }
+
+  if (!mailEvent.providerThreadId || !mailEvent.bodyText) {
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        ignored: true,
+        reason: "threadId or bodyText missing",
+        webhook: {
+          verified: webhook.verified,
+          type: webhook.type,
+        },
+      },
+    };
+  }
+
+  const signal = mailWebhookToSignal(mailEvent, record);
+  const packContext = await readPackContext(env);
+  const eventSink = createTrellisEventSink(env);
+  const harness = await createRuntimeHarness(env, agent.config, {
+    signal,
+    packs: packContext,
+    eventSink,
+  });
+  const run = await runTrellisAgent(agent, {
+    signal,
+    context: {
+      packs: packContext,
+      inboundReply: mailEvent,
+    },
+    harness,
+    eventSink,
+  });
+  const persistence = await persistRuntimeResult(env, run, agent.config);
+  const queue = await enqueueRuntimeEvent(env, run);
+  const workflowDispatch = await dispatchWorkflow(env, run);
+  return {
+    status: 202,
+    body: {
+      ok: true,
+      accepted: true,
+      mode: "processed",
+      traceId: traceIdForSignal(run.signal),
+      signal: run.signal,
+      prospects: run.prospects,
+      drafts: run.drafts,
+      approvals: run.approvals,
+      auditEvents: run.auditEvents,
+      persistence,
+      queue,
+      workflowDispatch,
+      webhook: {
+        verified: webhook.verified,
+        type: webhook.type,
+        eventType: mailEvent.type,
+      },
+      packs: packContext,
+      noSendsMode: agent.config.safety?.noSends ?? true,
     },
   };
 }
@@ -7661,10 +8270,14 @@ async function sendNativeMail(env: Record<string, unknown> | undefined, message:
   if (binding?.send && message.type === "reply") {
     return await binding.send(message);
   }
+  const cloudflareEmail = env?.EMAIL as TrellisNativeMailBinding | undefined;
+  if (cloudflareEmail?.send) {
+    return await cloudflareEmail.send(cloudflareEmailBuilderMessage(message));
+  }
   const endpoint = readString(env?.TRELLIS_MAIL_ENDPOINT);
   const token = readString(env?.TRELLIS_MAIL_TOKEN);
   if (!endpoint) {
-    throw new Error("Native mail requires TRELLIS_MAIL binding, MAIL binding, or TRELLIS_MAIL_ENDPOINT.");
+    throw new Error("Native mail requires TRELLIS_MAIL binding, MAIL binding, Cloudflare EMAIL binding, or TRELLIS_MAIL_ENDPOINT.");
   }
   const response = await runtimeFetch(env, endpoint, {
     method: "POST",
@@ -7678,6 +8291,42 @@ async function sendNativeMail(env: Record<string, unknown> | undefined, message:
     throw new Error(`mail provider failed with ${response.status}: ${await response.text()}`);
   }
   return await response.json().catch(() => ({}));
+}
+
+function cloudflareEmailBuilderMessage(message: Record<string, unknown>) {
+  const to = readStringArray(message.to);
+  const from = readString(message.from);
+  const subject = readString(message.subject) ?? "Trellis outreach";
+  const replyTo = readString(message.replyTo);
+  const text = readString(message.text);
+  const html = readString(message.html);
+  if (to.length === 0) {
+    throw new Error("Cloudflare EMAIL binding requires at least one recipient.");
+  }
+  if (!from) {
+    throw new Error("Cloudflare EMAIL binding requires a sender address.");
+  }
+  if (!text && !html) {
+    throw new Error("Cloudflare EMAIL binding requires text or html content.");
+  }
+  const headers = isRecord(message.headers) ? { ...message.headers } : {};
+  const inReplyTo = readString(message.inReplyTo);
+  const references = readString(message.references);
+  if (inReplyTo) {
+    headers["In-Reply-To"] = inReplyTo;
+  }
+  if (references) {
+    headers.References = references;
+  }
+  return {
+    to: to.length === 1 ? to[0] : to,
+    from,
+    subject,
+    ...(replyTo ? { replyTo } : {}),
+    ...(text ? { text } : {}),
+    ...(html ? { html } : {}),
+    ...(Object.keys(headers).length > 0 ? { headers } : {}),
+  };
 }
 
 async function executeAgentMailSend(
@@ -8742,6 +9391,11 @@ async function executeBrowserRunQuickAction(
     throw new Error(`${operation} requires a URL.`);
   }
 
+  const cloudflareResult = await executeCloudflareBrowserQuickAction(env, operation, action, input, provider);
+  if (cloudflareResult) {
+    return cloudflareResult;
+  }
+
   const baseUrl = (readString(env?.TRELLIS_BROWSER_RUN_BASE_URL) ?? readString(env?.BROWSER_RUN_BASE_URL) ?? "https://browser.run").replace(/\/+$/, "");
   const response = await runtimeFetch(env, `${baseUrl}/${encodeURIComponent(action)}`, {
     method: "POST",
@@ -8768,6 +9422,107 @@ async function executeBrowserRunQuickAction(
     action,
     result: raw,
   };
+}
+
+async function executeCloudflareBrowserQuickAction(
+  env: Record<string, unknown> | undefined,
+  operation: string,
+  action: string,
+  input: Record<string, unknown>,
+  provider?: TrellisProviderDefinition,
+) {
+  const accountId = readString(env?.CLOUDFLARE_ACCOUNT_ID) ?? readString(env?.CF_ACCOUNT_ID);
+  const token = readString(env?.CLOUDFLARE_BROWSER_RENDERING_API_TOKEN)
+    ?? readString(env?.CLOUDFLARE_API_TOKEN)
+    ?? readString(env?.CF_API_TOKEN);
+  if (!accountId || !token || readString(env?.TRELLIS_BROWSER_RUN_BASE_URL)) {
+    return null;
+  }
+
+  const endpoint = cloudflareBrowserEndpointForAction(operation, action, input);
+  const response = await runtimeFetch(
+    env,
+    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/browser-rendering/${endpoint}`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(buildCloudflareBrowserPayload(input, provider)),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`${operation} failed with ${response.status}: ${await response.text()}`);
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  const raw = contentType.includes("application/json")
+    ? await response.json()
+    : contentType.startsWith("text/")
+    ? await response.text()
+    : {
+        contentType,
+        bytes: (await response.arrayBuffer()).byteLength,
+      };
+  const record = isRecord(raw) ? raw : {};
+  return {
+    provider: operation.startsWith("browser.") ? "browser" : "research",
+    adapter: "cloudflare",
+    operation,
+    url: readFirstString(input, {}, ["url"]) ?? "",
+    action: endpoint,
+    result: record.success === true && "result" in record ? record.result : raw,
+  };
+}
+
+function cloudflareBrowserEndpointForAction(operation: string, action: string, input: Record<string, unknown>) {
+  if (operation === "research.map" || action === "links") {
+    return "links";
+  }
+  if (operation === "research.extract" || action === "markdown") {
+    return "markdown";
+  }
+  if (operation === "research.scrape" || action === "scrape") {
+    return readString(input.selector) ? "scrape" : "markdown";
+  }
+  if (operation === "research.crawl.start" || action === "crawl") {
+    return "crawl";
+  }
+  if (operation === "browser.screenshot" || action === "screenshot") {
+    return "screenshot";
+  }
+  if (operation === "browser.pdf" || action === "pdf") {
+    return "pdf";
+  }
+  if (operation === "browser.interact" || operation === "browser.session.run") {
+    return "snapshot";
+  }
+  return action.replace(/^session\//, "") || "snapshot";
+}
+
+function buildCloudflareBrowserPayload(input: Record<string, unknown>, provider?: TrellisProviderDefinition) {
+  const profile = resolveBrowserRunProfile(provider, input);
+  const profileRecord = isRecord(profile) ? profile : {};
+  const waitFor = readString(input.waitFor) ?? readString(profileRecord.waitFor);
+  const viewport = isRecord(input.viewport)
+    ? input.viewport
+    : isRecord(profileRecord.viewport)
+    ? profileRecord.viewport
+    : undefined;
+  const payload: Record<string, unknown> = {
+    ...input,
+  };
+  if (viewport) {
+    payload.viewport = viewport;
+  }
+  if (waitFor) {
+    payload.gotoOptions = {
+      ...(isRecord(input.gotoOptions) ? input.gotoOptions : {}),
+      waitUntil: waitFor === "networkidle" ? "networkidle0" : waitFor,
+    };
+  }
+  return payload;
 }
 
 function resolveBrowserRunProfile(provider: TrellisProviderDefinition | undefined, input: Record<string, unknown>) {

@@ -51,4 +51,4 @@ Use `disqualified` when the account does not match the GTM buyer-intelligence ma
 
 ## Evidence standard
 
-Prefer the form payload first, then Firecrawl-backed research tools. Cite public sources in the research brief. Do not invent customers, funding, employee counts, tech stack, or private CRM facts.
+Prefer the form payload first, then Trellis research tools. Cite public sources in the research brief. Do not invent customers, funding, employee counts, tech stack, or private CRM facts.

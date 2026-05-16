@@ -18,7 +18,7 @@ Use the signal context as primary evidence. The best signal payloads include nam
 
 ## Method
 
-When useful, call Firecrawl-backed Trellis research tools:
+When useful, call Cloudflare-backed Trellis research tools:
 
 - `research.search` for targeted public search
 - `research.extract` for a specific company, docs, careers, blog, or source URL
