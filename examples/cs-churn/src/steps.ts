@@ -14,6 +14,7 @@ type StepRunInput = {
 type StepDefinition = {
   skill: string;
   uses: string[];
+  relatedMcp?: string[];
   produces: string;
   schema: z.ZodTypeAny;
   observability?: TrellisSkillTraceContext;
@@ -70,6 +71,7 @@ function skillStep(definition: StepDefinition) {
 const salesforceEvidence = skillStep({
   skill: "churn-salesforce",
   uses: ["crm.readAccount", "crm.query", "optional Composio Salesforce toolkit"],
+  relatedMcp: [],
   produces: "CRM evidence about renewal, sponsor, QBR, and health status",
   schema: evidence,
   observability: {
@@ -83,6 +85,7 @@ const salesforceEvidence = skillStep({
 const zendeskEvidence = skillStep({
   skill: "churn-zendesk",
   uses: ["support.ticket.search", "support.ticket.read", "optional Composio Zendesk toolkit"],
+  relatedMcp: [],
   produces: "support evidence about volume, escalations, themes, SLA, and CSAT",
   schema: evidence,
   observability: {
@@ -96,6 +99,7 @@ const zendeskEvidence = skillStep({
 const usageEvidence = skillStep({
   skill: "churn-usage",
   uses: ["usage.query", "Snowflake/Postgres/read-only warehouse"],
+  relatedMcp: [],
   produces: "usage evidence about registration, utilization, admin cadence, and activity",
   schema: evidence,
   observability: {
@@ -107,24 +111,14 @@ const usageEvidence = skillStep({
 });
 
 export const steps = {
-  collectAccountEvidence: {
-    skills: [salesforceEvidence, zendeskEvidence, usageEvidence],
-    uses: ["Salesforce", "Zendesk", "usage warehouse"],
-    produces: "combined account evidence",
-    async run(app: TrellisGtmApp, input: { context: Record<string, unknown>; account: AccountArgs }) {
-      const [salesforce, zendesk, usage] = await Promise.all([
-        salesforceEvidence.run(app, { context: input.context, args: input.account }),
-        zendeskEvidence.run(app, { context: input.context, args: input.account }),
-        usageEvidence.run(app, { context: input.context, args: input.account }),
-      ]);
-
-      return { salesforce, zendesk, usage };
-    },
-  },
+  salesforceEvidence,
+  zendeskEvidence,
+  usageEvidence,
 
   scoreChurnRisk: skillStep({
     skill: "churn-risk-score",
     uses: ["Salesforce evidence", "Zendesk evidence", "usage evidence"],
+    relatedMcp: ["inspect_churn_score"],
     produces: "Red/Orange/Yellow/Green churn score",
     schema: riskScore,
     observability: {
@@ -139,6 +133,7 @@ export const steps = {
   recommendSavePlan: skillStep({
     skill: "churn-playbook",
     uses: ["risk score", "account context"],
+    relatedMcp: ["draft_save_playbook", "list_pending_approvals", "approve_draft"],
     produces: "CSM save plan with owner, persona, timeframe, and next action",
     schema: playbook,
     observability: {
