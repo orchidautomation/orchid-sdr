@@ -236,7 +236,7 @@ type CloudflareProvisioningPlan = {
     commands: string[];
   };
   workflow: {
-    binding: "PROSPECT_WORKFLOW";
+    binding: "TRELLIS_WORKFLOW" | "PROSPECT_WORKFLOW";
     name: string | null;
     className: string | null;
     ready: boolean;
@@ -550,11 +550,22 @@ async function handleDoctorCommand() {
       "TRELLIS_PACKS",
       "TRELLIS_ARTIFACTS",
       "TRELLIS_EVENTS",
-      "PROSPECT_WORKFLOW",
+      "TRELLIS_WORKFLOW",
       "AI",
       "BROWSER",
     ].map((binding) =>
-      doctorCheck(`binding.${binding}`, wranglerSource.includes(binding), "warn", `${binding} binding ${wranglerSource.includes(binding) ? "declared" : "not declared"}`),
+      doctorCheck(
+        `binding.${binding}`,
+        binding === "TRELLIS_WORKFLOW"
+          ? hasTrellisWorkflowBinding(wranglerSource)
+          : wranglerSource.includes(binding),
+        "warn",
+        `${binding} binding ${
+          binding === "TRELLIS_WORKFLOW"
+            ? hasTrellisWorkflowBinding(wranglerSource) ? "declared" : "not declared"
+            : wranglerSource.includes(binding) ? "declared" : "not declared"
+        }`,
+      ),
     ),
     ...provisioning.summary.resources.map((resource) =>
       doctorCheck(`cloudflare.${resource.id}`, resource.ready, "warn", resource.detail),
@@ -1550,11 +1561,19 @@ async function handleCloudflareVerify(flags: Record<string, string | boolean>) {
       "TRELLIS_PACKS",
       "TRELLIS_ARTIFACTS",
       "TRELLIS_EVENTS",
-      "PROSPECT_WORKFLOW",
+      "TRELLIS_WORKFLOW",
       "AI",
       "BROWSER",
     ].map((binding) =>
-      verifyCheck(`binding.${binding}`, wranglerSource.includes(binding) ? "pass" : "warn", `${binding} binding ${wranglerSource.includes(binding) ? "declared" : "not declared"}`),
+      verifyCheck(
+        `binding.${binding}`,
+        (binding === "TRELLIS_WORKFLOW" ? hasTrellisWorkflowBinding(wranglerSource) : wranglerSource.includes(binding)) ? "pass" : "warn",
+        `${binding} binding ${
+          binding === "TRELLIS_WORKFLOW"
+            ? hasTrellisWorkflowBinding(wranglerSource) ? "declared" : "not declared"
+            : wranglerSource.includes(binding) ? "declared" : "not declared"
+        }`,
+      ),
     ),
     ...provisioning.summary.resources.map((resource) =>
       verifyCheck(`cloudflare.${resource.id}`, resource.ready ? "pass" : "warn", resource.detail),
@@ -1794,13 +1813,18 @@ Then:
   }
 }
 
+function hasTrellisWorkflowBinding(source: string) {
+  return source.includes("TRELLIS_WORKFLOW") || source.includes("PROSPECT_WORKFLOW");
+}
+
 function buildCloudflareProvisioningPlan(config: CloudflareResourceConfig): CloudflareProvisioningPlan {
   const d1 = config.d1Databases.find((database) => database.binding === "TRELLIS_DB");
   const packsBucket = config.r2Buckets.find((bucket) => bucket.binding === "TRELLIS_PACKS");
   const artifactsBucket = config.r2Buckets.find((bucket) => bucket.binding === "TRELLIS_ARTIFACTS");
   const eventsQueue = config.queueProducers.find((queue) => queue.binding === "TRELLIS_EVENTS");
   const eventsConsumer = config.queueConsumers.find((consumer) => consumer.queue === eventsQueue?.queue);
-  const workflowBinding = config.workflows.find((workflow) => workflow.binding === "PROSPECT_WORKFLOW");
+  const workflowBinding = config.workflows.find((workflow) => workflow.binding === "TRELLIS_WORKFLOW")
+    ?? config.workflows.find((workflow) => workflow.binding === "PROSPECT_WORKFLOW");
   const d1AutoResolvable = Boolean(config.configPath && config.format === "json" && d1?.databaseName);
   const d1Ready = Boolean(d1?.databaseName && d1.databaseId);
   const r2Buckets = [
@@ -1828,7 +1852,7 @@ function buildCloudflareProvisioningPlan(config: CloudflareResourceConfig): Clou
     ],
   };
   const workflow = {
-    binding: "PROSPECT_WORKFLOW" as const,
+    binding: (workflowBinding?.binding === "PROSPECT_WORKFLOW" ? "PROSPECT_WORKFLOW" : "TRELLIS_WORKFLOW") as "TRELLIS_WORKFLOW" | "PROSPECT_WORKFLOW",
     name: workflowBinding?.name ?? null,
     className: workflowBinding?.className ?? null,
     ready: Boolean(workflowBinding?.name && workflowBinding.className),
@@ -1868,11 +1892,11 @@ function buildCloudflareProvisioningPlan(config: CloudflareResourceConfig): Clou
       commands: queue.commands,
     },
     {
-      id: "workflow.prospect",
+      id: "workflow.trellis",
       ready: workflow.ready,
       detail: workflow.ready
-        ? `PROSPECT_WORKFLOW is ${workflow.name} using ${workflow.className}`
-        : "PROSPECT_WORKFLOW needs name and class_name in Wrangler config",
+        ? `${workflow.binding} is ${workflow.name} using ${workflow.className}`
+        : "TRELLIS_WORKFLOW needs name and class_name in Wrangler config",
       commands: [],
     },
   ];
@@ -2423,9 +2447,9 @@ function renderCloudflareWranglerConfig(workerName: string) {
   },
   "workflows": [
     {
-      "binding": "PROSPECT_WORKFLOW",
-      "name": "${workerName}-prospect",
-      "class_name": "ProspectWorkflow"
+      "binding": "TRELLIS_WORKFLOW",
+      "name": "${workerName}-workflow",
+      "class_name": "TrellisWorkflow"
     }
   ]
 }
@@ -2645,7 +2669,7 @@ import { withTrellisRuntime } from "./trellis-runtime";
 
 const runtime = trellis.cloudflare(agent);
 const RuntimeTrellisAgent = runtime.TrellisAgent;
-const RuntimeProspectWorkflow = runtime.ProspectWorkflow;
+const RuntimeTrellisWorkflow = runtime.TrellisWorkflow;
 
 export class TrellisAgent extends DurableObject<Record<string, unknown>> {
   async fetch(request: Request) {
@@ -2653,9 +2677,9 @@ export class TrellisAgent extends DurableObject<Record<string, unknown>> {
   }
 }
 
-export class ProspectWorkflow extends WorkflowEntrypoint<Record<string, unknown>, Record<string, unknown>> {
+export class TrellisWorkflow extends WorkflowEntrypoint<Record<string, unknown>, Record<string, unknown>> {
   async run(event: Readonly<WorkflowEvent<Record<string, unknown>>>, step: WorkflowStep) {
-    return new RuntimeProspectWorkflow(this.env).run(event, step);
+    return new RuntimeTrellisWorkflow(this.env).run(event, step);
   }
 }
 

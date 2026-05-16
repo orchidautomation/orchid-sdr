@@ -22,6 +22,32 @@ Spring's KPIs are not generic SaaS DAU. Focus on registration rate, utilization 
 - care modality mix
 - dormant power admins
 
+## Placeholder Tool Calls
+
+These calls can map to Snowflake MCP, Postgres MCP, BigQuery, or an internal read-only warehouse adapter.
+
+```ts
+const registration = await tool.usage.query({
+  name: "registration_and_utilization",
+  accountId,
+  sqlRef: "src/integrations/usage-warehouse.map.ts#registrationRate"
+});
+
+const springLife = await tool.usage.query({
+  name: "springlife_activity_trend",
+  accountId,
+  windowDays: 60
+});
+
+const adminCadence = await tool.usage.query({
+  name: "admin_login_cadence",
+  accountId,
+  windowDays: 90
+});
+```
+
+Use an aggregate or sanitized replica. Do not pull member-level PHI into Trellis traces or final briefs.
+
 ## Output
 
 Return structured evidence:

@@ -26,3 +26,4 @@ Return:
 - If a slice is missing or stale, lower confidence.
 - Apply the plan-year override.
 - Combine overlapping usage drivers into one plain-English driver when appropriate.
+- Do not call Salesforce, Zendesk, warehouse, or Composio tools from this skill. It is a pure scoring reducer over prior outputs.

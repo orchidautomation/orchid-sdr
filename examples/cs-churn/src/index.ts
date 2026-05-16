@@ -5,7 +5,7 @@ import { withTrellisRuntime } from "./trellis-runtime";
 
 const runtime = trellis.cloudflare(agent);
 const RuntimeTrellisAgent = runtime.TrellisAgent;
-const RuntimeProspectWorkflow = runtime.ProspectWorkflow;
+const RuntimeTrellisWorkflow = runtime.TrellisWorkflow;
 
 export class TrellisAgent extends DurableObject<Record<string, unknown>> {
   async fetch(request: Request) {
@@ -13,9 +13,9 @@ export class TrellisAgent extends DurableObject<Record<string, unknown>> {
   }
 }
 
-export class ProspectWorkflow extends WorkflowEntrypoint<Record<string, unknown>, Record<string, unknown>> {
+export class TrellisWorkflow extends WorkflowEntrypoint<Record<string, unknown>, Record<string, unknown>> {
   async run(event: Readonly<WorkflowEvent<Record<string, unknown>>>, step: WorkflowStep) {
-    return new RuntimeProspectWorkflow(this.env).run(event, step);
+    return new RuntimeTrellisWorkflow(this.env).run(event, step);
   }
 }
 

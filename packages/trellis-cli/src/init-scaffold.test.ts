@@ -252,7 +252,7 @@ describe("trellis init scaffold", () => {
       expect(doctorResult.checks.find((check) => check.id === "binding.TRELLIS_DB")?.status).toBe("pass");
       expect(doctorResult.checks.find((check) => check.id === "binding.TRELLIS_PACKS")?.status).toBe("pass");
       expect(doctorResult.checks.find((check) => check.id === "binding.TRELLIS_EVENTS")?.status).toBe("pass");
-      expect(doctorResult.checks.find((check) => check.id === "binding.PROSPECT_WORKFLOW")?.status).toBe("pass");
+      expect(doctorResult.checks.find((check) => check.id === "binding.TRELLIS_WORKFLOW")?.status).toBe("pass");
       expect(doctorResult.checks.find((check) => check.id === "binding.AI")?.status).toBe("pass");
       expect(doctorResult.checks.find((check) => check.id === "binding.BROWSER")?.status).toBe("pass");
       expect(doctorResult.checks.find((check) => check.id === "cloudflare.aiGateway")?.status).toBe("pass");

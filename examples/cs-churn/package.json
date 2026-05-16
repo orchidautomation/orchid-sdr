@@ -10,6 +10,7 @@
     "docs:add": "trellis docs add ./knowledge",
     "deploy": "trellis deploy",
     "smoke": "trellis smoke",
+    "smoke:cs": "tsx scripts/smoke-cs-churn.ts",
     "verify": "trellis verify cloudflare",
     "typecheck": "tsc --noEmit"
   },
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260511.1",
     "@trellis/cli": "file:../../packages/trellis-cli",
+    "tsx": "^4.20.6",
     "typescript": "^5.8.3",
     "wrangler": "^4.90.0"
   },

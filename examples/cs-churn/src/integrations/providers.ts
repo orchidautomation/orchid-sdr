@@ -1,4 +1,5 @@
 import { trellis, type TrellisProviderDefinition } from "@trellis/gtm";
+import composioToolkitMap from "./composio.toolkit.map";
 import salesforceMap from "./salesforce.map";
 import usageWarehouseMap from "./usage-warehouse.map";
 import zendeskMap from "./zendesk.map";
@@ -11,10 +12,13 @@ export function salesforceCrm(): TrellisProviderDefinition {
     config: {
       map: salesforceMap,
       preferredAccess: "salesforce-hosted-mcp",
+      managedToolkitFallback: composioToolkitMap.salesforce,
     },
     env: [
       { name: "SALESFORCE_MCP_URL", description: "Salesforce Hosted MCP server URL for read/query and approved CRM updates." },
       { name: "SALESFORCE_CLIENT_ID", description: "OAuth client id used by the MCP client or gateway." },
+      { name: "COMPOSIO_API_KEY", description: "Optional Composio API key when modeling Salesforce through Composio toolkits." },
+      { name: "COMPOSIO_SALESFORCE_MCP_URL", description: "Optional Composio-hosted Salesforce MCP URL." },
     ],
     capabilities: ["crm.readAccount", "crm.query", "crm.update"],
   });
@@ -28,11 +32,14 @@ export function zendeskSupport(): TrellisProviderDefinition {
     config: {
       map: zendeskMap,
       preferredAccess: "zendesk-rest-api-or-reviewed-mcp-bridge",
+      managedToolkitFallback: composioToolkitMap.zendesk,
     },
     env: [
       { name: "ZENDESK_SUBDOMAIN", description: "Zendesk subdomain for official Ticketing API access." },
       { name: "ZENDESK_API_TOKEN", description: "Zendesk API token scoped to ticket reads for the churn agent." },
       { name: "ZENDESK_EMAIL", description: "Zendesk API user email." },
+      { name: "COMPOSIO_API_KEY", description: "Optional Composio API key when modeling Zendesk through Composio toolkits." },
+      { name: "COMPOSIO_ZENDESK_MCP_URL", description: "Optional Composio-hosted Zendesk MCP URL." },
     ],
     capabilities: ["support.ticket.search", "support.ticket.read", "support.csat.read"],
   });

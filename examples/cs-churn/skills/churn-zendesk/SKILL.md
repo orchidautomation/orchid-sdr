@@ -20,6 +20,26 @@ Use `knowledge/spring-health-reference.md` to map subjects and tags into Spring-
 - recurring themes inferred from tags and subjects
 - last 3 tickets by subject only
 
+## Placeholder Tool Calls
+
+These calls can map to Zendesk REST, a reviewed Zendesk MCP bridge, or a Composio Zendesk toolkit connection.
+
+```ts
+const recent = await tool.zendesk.searchTickets({
+  query: `type:ticket organization:"${accountName}" created>90days_ago`
+});
+
+const staleOpen = await tool.zendesk.searchTickets({
+  query: `type:ticket organization:"${accountName}" status<solved updated<14days_ago`
+});
+
+const escalations = await tool.zendesk.searchTickets({
+  query: `type:ticket organization:"${accountName}" tags:exec_escalation created>90days_ago`
+});
+```
+
+If the actual tool returns full ticket bodies, summarize locally and discard body text before returning the skill output.
+
 ## Output
 
 Return structured evidence:

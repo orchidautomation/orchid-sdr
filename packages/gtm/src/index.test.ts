@@ -347,7 +347,7 @@ describe("@trellis/gtm API", () => {
       TRELLIS_DB: fakeD1,
       TRELLIS_EVENTS: fakeQueue,
       TRELLIS_PACKS: fakeR2,
-      PROSPECT_WORKFLOW: fakeWorkflow,
+      TRELLIS_WORKFLOW: fakeWorkflow,
       TRELLIS_WEBHOOK_SECRET: "test-secret",
     };
 

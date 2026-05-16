@@ -32,3 +32,4 @@ Each action must include:
 - Do not recommend expansion, case study, or product preview asks while active support escalation or Red risk exists.
 - Every action must land with a named buyer persona.
 - If the buyer persona is missing from CRM, make buyer re-mapping the first action.
+- Do not write Salesforce, Zendesk, Slack, or email updates from this skill. Return the plan; Trellis turns approved side effects into provider actions.

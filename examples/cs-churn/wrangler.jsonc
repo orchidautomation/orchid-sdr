@@ -2,10 +2,29 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "trellis-cs-churn",
   "main": "src/index.ts",
-  "compatibility_date": "2026-05-01",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_date": "2026-05-12",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "observability": {
     "enabled": true
+  },
+  "triggers": {
+    "crons": [
+      "*/30 * * * *"
+    ]
+  },
+  "vars": {
+    "TRELLIS_MODEL": "cloudflare/openai/gpt-5.5",
+    "TRELLIS_AI_GATEWAY_ID": "default",
+    "TRELLIS_SKILL_TIMEOUT_MS": "120000",
+    "TRELLIS_INTEGRATION_MODE": "placeholder"
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "browser": {
+    "binding": "BROWSER"
   },
   "durable_objects": {
     "bindings": [
@@ -15,20 +34,50 @@
       }
     ]
   },
-  "workflows": [
-    {
-      "name": "trellis-cs-churn-workflow",
-      "binding": "PROSPECT_WORKFLOW",
-      "class_name": "ProspectWorkflow"
-    }
-  ],
   "migrations": [
     {
       "tag": "v1",
-      "new_classes": ["TrellisAgent"]
+      "new_sqlite_classes": [
+        "TrellisAgent"
+      ]
     }
   ],
-  "vars": {
-    "TRELLIS_MODEL": "cloudflare/openai/gpt-5.5"
-  }
+  "d1_databases": [
+    {
+      "binding": "TRELLIS_DB",
+      "database_name": "trellis-cs-churn-db",
+      "database_id": "replace-with-d1-database-id"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "TRELLIS_PACKS",
+      "bucket_name": "trellis-cs-churn-packs"
+    },
+    {
+      "binding": "TRELLIS_ARTIFACTS",
+      "bucket_name": "trellis-cs-churn-artifacts"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "TRELLIS_EVENTS",
+        "queue": "trellis-cs-churn-events"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "trellis-cs-churn-events",
+        "dead_letter_queue": "trellis-cs-churn-events-dlq"
+      }
+    ]
+  },
+  "workflows": [
+    {
+      "binding": "TRELLIS_WORKFLOW",
+      "name": "trellis-cs-churn-workflow",
+      "class_name": "TrellisWorkflow"
+    }
+  ]
 }

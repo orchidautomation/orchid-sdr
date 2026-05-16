@@ -365,6 +365,9 @@ export interface TrellisCloudflareRuntime {
   TrellisAgent: new (state?: unknown, env?: unknown) => {
     fetch(request: Request): Promise<Response>;
   };
+  TrellisWorkflow: new (env?: unknown) => {
+    run(event?: unknown, step?: unknown): Promise<unknown>;
+  };
   ProspectWorkflow: new (env?: unknown) => {
     run(event?: unknown, step?: unknown): Promise<unknown>;
   };
@@ -2484,6 +2487,7 @@ function createCloudflareRuntime(agent: TrellisAgentDefinition<TrellisGtmApp>): 
 
   return {
     TrellisAgent: TrellisAgentObject,
+    TrellisWorkflow: ProspectWorkflowObject,
     ProspectWorkflow: ProspectWorkflowObject,
     worker,
   };
@@ -2569,6 +2573,7 @@ function summarizeCloudflareBindings(env?: Record<string, unknown>) {
     "TRELLIS_PACKS",
     "TRELLIS_ARTIFACTS",
     "TRELLIS_EVENTS",
+    "TRELLIS_WORKFLOW",
     "PROSPECT_WORKFLOW",
     "AI",
     "BROWSER",
@@ -6150,7 +6155,7 @@ function operatorControlId(scope: TrellisOperatorControlScope, targetId: string)
 }
 
 async function dispatchWorkflow(env: Record<string, unknown> | undefined, run: TrellisRuntimeResult) {
-  const workflow = env?.PROSPECT_WORKFLOW as TrellisWorkflowBinding | undefined;
+  const workflow = trellisWorkflowBinding(env);
   if (!workflow?.create) {
     return {
       enabled: false,
@@ -6257,6 +6262,10 @@ function workflowInputParams(run: TrellisRuntimeResult) {
   return isRecord(input) ? input : {};
 }
 
+function trellisWorkflowBinding(env: Record<string, unknown> | undefined) {
+  return (env?.TRELLIS_WORKFLOW ?? env?.PROSPECT_WORKFLOW) as TrellisWorkflowBinding | undefined;
+}
+
 async function scheduleFollowUpWorkflow(
   env: Record<string, unknown> | undefined,
   context: TrellisProviderExecutionContext,
@@ -6271,7 +6280,7 @@ async function scheduleFollowUpWorkflow(
     };
   }
 
-  const workflow = env?.PROSPECT_WORKFLOW as TrellisWorkflowBinding | undefined;
+  const workflow = trellisWorkflowBinding(env);
   if (!workflow?.create) {
     return {
       enabled: false,
@@ -6431,14 +6440,14 @@ async function replayWorkflowRun(
     };
   }
 
-  const workflow = env?.PROSPECT_WORKFLOW as TrellisWorkflowBinding | undefined;
+  const workflow = trellisWorkflowBinding(env);
   if (!workflow?.create) {
     return {
       status: 501,
       body: {
         ok: false,
         error: "workflow_binding_unavailable",
-        detail: "PROSPECT_WORKFLOW is required before workflow runs can be replayed.",
+        detail: "TRELLIS_WORKFLOW is required before workflow runs can be replayed.",
       },
     };
   }

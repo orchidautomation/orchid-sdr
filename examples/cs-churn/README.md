@@ -51,11 +51,18 @@ reference/            demo inputs and walkthrough notes
 5. `src/integrations/*.map.ts`
    Shows where a real team maps its CRM fields, Zendesk search patterns, and warehouse metrics.
 
+6. `src/integrations/composio.toolkit.map.ts`
+   Shows how Composio toolkits/MCP can be modeled as a managed access layer without changing Trellis skills.
+
+7. `reference/integration-substitution-guide.md`
+   Shows exactly how placeholder tool calls become real Salesforce, Zendesk, Composio, Snowflake, Postgres, or direct API calls.
+
 ## Run Locally
 
 ```bash
 npm install
 npm run typecheck
+npm run smoke:cs
 npm run trellis -- doctor
 npm run trellis -- smoke
 ```
@@ -79,3 +86,7 @@ curl -sS "$TRELLIS_CS_CHURN_URL/webhooks/signals" \
 - Composio: credible managed-toolkit option for faster SaaS coverage, but it must map back into Trellis provider capabilities and preserve approval gates.
 
 Trellis remains the runtime of record for orchestration, traces, approvals, provider actions, state, and safety.
+
+## Resource Bindings
+
+`wrangler.jsonc` declares the runtime resources this example expects: durable agent identity, D1 state, pack/artifact storage, events queue, workflow, AI binding, browser binding, and a scheduled repair trigger. The D1 `database_id` is a placeholder; replace it after provisioning the demo database.

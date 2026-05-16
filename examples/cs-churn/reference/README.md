@@ -3,6 +3,7 @@
 This folder contains demo inputs and walkthrough material for the CS churn example.
 
 - `inputs/churn-signal.json` is the account-health signal sent into Trellis.
+- `integration-substitution-guide.md` shows how placeholders map to Salesforce Hosted MCP, Composio toolkits/MCP, Zendesk API, Snowflake MCP, Postgres MCP, or direct adapters.
 
 The demo should focus on the shape of the agent, not a live write into a production CS stack:
 
