@@ -184,6 +184,7 @@ const DEFAULT_TRELLIS_MODEL = "anthropic/claude-sonnet-4.6";
 
 export interface TrellisAgentConfig {
   crm?: TrellisProviderDefinition;
+  sources?: TrellisProviderDefinition[];
   mail?: TrellisProviderDefinition;
   email?: TrellisProviderDefinition;
   browser?: TrellisProviderDefinition;
@@ -288,12 +289,21 @@ export interface TrellisGtmApp {
       args?: Record<string, unknown>;
       role?: string;
       model?: string;
+      trace?: TrellisSkillTraceContext;
     },
   ): Promise<unknown> | unknown;
   workflow(name: "prospect" | string): TrellisWorkflowHandle;
   harness?: {
     raw(): Promise<unknown> | unknown;
   };
+}
+
+export interface TrellisSkillTraceContext {
+  parent?: string;
+  phase?: string;
+  sequence?: number;
+  dependsOn?: string[];
+  label?: string;
 }
 
 export type TrellisAgentHandler<App extends TrellisGtmApp = TrellisGtmApp> = (
@@ -321,7 +331,7 @@ export interface TrellisSmokeResult {
   noSendsMode: boolean;
   fixture: TrellisSignal;
   checks: TrellisSmokeCheck[];
-  skillCalls: Array<{ name: string; context: Record<string, unknown> }>;
+  skillCalls: TrellisSkillCall[];
   startedWorkflows: Array<{ name: string; input: TrellisWorkflowStartInput }>;
   prospects: TrellisProspect[];
   drafts: TrellisDraft[];
@@ -367,7 +377,7 @@ export interface TrellisCloudflareRuntime {
 
 export interface TrellisRuntimeResult {
   signal: TrellisSignal;
-  skillCalls: Array<{ name: string; context: Record<string, unknown> }>;
+  skillCalls: TrellisSkillCall[];
   startedWorkflows: Array<{ name: string; input: TrellisWorkflowStartInput }>;
   prospects: TrellisProspect[];
   drafts: TrellisDraft[];
@@ -386,8 +396,15 @@ export interface TrellisHarnessRuntime {
       args?: Record<string, unknown>;
       role?: string;
       model?: string;
+      trace?: TrellisSkillTraceContext;
     },
   ): Promise<unknown> | unknown;
+}
+
+export interface TrellisSkillCall {
+  name: string;
+  context: Record<string, unknown>;
+  trace?: TrellisSkillTraceContext;
 }
 
 export interface TrellisRuntimeContextFactoryInput {
@@ -708,7 +725,7 @@ export function createTrellisTestApp(input?: {
   eventSink?: TrellisEventSink;
 }) {
   const startedWorkflows: Array<{ name: string; input: TrellisWorkflowStartInput }> = [];
-  const skillCalls: Array<{ name: string; context: Record<string, unknown> }> = [];
+  const skillCalls: TrellisSkillCall[] = [];
   const prospects: TrellisProspect[] = [];
   const drafts: TrellisDraft[] = [];
   const auditEvents: TrellisAuditEvent[] = [];
@@ -765,21 +782,24 @@ export function createTrellisTestApp(input?: {
       };
     },
     async skill(name, skillInput) {
+      const skillTrace = normalizeSkillTraceContext(skillInput.trace);
       skillCalls.push({
         name,
         context: skillInput.context,
+        ...(skillTrace ? { trace: skillTrace } : {}),
       });
       await emitTrellisTrace(input?.eventSink, {
         id: `trace_event_skill_started_${normalizeIdPart(signal.id)}_${normalizeIdPart(name)}_${skillCalls.length}`,
         traceId: traceIdForSignal(signal),
         signalId: signal.id,
-        span: `skill:${name}`,
+        span: skillTrace?.parent ? `skill:${skillTrace.parent}/${name}` : `skill:${name}`,
         type: "skill.started",
         message: `Started skill ${name}.`,
         payload: {
           skill: name,
           role: skillInput.role ?? null,
           model: skillInput.model ?? null,
+          ...(skillTrace ? { trace: skillTrace } : {}),
         },
       });
       if (input?.harness) {
@@ -797,6 +817,7 @@ export function createTrellisTestApp(input?: {
               role: skillInput.role ?? null,
               model: skillInput.model ?? null,
               harness: true,
+              ...(skillTrace ? { trace: skillTrace } : {}),
             },
           };
           auditEvents.push(event);
@@ -814,6 +835,7 @@ export function createTrellisTestApp(input?: {
               role: skillInput.role ?? null,
               model: skillInput.model ?? null,
               harness: true,
+              ...(skillTrace ? { trace: skillTrace } : {}),
               error: sanitizeRuntimeError(error),
             },
           };
@@ -838,6 +860,7 @@ export function createTrellisTestApp(input?: {
             role: skillInput.role ?? null,
             model: skillInput.model ?? null,
             harness: false,
+            ...(skillTrace ? { trace: skillTrace } : {}),
           },
         };
         auditEvents.push(event);
@@ -848,11 +871,12 @@ export function createTrellisTestApp(input?: {
           id: `trace_event_skill_failed_${normalizeIdPart(signal.id)}_${normalizeIdPart(name)}_${skillCalls.length}`,
           traceId: traceIdForSignal(signal),
           signalId: signal.id,
-          span: `skill:${name}`,
+          span: skillTrace?.parent ? `skill:${skillTrace.parent}/${name}` : `skill:${name}`,
           type: "skill.failed",
           message: `Failed skill ${name}.`,
           payload: {
             skill: name,
+            ...(skillTrace ? { trace: skillTrace } : {}),
             error: sanitizeRuntimeError(error),
           },
         });
@@ -1550,6 +1574,75 @@ function defaultSkillResult(name: string) {
         reason: "Fixture reply should be reviewed by a human operator.",
         destination: "sales",
         urgency: "normal",
+      };
+    case "churn-salesforce":
+      return {
+        summary: "Fixture Salesforce slice found renewal timing and sponsor risk.",
+        flags: ["Renewal within 90 days", "No executive sponsor on file"],
+        confidence: 0.7,
+        dataFreshness: "fixture",
+        details: {
+          renewalDate: "2026-07-01",
+          healthScore: 62,
+        },
+      };
+    case "churn-zendesk":
+      return {
+        summary: "Fixture Zendesk slice found rising ticket volume and one recurring reporting theme.",
+        flags: ["Ticket volume up >50%", "Recurring unresolved theme"],
+        confidence: 0.66,
+        dataFreshness: "fixture",
+        details: {
+          ticketsLast90Days: 18,
+          theme: "reporting gap",
+        },
+      };
+    case "churn-usage":
+      return {
+        summary: "Fixture usage slice found weak registration and dormant admin cadence.",
+        flags: ["Registration rate <20%", "HR admin login cadence dormant"],
+        confidence: 0.68,
+        dataFreshness: "fixture",
+        details: {
+          eligibleLives: 1200,
+          registeredMembers: 180,
+          registrationRate: 0.15,
+        },
+      };
+    case "churn-risk-score":
+      return {
+        score: 75,
+        band: "Red",
+        topDrivers: [
+          {
+            driver: "Renewal risk without executive sponsorship",
+            evidence: "Salesforce slice flagged renewal within 90 days and no executive sponsor.",
+            weight: 30,
+          },
+          {
+            driver: "Low registration is weakening ROI story",
+            evidence: "Usage slice flagged registration below 20%.",
+            weight: 15,
+          },
+        ],
+        mitigants: [],
+        confidence: "Medium",
+        math: "Fixture score assembled from CRM, support, and usage flags.",
+      };
+    case "churn-playbook":
+      return {
+        headline: "Red churn risk requires exec sponsor remap and ROI recovery.",
+        highestLeverageAction: "Book CHRO-level renewal-readiness call and bring a one-page outcomes plan.",
+        actions: [
+          {
+            owner: "CSM",
+            persona: "Benefits leader",
+            timeframe: "48 hours",
+            action: "Confirm current champion and map missing executive sponsor.",
+            definitionOfDone: "Sponsor or gap is recorded in CRM.",
+          },
+        ],
+        stopDoing: ["Pause expansion asks until the save plan is accepted."],
       };
     case "icp-qualification":
     default:
@@ -2553,6 +2646,7 @@ function createTrellisMcpTools(
           stack: "trellis-cloudflare",
           providers: {
             crm: config.crm?.id ?? null,
+            sources: config.sources?.map((provider) => provider.id) ?? [],
             mail: mailProvider?.id ?? null,
             browser: browserProvider?.id ?? null,
             research: researchProvider?.id ?? null,
@@ -9881,6 +9975,22 @@ function readString(value: unknown) {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
+function normalizeSkillTraceContext(value: unknown): TrellisSkillTraceContext | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const trace: TrellisSkillTraceContext = {
+    parent: readString(value.parent),
+    phase: readString(value.phase),
+    sequence: typeof value.sequence === "number" && Number.isFinite(value.sequence) ? value.sequence : undefined,
+    dependsOn: Array.isArray(value.dependsOn) ? value.dependsOn.flatMap((item) => readString(item) ?? []) : undefined,
+    label: readString(value.label),
+  };
+  return Object.values(trace).some((entry) => Array.isArray(entry) ? entry.length > 0 : entry !== undefined)
+    ? trace
+    : undefined;
+}
+
 function traceIdForSignal(signal: Pick<TrellisSignal, "id" | "traceId" | "payload">) {
   return readString(signal.traceId)
     ?? readString(signal.payload?.traceId)
@@ -9895,7 +10005,8 @@ function traceIdForSignalId(signalId: string) {
 function traceSpanForAuditEvent(event: TrellisAuditEvent) {
   const skill = readString(event.metadata?.skill);
   if (skill) {
-    return `skill:${skill}`;
+    const trace = normalizeSkillTraceContext(event.metadata?.trace);
+    return trace?.parent ? `skill:${trace.parent}/${skill}` : `skill:${skill}`;
   }
   if (event.workflow) {
     return `workflow:${event.workflow}`;

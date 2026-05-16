@@ -129,6 +129,25 @@ At runtime, the Worker reads `TRELLIS_PACKS`, hydrates bounded markdown contents
 
 `app.skill(...)` first checks for the Trellis skill runtime. Generated apps provide `TRELLIS_RUNTIME_CONTEXT_FACTORY`, which builds the hosted skill context after Trellis has parsed the signal and hydrated packs. The generated adapter preloads `AGENTS.md`, `knowledge/*`, and `.agents/skills/*/SKILL.md` into the virtual sandbox, registers the configured model route, and stores session state in the deploy database. Advanced hosts can still provide a structural `TRELLIS_HARNESS`. If no runtime is present, smoke and local tests use the deterministic safe fixture path.
 
+### Sub-Skill Tracing
+
+Agents can attach trace metadata to any skill call:
+
+```ts
+await app.skill("churn-risk-score", {
+  context,
+  args: { salesforce, zendesk, usage },
+  trace: {
+    parent: "churn-assessment",
+    phase: "score",
+    sequence: 4,
+    dependsOn: ["churn-salesforce", "churn-zendesk", "churn-usage"],
+  },
+});
+```
+
+Trellis preserves the normal `skill.started`, `skill.completed`, and `skill.failed` lifecycle events, but the trace payload and span also show the orchestration graph. This keeps nested or multi-skill workflows inspectable without making skills secretly invoke other skills. `src/agent.ts` remains the owner of orchestration.
+
 ## Provider Manifests
 
 Provider connection manifests live under `.trellis/providers/`. They are intentionally non-secret.

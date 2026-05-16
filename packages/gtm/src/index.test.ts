@@ -84,6 +84,88 @@ describe("@trellis/gtm API", () => {
     });
   });
 
+  it("records sub-skill trace context for orchestrated skill graphs", async () => {
+    const agent = trellis.agent("cs-churn", {
+      knowledge: "knowledge/**/*.md",
+      skills: "skills/**/SKILL.md",
+      safety: trellis.safeOutbound(),
+    }, async (app) => {
+      const signal = await app.signal();
+      const context = await app.context(signal);
+      const salesforce = await app.skill("churn-salesforce", {
+        context,
+        trace: {
+          parent: "churn-assessment",
+          phase: "gather",
+          sequence: 1,
+          label: "CRM slice",
+        },
+      });
+      const score = await app.skill("churn-risk-score", {
+        context,
+        args: { salesforce },
+        trace: {
+          parent: "churn-assessment",
+          phase: "score",
+          sequence: 2,
+          dependsOn: ["churn-salesforce"],
+        },
+      });
+
+      return app.workflow("churn-assessment").start({ signal, salesforce, score });
+    });
+    const traceEvents: Array<{ type: string; span: string; payload?: Record<string, unknown> }> = [];
+    const app = createTrellisTestApp({
+      eventSink: {
+        async emit(event) {
+          traceEvents.push(event);
+        },
+      },
+    });
+
+    await agent.handler(app);
+
+    expect(app.skillCalls.map((call) => call.trace)).toEqual([
+      {
+        parent: "churn-assessment",
+        phase: "gather",
+        sequence: 1,
+        label: "CRM slice",
+      },
+      {
+        parent: "churn-assessment",
+        phase: "score",
+        sequence: 2,
+        dependsOn: ["churn-salesforce"],
+      },
+    ]);
+    expect(traceEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "skill.started",
+        span: "skill:churn-assessment/churn-salesforce",
+        payload: expect.objectContaining({
+          skill: "churn-salesforce",
+          trace: expect.objectContaining({
+            parent: "churn-assessment",
+            phase: "gather",
+            sequence: 1,
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        type: "skill.completed",
+        span: "skill:churn-assessment/churn-risk-score",
+        payload: expect.objectContaining({
+          skill: "churn-risk-score",
+          trace: expect.objectContaining({
+            parent: "churn-assessment",
+            dependsOn: ["churn-salesforce"],
+          }),
+        }),
+      }),
+    ]));
+  });
+
   it("runs the smoke workflow as a real safe fixture", async () => {
     const result = await runTrellisSmoke();
 

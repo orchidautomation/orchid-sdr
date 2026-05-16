@@ -1,0 +1,14 @@
+{
+  "id": "sig_cs_churn_acme_001",
+  "traceId": "trace_cs_churn_acme_001",
+  "workspaceId": "wrk_customer_success",
+  "threadId": "thr_acme_health_review",
+  "provider": "manual.test",
+  "source": "account.health.review",
+  "accountName": "Acme Benefits",
+  "accountId": "001000000000001AAA",
+  "segment": "employer",
+  "requestedBy": "csm@example.com",
+  "reason": "Renewal prep and declining engagement signals",
+  "asOfDate": "2026-05-16"
+}
