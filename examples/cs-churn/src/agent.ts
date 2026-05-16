@@ -1,44 +1,11 @@
 import { trellis } from "@trellis/gtm";
-import { z } from "zod";
-import { csMcpSurface } from "./mcp/cs-surface";
+import { accountArgs, churnBriefDraft, churnSchemas, churnTrace } from "./churn/agent-contract";
 import { salesforceCrm, usageWarehouse, zendeskSupport } from "./integrations/providers";
+import { csMcpSurface } from "./mcp/cs-surface";
 import stateMap from "./state/customer-health.map";
 
-const evidenceSlice = z.object({
-  summary: z.string().min(1),
-  flags: z.array(z.string()).default([]),
-  confidence: z.number().min(0).max(1),
-  dataFreshness: z.string().optional(),
-  details: z.record(z.unknown()).optional(),
-});
-
-const riskScore = z.object({
-  score: z.number().min(0).max(100),
-  band: z.enum(["Green", "Yellow", "Orange", "Red"]),
-  topDrivers: z.array(z.object({
-    driver: z.string(),
-    evidence: z.string(),
-    weight: z.number(),
-  })).default([]),
-  mitigants: z.array(z.string()).default([]),
-  confidence: z.enum(["High", "Medium", "Low"]),
-  math: z.string().optional(),
-});
-
-const playbook = z.object({
-  headline: z.string().min(1),
-  highestLeverageAction: z.string().min(1),
-  actions: z.array(z.object({
-    owner: z.string(),
-    persona: z.string(),
-    timeframe: z.string(),
-    action: z.string(),
-    definitionOfDone: z.string(),
-  })).max(6),
-  stopDoing: z.array(z.string()).default([]),
-});
-
 export default trellis.agent("spring-health-cs-churn", {
+  // Providers stay swappable: direct APIs, first-party MCP, or Composio-backed tools.
   crm: salesforceCrm(),
   sources: [zendeskSupport(), usageWarehouse()],
   mcp: csMcpSurface,
@@ -53,77 +20,47 @@ export default trellis.agent("spring-health-cs-churn", {
 }, async (app) => {
   const signal = await app.signal();
   const context = await app.context(signal);
-  const accountName = String(signal.payload?.accountName ?? signal.payload?.account ?? "Unknown account");
-  const accountId = typeof signal.payload?.accountId === "string" ? signal.payload.accountId : undefined;
-  const baseArgs = { accountName, accountId };
+  const account = accountArgs(signal);
 
-  // The Claude `/churn-check` command becomes visible runtime orchestration here:
-  // gather three evidence slices in parallel, score them, then draft the save plan.
+  // The old `/churn-check` command becomes visible runtime orchestration:
+  // gather evidence in parallel, score it, then draft the save plan.
   const [salesforce, zendesk, usage] = await Promise.all([
     app.skill("churn-salesforce", {
       context,
-      args: baseArgs,
-      schema: evidenceSlice,
-      trace: {
-        parent: "churn-assessment",
-        phase: "gather",
-        sequence: 1,
-        label: "Salesforce CRM slice",
-      },
+      args: account,
+      schema: churnSchemas.evidenceSlice,
+      trace: churnTrace.salesforce,
     }),
     app.skill("churn-zendesk", {
       context,
-      args: baseArgs,
-      schema: evidenceSlice,
-      trace: {
-        parent: "churn-assessment",
-        phase: "gather",
-        sequence: 2,
-        label: "Zendesk support slice",
-      },
+      args: account,
+      schema: churnSchemas.evidenceSlice,
+      trace: churnTrace.zendesk,
     }),
     app.skill("churn-usage", {
       context,
-      args: baseArgs,
-      schema: evidenceSlice,
-      trace: {
-        parent: "churn-assessment",
-        phase: "gather",
-        sequence: 3,
-        label: "Usage telemetry slice",
-      },
+      args: account,
+      schema: churnSchemas.evidenceSlice,
+      trace: churnTrace.usage,
     }),
   ]);
 
   const score = await app.skill("churn-risk-score", {
     context,
-    args: { ...baseArgs, salesforce, zendesk, usage },
-    schema: riskScore,
-    trace: {
-      parent: "churn-assessment",
-      phase: "score",
-      sequence: 4,
-      dependsOn: ["churn-salesforce", "churn-zendesk", "churn-usage"],
-    },
+    args: { ...account, salesforce, zendesk, usage },
+    schema: churnSchemas.riskScore,
+    trace: churnTrace.riskScore,
   });
 
   const savePlan = await app.skill("churn-playbook", {
     context,
-    args: { ...baseArgs, score },
-    schema: playbook,
-    trace: {
-      parent: "churn-assessment",
-      phase: "recommend",
-      sequence: 5,
-      dependsOn: ["churn-risk-score"],
-    },
+    args: { ...account, score },
+    schema: churnSchemas.playbook,
+    trace: churnTrace.playbook,
   });
 
-  const draft = {
-    subject: `Churn risk brief: ${accountName}`,
-    body: JSON.stringify({ accountName, score, savePlan }, null, 2),
-  };
-
+  // Workflow start persists the run, emits trace events, and queues the CRM update
+  // for human approval instead of writing to Salesforce directly.
   return app.workflow("churn-assessment").start({
     signal,
     salesforce,
@@ -131,7 +68,7 @@ export default trellis.agent("spring-health-cs-churn", {
     usage,
     score,
     playbook: savePlan,
-    draft,
+    draft: churnBriefDraft({ accountName: account.accountName, score, savePlan }),
     approvalRequiredFor: ["crm.update"],
   });
 });
